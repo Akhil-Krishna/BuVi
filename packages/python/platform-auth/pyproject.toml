@@ -1,0 +1,14 @@
+[project]
+name = "platform-auth"
+version = "0.1.0"
+description = "Principal, JWT/OIDC validation, and the permission/resource-tenant dependencies"
+readme = "README.md"
+authors = [
+    { name = "Akhil Krishna", email = "akhilmavannoor@gmail.com" }
+]
+requires-python = ">=3.12,<3.13"
+dependencies = []
+
+[build-system]
+requires = ["uv_build>=0.12.13,<0.13.0"]
+build-backend = "uv_build"

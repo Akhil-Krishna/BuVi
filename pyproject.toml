@@ -1,0 +1,65 @@
+# uv workspace root for the Agentic BI Platform (buvi).
+#
+# This root is a *virtual* project: it defines the workspace, the repo-wide dev
+# toolchain, and the shared mypy/pytest configuration. It ships no code of its
+# own -- every deployable unit lives in `apps/<service>/` and every shared
+# library in `packages/python/platform-*` (Section 4 of the build spec).
+
+[project]
+name = "buvi"
+version = "0.1.0"
+description = "Agentic BI Platform - governed, multi-tenant, AI-native analytics"
+readme = "README.md"
+authors = [
+    { name = "Akhil Krishna", email = "akhilmavannoor@gmail.com" }
+]
+requires-python = ">=3.12,<3.13"
+dependencies = []
+
+[dependency-groups]
+dev = [
+    "mypy>=1.18.2",
+    "pytest>=8.4.2",
+    "pytest-asyncio>=1.2.0",
+    "ruff>=0.14.0",
+    "testcontainers>=4.13.1",
+]
+
+[tool.uv]
+package = false
+
+[tool.uv.workspace]
+members = ["apps/*", "packages/python/*"]
+
+# --- mypy (Section 26: strict on core/domain/application of every service) ---
+[tool.mypy]
+python_version = "3.12"
+namespace_packages = true
+explicit_package_bases = true
+warn_unused_configs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_return_any = true
+no_implicit_reexport = true
+strict_equality = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+disallow_untyped_decorators = true
+disallow_any_generics = true
+check_untyped_defs = true
+
+# Scope: the strict gate runs over each service's core/domain/application layers
+# and the shared platform packages -- see `make typecheck` and ci.yml. Test trees
+# are exercised by pytest, not by mypy.
+
+# --- pytest -----------------------------------------------------------------
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+addopts = "-q --strict-markers --strict-config"
+markers = [
+    "unit: fast, no external dependencies",
+    "integration: requires containers (Postgres/Redis/NATS via testcontainers)",
+    "contract: OpenAPI / event-schema compatibility checks",
+    "security: authorization, tenant-isolation, SSRF, unsafe-SQL corpus",
+    "system: full backend end-to-end suite (Phase A12 gate)",
+]

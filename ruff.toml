@@ -1,0 +1,64 @@
+# Repo-wide Ruff configuration (Section 26). Every app and package inherits
+# this file; a service adds a `[lint.per-file-ignores]` entry in its own
+# `pyproject.toml` only with a recorded reason -- it does not fork this config.
+
+target-version = "py312"
+line-length = 100
+src = ["apps", "packages/python"]
+# `docs/` is prose. Ruff 0.16+ formats Python blocks inside Markdown, and the
+# architecture spec is the immutable baseline (ADR 0001) -- tooling never rewrites it.
+extend-exclude = [".venv", "web", "docs", "**/migrations/versions"]
+
+[format]
+quote-style = "double"
+indent-style = "space"
+docstring-code-format = true
+
+[lint]
+select = [
+    "F",     # pyflakes
+    "E",     # pycodestyle errors
+    "W",     # pycodestyle warnings
+    "I",     # isort -- also enforces the layer import order of Section 4.1
+    "N",     # pep8-naming
+    "UP",    # pyupgrade
+    "B",     # flake8-bugbear
+    "A",     # flake8-builtins
+    "C4",    # flake8-comprehensions
+    "DTZ",   # flake8-datetimez -- naive datetimes are a bug in a TIMESTAMPTZ system
+    "T20",   # flake8-print -- structured logging only (Section 22), never print()
+    "SIM",   # flake8-simplify
+    "TID",   # flake8-tidy-imports -- backs the banned-import rules below
+    "ARG",   # unused arguments
+    "PTH",   # use pathlib
+    "ASYNC", # flake8-async -- blocking calls inside async handlers (Section 20)
+    "S",     # flake8-bandit -- security lint
+    "RUF",   # ruff-specific
+]
+ignore = [
+    "S101",  # `assert` is allowed; pytest is the test framework
+    "B008",  # FastAPI's `Depends(...)` in defaults is the framework's own idiom
+]
+
+[lint.per-file-ignores]
+# Tests may use hardcoded dummy credentials and bind to test hosts.
+"**/tests/**" = ["S105", "S106", "S107", "S311", "ARG001", "ARG002"]
+
+[lint.flake8-tidy-imports]
+ban-relative-imports = "all"
+
+[lint.flake8-tidy-imports.banned-api]
+# Section 37: no "utils"/"common" dumping grounds.
+"utils" = { msg = "No shared 'utils' module (Section 37). Put the code with the feature that owns it, or in a named packages/python/platform-* package." }
+"common" = { msg = "No shared 'common' module (Section 37). Put the code with the feature that owns it, or in a named packages/python/platform-* package." }
+
+[lint.isort]
+known-first-party = [
+    "platform_auth",
+    "platform_contracts",
+    "platform_observability",
+    "platform_testing",
+]
+
+[lint.pydocstyle]
+convention = "google"

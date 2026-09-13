@@ -1,0 +1,41 @@
+# --- Python -----------------------------------------------------------------
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# --- Node / Next.js ---------------------------------------------------------
+node_modules/
+.next/
+out/
+next-env.d.ts
+*.tsbuildinfo
+.eslintcache
+
+# --- Secrets and local config (Section 24: nothing secret-shaped in Git) -----
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+.vault-token
+
+# --- Tooling / editors ------------------------------------------------------
+.DS_Store
+.idea/
+.vscode/
+*.log
+
+# --- Local infra state (Section 27 docker-compose, Section 28 Terraform) -----
+.terraform/
+*.tfstate
+*.tfstate.*

@@ -1,0 +1,145 @@
+# CI for the buvi monorepo (Section 26 of the build spec).
+#
+# Phase A0 scope: lint, type-check, test, and security scanning. The per-service
+# matrix discovers `apps/*` at run time, so it is empty today and picks up each
+# service automatically from Phase A1 onward without editing this file. The
+# contract jobs (OpenAPI export + diff against `contracts/openapi/`) are added in
+# Phase A2, when the first service actually exports an OpenAPI document.
+
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.12"
+  NODE_VERSION: "20"
+
+jobs:
+  discover-services:
+    name: discover services
+    runs-on: ubuntu-latest
+    outputs:
+      services: ${{ steps.find.outputs.services }}
+      any: ${{ steps.find.outputs.any }}
+    steps:
+      - uses: actions/checkout@v5
+      - id: find
+        run: |
+          services=$(find apps -mindepth 1 -maxdepth 1 -type d -printf '%f\n' 2>/dev/null \
+            | sort | jq -R -s -c 'split("\n") | map(select(length > 0))')
+          echo "services=$services" >> "$GITHUB_OUTPUT"
+          if [ "$services" = "[]" ]; then echo "any=false" >> "$GITHUB_OUTPUT";
+          else echo "any=true" >> "$GITHUB_OUTPUT"; fi
+          echo "Discovered services: $services"
+
+  python-workspace:
+    name: python workspace (lint, type, test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - run: uv python install ${{ env.PYTHON_VERSION }}
+      - name: Sync workspace
+        run: uv sync --all-packages --locked
+      - name: Ruff lint
+        run: uv run ruff check .
+      - name: Ruff format check
+        run: uv run ruff format --check .
+      - name: mypy (shared platform packages)
+        run: uv run mypy packages/python
+      - name: pytest (repo-level conformance)
+        run: uv run pytest tests
+
+  python-services:
+    name: ${{ matrix.service }}
+    needs: discover-services
+    if: needs.discover-services.outputs.any == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service: ${{ fromJson(needs.discover-services.outputs.services) }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - run: uv python install ${{ env.PYTHON_VERSION }}
+      - run: uv sync --package ${{ matrix.service }} --locked
+      - run: uv run --package ${{ matrix.service }} ruff check apps/${{ matrix.service }}
+      - run: uv run --package ${{ matrix.service }} ruff format --check apps/${{ matrix.service }}
+      - name: mypy (core, domain, application layers)
+        run: |
+          module=$(echo "${{ matrix.service }}" | tr '-' '_')
+          for layer in core domain application; do
+            path="apps/${{ matrix.service }}/src/$module/$layer"
+            [ -d "$path" ] || continue
+            uv run --package ${{ matrix.service }} mypy "$path"
+          done
+      - name: Unit tests
+        run: |
+          module=$(echo "${{ matrix.service }}" | tr '-' '_')
+          uv run --package ${{ matrix.service }} \
+            pytest "apps/${{ matrix.service }}/src/$module/tests/unit"
+      - name: Integration tests
+        run: |
+          module=$(echo "${{ matrix.service }}" | tr '-' '_')
+          uv run --package ${{ matrix.service }} \
+            pytest "apps/${{ matrix.service }}/src/$module/tests/integration"
+
+  frontend:
+    name: frontend
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web/next-app
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: web/next-app/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run format:check
+      - run: npm run typecheck
+      - run: npm run test
+      - run: npm run build
+
+  security:
+    name: security scans
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Secret scanning
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - uses: astral-sh/setup-uv@v7
+      - run: uv python install ${{ env.PYTHON_VERSION }}
+      - name: Python dependency audit
+        run: |
+          uv export --all-packages --format requirements-txt \
+            --no-emit-workspace --no-hashes -o /tmp/requirements.txt
+          uvx pip-audit -r /tmp/requirements.txt
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Node dependency audit
+        run: npm audit --audit-level=high
+        working-directory: web/next-app
