@@ -1,26 +1,23 @@
-"""Invitation acceptance (Section 6.7).
+"""Invitation acceptance (Sections 6.7, 9).
 
-Section 9's catalog has `POST /admin/invitations` but no acceptance endpoint,
-while Phase A1's Definition of Done requires the scripted flow to invite, verify
-by email, and log in. This is the missing half; see ADR 0002.
-
-The endpoint is public and token-gated, exactly like `GET /share/{token}` in
-Section 9: the emailed token is the credential, so requiring a session here
-would make an invitation impossible to accept.
+`POST /invitations/{token}/accept` is public and token-gated, but the token alone
+never creates an account. Accepting starts a real IdP login; the user is created
+only in `/auth/callback`, from the verified ID token, and only if its email
+matches the invited address (Section 6.7). No identity is taken from the request.
 """
 
 from __future__ import annotations
 
+import datetime as dt
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Request, status
+from fastapi import APIRouter, Depends, Path, Request, Response, status
 
-from identity_service.api.v1.schemas import InvitationAcceptRequest, UserResponse
-from identity_service.dependencies import (
-    build_user_service,
-    client_ip,
-    get_pre_auth_repository,
-)
+from identity_service.api.v1.auth import start_login_response
+from identity_service.core.config import Settings
+from identity_service.dependencies import get_app_settings, get_pre_auth_repository
+from identity_service.domain.errors import InvitationInvalidError
+from identity_service.domain.value_objects.tokens import hash_token
 from identity_service.infrastructure.db.repositories.identity_repository import (
     IdentityRepository,
 )
@@ -28,40 +25,29 @@ from identity_service.infrastructure.db.repositories.identity_repository import 
 router = APIRouter(tags=["invitations"])
 
 PreAuthRepo = Annotated[IdentityRepository, Depends(get_pre_auth_repository, scope="function")]
+AppSettings = Annotated[Settings, Depends(get_app_settings)]
 
 
-@router.post(
-    "/auth/invitations/accept",
-    response_model=UserResponse,
-    status_code=status.HTTP_201_CREATED,
-)
+@router.post("/invitations/{token}/accept", status_code=status.HTTP_303_SEE_OTHER)
 async def accept_invitation(
     request: Request,
-    payload: InvitationAcceptRequest,
+    settings: AppSettings,
     repository: PreAuthRepo,
-) -> UserResponse:
-    """**Public, token-gated.** Redeem an invitation and create the user.
+    token: Annotated[str, Path(min_length=16, max_length=256)],
+) -> Response:
+    """**Public, token-gated.** Start the IdP login that will redeem this invitation.
 
     Unknown, expired, revoked and already-used tokens all return the same
-    `INVITATION_INVALID` error, so the response cannot be used to discover which
-    invitations exist.
+    `INVITATION_INVALID`, so the response cannot reveal which invitations exist.
     """
-    service = build_user_service(request, repository)
-    user = await service.accept_invitation(
-        token=payload.token,
-        idp_subject=payload.idp_subject,
-        display_name=payload.display_name,
-        ip_address=client_ip(request),
-    )
-    roles = await repository.get_user_role_keys(user.id)
-    return UserResponse(
-        id=user.id,
-        tenant_id=user.tenant_id,
-        email=user.email,
-        display_name=user.display_name,
-        status=user.status,
-        mfa_enabled=user.mfa_enabled,
-        roles=sorted(roles),
-        last_login_at=user.last_login_at,
-        created_at=user.created_at,
+    token_hash = hash_token(token)
+    invitation = await repository.find_pending_invitation_by_token_hash(token_hash)
+    if invitation is None or invitation.expires_at <= dt.datetime.now(dt.UTC):
+        raise InvitationInvalidError()
+    return start_login_response(
+        request,
+        settings,
+        repository,
+        status_code=status.HTTP_303_SEE_OTHER,
+        invitation_token_hash=token_hash,
     )

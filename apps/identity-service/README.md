@@ -18,7 +18,7 @@ audit log (build spec Sections 3, 6, 7, 8.1, 9).
 | Method & path | Auth |
 |---|---|
 | `GET /auth/login`, `GET /auth/callback` | public |
-| `POST /auth/invitations/accept` | public, token-gated |
+| `POST /invitations/{token}/accept` | public, token-gated; starts IdP login, IdP email must match (Section 6.7) |
 | `GET /auth/session`, `POST /auth/logout` | session |
 | `POST /auth/mfa/enroll`, `POST /auth/mfa/verify` | session |
 | `GET /admin/users`, `GET /admin/users/{id}`, `GET /admin/invitations` | `user:manage` (+ tenant check on `{id}`) |

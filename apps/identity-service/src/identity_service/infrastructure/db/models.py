@@ -19,13 +19,11 @@ from typing import Any
 
 from sqlalchemy import (
     ARRAY,
-    BigInteger,
     Boolean,
     CheckConstraint,
     DateTime,
     ForeignKey,
     Index,
-    Integer,
     Text,
     UniqueConstraint,
     text,
@@ -297,18 +295,22 @@ class AuditEvent(Base):
 
 
 class MfaCredential(Base):
-    """TOTP enrolment (Section 6.6).
+    """An MFA factor (Sections 6.6, 8.1).
 
-    Section 8.1 records only `users.mfa_enabled` and gives no table for the
-    shared secret, which TOTP verification requires. This table is the smallest
-    addition that makes Section 6.6 implementable; see ADR 0002. WebAuthn
-    credentials get their own table in Phase A10 rather than overloading this one.
+    Secret material lives in Vault (`secret_ref`). A row is an active factor only
+    once `confirmed_at` is set and while `revoked_at` is NULL.
     """
 
     __tablename__ = "mfa_credentials"
     __table_args__ = (
-        CheckConstraint("method IN ('totp')", name="ck_mfa_credentials_method"),
-        UniqueConstraint("user_id", "method", name="mfa_credentials_user_id_method_key"),
+        CheckConstraint("method IN ('totp','webauthn')", name="ck_mfa_credentials_method"),
+        Index("idx_mfa_credentials_user", "user_id"),
+        Index(
+            "idx_mfa_credentials_one_totp",
+            "user_id",
+            unique=True,
+            postgresql_where=text("method = 'totp' AND revoked_at IS NULL"),
+        ),
         {"schema": SCHEMA},
     )
 
@@ -323,21 +325,17 @@ class MfaCredential(Base):
         ForeignKey(f"{SCHEMA}.users.id", ondelete="CASCADE"),
         nullable=False,
     )
-    method: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'totp'"))
-    #: Vault path holding the TOTP shared secret -- the secret itself is never
-    #: stored in Postgres (Section 24).
+    method: Mapped[str] = mapped_column(Text, nullable=False)
+    #: Vault path; the secret itself is never stored in Postgres (Section 24).
     secret_ref: Mapped[str] = mapped_column(Text, nullable=False)
+    label: Mapped[str | None] = mapped_column(Text)
     confirmed_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
-    #: Monotonic counter of the last accepted TOTP step, so a code cannot be
-    #: replayed inside its own validity window.
-    last_used_step: Mapped[int | None] = mapped_column(BigInteger)
-    failed_attempts: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
     created_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=_NOW
     )
-    updated_at: Mapped[dt.datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=_NOW
-    )
+    #: Last accepted use; for TOTP also the replay guard (Section 8.1).
+    last_used_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 #: Tables carrying `tenant_id`, for the RLS policies in the migration (Section 19).

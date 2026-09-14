@@ -61,12 +61,18 @@ def cookie_value(header: str) -> str:
     return header.split("=", 1)[1].split(";", 1)[0]
 
 
-def login(username: str) -> tuple[str, str]:
-    """Drive the real Section 6.1 flow headlessly. Returns (session id, Set-Cookie)."""
+def idp_login(
+    username: str, method: str = "GET", path: str = "/api/v1/auth/login"
+) -> httpx.Response:
+    """Drive the real Section 6.1 flow headlessly; return the callback response.
+
+    `path` is where the flow starts: `/auth/login`, or an invitation's
+    `/invitations/{token}/accept`, which begins the same IdP login.
+    """
     with httpx.Client(base_url=SERVICE, timeout=15) as svc:
-        start = svc.get("/api/v1/auth/login")
-        if start.status_code != 307:
-            raise RuntimeError(f"/auth/login returned {start.status_code}")
+        start = svc.request(method, path)
+        if start.status_code not in (303, 307):
+            return start
         txn = cookie_value(set_cookie(start, "buvi_oidc_txn"))
 
         with httpx.Client(timeout=15, follow_redirects=True) as kc:
@@ -83,39 +89,25 @@ def login(username: str) -> tuple[str, str]:
         location = submitted.headers.get("location", "")
         if "/api/v1/auth/callback" not in location:
             raise RuntimeError(f"no callback redirect ({submitted.status_code}): {location[:200]}")
-
-        callback = svc.get(
+        return svc.get(
             location[location.index("/api/v1/auth/callback") :],
             headers={"Cookie": f"buvi_oidc_txn={txn}"},
         )
-        if callback.status_code != 204:
-            raise RuntimeError(f"/auth/callback returned {callback.status_code}: {callback.text}")
-        header = set_cookie(callback, "buvi_session")
-        return cookie_value(header), header
+
+
+def login(username: str, method: str = "GET", path: str = "/api/v1/auth/login") -> tuple[str, str]:
+    """Log in and return (session token, Set-Cookie header)."""
+    callback = idp_login(username, method, path)
+    if callback.status_code != 204:
+        raise RuntimeError(f"{path}: login returned {callback.status_code}: {callback.text}")
+    header = set_cookie(callback, "buvi_session")
+    return cookie_value(header), header
 
 
 def api(method: str, path: str, session: str | None = None, **kwargs: object) -> httpx.Response:
     headers = {"Cookie": f"buvi_session={session}"} if session else {}
     with httpx.Client(base_url=SERVICE, timeout=15) as svc:
         return svc.request(method, path, headers=headers, **kwargs)  # type: ignore[arg-type]
-
-
-def keycloak_subject(username: str) -> str:
-    token = httpx.post(
-        f"{KEYCLOAK}/realms/master/protocol/openid-connect/token",
-        data={
-            "client_id": "admin-cli",
-            "username": "admin",
-            "password": "admin",
-            "grant_type": "password",
-        },
-    ).json()["access_token"]
-    users = httpx.get(
-        f"{KEYCLOAK}/admin/realms/{REALM}/users",
-        params={"username": username, "exact": "true"},
-        headers={"Authorization": f"Bearer {token}"},
-    ).json()
-    return str(users[0]["id"])
 
 
 def mailed_token(email: str) -> str | None:
@@ -192,23 +184,22 @@ def main() -> int:
         token = mailed_token(email)
         if not check(f"{role}: invitation email delivered to MailHog", token is not None):
             continue
-        accept = api(
-            "POST",
-            "/api/v1/auth/invitations/accept",
-            json={"token": token, "idp_subject": keycloak_subject(username)},
-        )
-        check(f"{role}: invitation accepted 201", accept.status_code == 201, accept.text)
-        user_ids[role] = accept.json().get("id", "")
-        reuse = api(
-            "POST",
-            "/api/v1/auth/invitations/accept",
-            json={"token": token, "idp_subject": "someone-else"},
-        )
+        accept_path = f"/api/v1/invitations/{token}/accept"
+        if role == "developer":
+            # Section 6.7: an IdP login for a different email must not redeem it.
+            wrong = idp_login(USERS["client"][0], "POST", accept_path)
+            wrong_code = wrong.json().get("error", {}).get("code") if wrong.content else None
+            check(
+                "developer: invitation refuses a different IdP email (403)",
+                wrong.status_code == 403 and wrong_code == "INVITATION_EMAIL_MISMATCH",
+                wrong.text,
+            )
+        session, header = login(username, "POST", accept_path)
+        check(f"{role}: invitation redeemed through matching IdP login", bool(session))
+        reuse = api("POST", accept_path)
         check(f"{role}: invitation token single-use (400)", reuse.status_code == 400)
-
-        session, header = login(username)
         check_cookie(role, header)
-        check_session(role, session, tenant_id)
+        user_ids[role] = str(check_session(role, session, tenant_id).get("user_id", ""))
         if role == "client":
             denied = api("GET", "/api/v1/admin/users", session)
             check("client: GET /admin/users forbidden (403)", denied.status_code == 403)

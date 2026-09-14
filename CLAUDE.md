@@ -79,3 +79,8 @@ For each phase:
 Don't silently improvise. Say what's missing/ambiguous, propose the smallest reasonable fix, and
 record the decision as `docs/adr/NNNN-title.md` before proceeding — this keeps the spec and the
 codebase from drifting apart as the build progresses.
+
+**The repo copy of the spec is the only copy.** If the spec is edited anywhere else, bring that edit
+into `docs/architecture/Agentic_BI_Platform_Build_Spec.md` and commit it, on its own, before any code
+change that depends on it. Before implementing a spec change, diff the committed spec so the code
+follows the canonical text, not a description of it. Never keep two independently edited copies.

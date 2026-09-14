@@ -23,8 +23,8 @@ contradiction or an error in the v6 spec; none adds a service, role or product f
    `/auth/*` in identity-service, and `identity.sessions.idp_refresh_token_ref` only makes sense there.
    identity-service owns the exchange and the durable session; the B1 BFF is a thin cookie-holding proxy.
 8. **Missing endpoints.** Section 6.9 and Phase A1 require self-service sessions; Section 6.7 and the A1 DoD require
-   accepting an invitation. Added `GET /me/sessions`, `DELETE /me/sessions/{id}`, `POST /auth/invitations/accept`
-   (public, token-gated like `GET /share/{token}`), plus read-only `GET /admin/users/{id}`, `GET /admin/invitations`.
+   accepting an invitation. Added `GET /me/sessions`, `DELETE /me/sessions/{id}`, `POST /invitations/{token}/accept`
+   (public, token-gated; redeemed only through a matching IdP login, Section 6.7), plus read-only `GET /admin/users/{id}`, `GET /admin/invitations`.
 9. **TOTP storage.** Section 8.1 has only `users.mfa_enabled`. Added `identity.mfa_credentials` (tenant-scoped, RLS)
    holding a Vault `secret_ref` and a replay counter; the secret itself is in Vault.
 10. **Step-up recency.** Section 7.3 needs "verified within 5 minutes". Added `sessions.mfa_verified_at` and
@@ -59,5 +59,35 @@ contradiction or an error in the v6 spec; none adds a service, role or product f
 - ~~Session ids are stored as the primary key; a DB read exposes live session ids.~~ **Resolved** by the updated
   Section 8.1 and migration `0002_session_token_hash`: the cookie carries an opaque token, only its SHA-256 is stored,
   and the row id is no longer accepted as a credential. Pre-existing sessions are revoked by that migration.
-- `/auth/invitations/accept` takes `idp_subject` from the caller; a stolen token could bind another subject. Mitigated by
-  requiring the IdP email to match the user's email at login. Phase B1 should accept invitations only from an authenticated IdP session.
+- ~~`/auth/invitations/accept` took `idp_subject` from the caller.~~ **Resolved** (spec sync below): acceptance now starts a
+  real IdP login and the user is created only from the verified ID token, whose email must match the invitation.
+
+## Spec sync (2026-09-14)
+
+The spec had been edited outside the repo after the A1 report, leaving two
+independently edited copies. The maintainer's canonical copy is now committed as
+`docs/architecture/Agentic_BI_Platform_Build_Spec.md`, and it absorbs items 3, 4,
+8 (session endpoints and invitation acceptance), 9, 10, 11 and the session
+`token_hash` above: those are now spec, not deviations.
+
+**Fixed in the canonical copy on import** (internal contradictions):
+
+- §6.1 step 6 still described the cookie as "the session ID" stored in Redis, contradicting §8.1
+  (`token_hash`; the row id is never a credential). Reworded to match §8.1.
+- §9 `POST /auth/mfa/enroll` said "session, step-up", contradicting the new §6.6. Now "session (first
+  enrollment); step-up once a factor exists".
+- §8.1 `mfa_credentials` lacked `tenant_id`, which §8 and §19 (RLS) require on every tenant-owned table.
+- §8.1 `mfa_credentials` had no confirmation marker, so an unconfirmed enrollment would count toward the
+  derived `users.mfa_enabled`. Added `confirmed_at`, and at most one active TOTP factor per user.
+- §6.6 cross-reference "Section 8.6" corrected to 7.3; obsolete `version: "3.9"` removed from §27.
+
+**Code aligned to the canonical copy:**
+
+- Migration `0003_mfa_credentials_spec`: `label`, `last_used_at` (now the TOTP replay guard), `revoked_at`,
+  `webauthn` allowed; `last_used_step`, `failed_attempts`, `updated_at` dropped.
+- Invitation acceptance moved to `POST /invitations/{token}/accept` (§9) and bound to a real IdP login (§6.7).
+  Nothing about the accepting identity comes from the request; a mismatched email returns
+  `403 INVITATION_EMAIL_MISMATCH` and leaves the invitation usable by the invited person.
+
+Note: §9 places the invitation token in the URL path. identity-service does not log request paths
+(uvicorn access logging is disabled); api-gateway must keep that property in Phase A2.

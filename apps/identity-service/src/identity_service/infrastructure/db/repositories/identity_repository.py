@@ -408,11 +408,13 @@ class IdentityRepository:
     async def get_mfa_credential(
         self, tenant_id: uuid.UUID, user_id: uuid.UUID
     ) -> MfaCredential | None:
+        """The user's current (non-revoked) TOTP factor, confirmed or not."""
         result = await self._session.execute(
             select(MfaCredential).where(
                 MfaCredential.tenant_id == tenant_id,
                 MfaCredential.user_id == user_id,
                 MfaCredential.method == "totp",
+                MfaCredential.revoked_at.is_(None),
             )
         )
         return result.scalar_one_or_none()
@@ -425,28 +427,18 @@ class IdentityRepository:
     async def delete_mfa_credential(self, credential_id: uuid.UUID) -> None:
         await self._session.execute(delete(MfaCredential).where(MfaCredential.id == credential_id))
 
-    async def confirm_mfa_credential(
-        self, credential_id: uuid.UUID, *, at: dt.datetime, step: int
-    ) -> None:
+    async def confirm_mfa_credential(self, credential_id: uuid.UUID, *, at: dt.datetime) -> None:
+        """Mark a factor confirmed; its first use also starts the replay guard."""
         await self._session.execute(
             update(MfaCredential)
             .where(MfaCredential.id == credential_id)
-            .values(confirmed_at=at, last_used_step=step, failed_attempts=0)
+            .values(confirmed_at=at, last_used_at=at)
         )
 
-    async def record_mfa_step(self, credential_id: uuid.UUID, step: int) -> None:
+    async def record_mfa_use(self, credential_id: uuid.UUID, at: dt.datetime) -> None:
         """Advance the replay guard so a code cannot be reused in its window."""
         await self._session.execute(
-            update(MfaCredential)
-            .where(MfaCredential.id == credential_id)
-            .values(last_used_step=step, failed_attempts=0)
-        )
-
-    async def record_mfa_failure(self, credential_id: uuid.UUID) -> None:
-        await self._session.execute(
-            update(MfaCredential)
-            .where(MfaCredential.id == credential_id)
-            .values(failed_attempts=MfaCredential.failed_attempts + 1)
+            update(MfaCredential).where(MfaCredential.id == credential_id).values(last_used_at=at)
         )
 
     # --- audit -------------------------------------------------------------

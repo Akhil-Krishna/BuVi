@@ -21,7 +21,10 @@ from identity_service.application.services.audit_service import AuditService
 from identity_service.application.services.session_service import SessionService
 from identity_service.core.config import Settings
 from identity_service.domain.errors import (
+    InvitationEmailMismatchError,
+    InvitationInvalidError,
     OidcStateMismatchError,
+    UserAlreadyExistsError,
     UserNotActiveError,
 )
 from identity_service.domain.policies.roles import default_role_for_jit_provisioning
@@ -86,6 +89,7 @@ class AuthService:
         nonce: str,
         ip_address: str | None,
         user_agent: str | None,
+        invitation_token_hash: str | None = None,
     ) -> LoginResult:
         """Steps 4-6 of Section 6.1.
 
@@ -98,7 +102,12 @@ class AuthService:
         tokens = await self._oidc.exchange_code(code=code, verifier=verifier)
         identity = await self._oidc.verify_id_token(tokens.id_token, nonce=nonce)
 
-        user, is_new_user = await self._resolve_user(identity)
+        if invitation_token_hash:
+            user, is_new_user = await self._accept_invitation(
+                identity, invitation_token_hash, ip_address
+            )
+        else:
+            user, is_new_user = await self._resolve_user(identity)
         if user.status not in ("active", "invited"):
             await self._audit.record(
                 event_type=events.EVENT_LOGIN_FAILED,
@@ -141,6 +150,61 @@ class AuthService:
             user=user,
             is_new_user=is_new_user,
         )
+
+    async def _accept_invitation(
+        self, identity: OidcIdentity, token_hash: str, ip_address: str | None
+    ) -> tuple[User, bool]:
+        """Redeem an invitation for the identity that just logged in (Section 6.7).
+
+        The token proves an invitation exists; the verified ID token proves who is
+        accepting it. Both are required and the IdP email must match the invited
+        address, so a leaked link cannot be bound to another account. Nothing
+        about the accepting identity is taken from the caller.
+        """
+        invitation = await self._repository.find_pending_invitation_by_token_hash(token_hash)
+        if invitation is None:
+            raise InvitationInvalidError()
+        # Read while the pre-auth scope still spans tenants, so a subject already
+        # bound in any tenant is seen before binding to this one.
+        existing = await self._repository.find_user_by_idp_subject(identity.subject)
+        await self._repository.bind_tenant(invitation.tenant_id)
+
+        if invitation.expires_at <= dt.datetime.now(dt.UTC):
+            raise InvitationInvalidError()
+        if not identity.email or identity.email.casefold() != invitation.email.casefold():
+            raise InvitationEmailMismatchError()
+        if existing is not None or await self._repository.find_user_by_email(
+            invitation.tenant_id, invitation.email
+        ):
+            raise UserAlreadyExistsError()
+
+        user = await self._repository.add_user(
+            User(
+                id=uuid.uuid4(),
+                tenant_id=invitation.tenant_id,
+                idp_subject=identity.subject,
+                email=invitation.email,
+                display_name=identity.display_name or invitation.email,
+                # Emailed token + matching IdP login is the email verification
+                # Section 6.5 requires.
+                status="active",
+            )
+        )
+        role = await self._repository.ensure_role(invitation.tenant_id, invitation.role_key)
+        await self._repository.grant_role(
+            user_id=user.id, role_id=role.id, granted_by=invitation.invited_by
+        )
+        await self._repository.set_invitation_status(invitation.id, "accepted")
+        await self._audit.record(
+            event_type=events.EVENT_INVITATION_ACCEPTED,
+            tenant_id=invitation.tenant_id,
+            actor_user_id=user.id,
+            resource_type="invitation",
+            resource_id=str(invitation.id),
+            after_state={"user_id": str(user.id), "role_key": invitation.role_key},
+            ip_address=ip_address,
+        )
+        return user, True
 
     async def _resolve_user(self, identity: OidcIdentity) -> tuple[User, bool]:
         """Find the user behind a verified ID token, provisioning if needed.

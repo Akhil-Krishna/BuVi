@@ -12,7 +12,6 @@ TOTP first; WebAuthn follows in Phase A10. Two properties are worth naming:
 from __future__ import annotations
 
 import datetime as dt
-import time
 import uuid
 from dataclasses import dataclass
 
@@ -114,7 +113,6 @@ class MfaService:
 
         totp = pyotp.TOTP(stored["secret"])
         if not totp.verify(code, valid_window=self._settings.totp_valid_window):
-            await self._repository.record_mfa_failure(credential.id)
             await self._audit.record(
                 event_type=events.EVENT_MFA_VERIFICATION_FAILED,
                 tenant_id=user.tenant_id,
@@ -124,8 +122,14 @@ class MfaService:
             )
             raise MfaVerificationFailedError()
 
-        step = int(time.time()) // TOTP_STEP_SECONDS
-        if credential.last_used_step is not None and step <= credential.last_used_step:
+        now = dt.datetime.now(dt.UTC)
+        step = int(now.timestamp()) // TOTP_STEP_SECONDS
+        last_step = (
+            int(credential.last_used_at.timestamp()) // TOTP_STEP_SECONDS
+            if credential.last_used_at is not None
+            else None
+        )
+        if last_step is not None and step <= last_step:
             # Correct code, already spent. Refused so a captured code cannot be
             # replayed inside its validity window.
             await self._audit.record(
@@ -138,10 +142,9 @@ class MfaService:
             )
             raise MfaVerificationFailedError()
 
-        now = dt.datetime.now(dt.UTC)
         newly_confirmed = credential.confirmed_at is None
         if newly_confirmed:
-            await self._repository.confirm_mfa_credential(credential.id, at=now, step=step)
+            await self._repository.confirm_mfa_credential(credential.id, at=now)
             await self._repository.set_mfa_enabled(user.tenant_id, user.id, enabled=True)
             await self._audit.record(
                 event_type=events.EVENT_MFA_ENABLED,
@@ -153,7 +156,7 @@ class MfaService:
                 after_state={"mfa_enabled": True, "method": "totp"},
             )
         else:
-            await self._repository.record_mfa_step(credential.id, step)
+            await self._repository.record_mfa_use(credential.id, now)
             await self._audit.record(
                 event_type=events.EVENT_MFA_VERIFIED,
                 tenant_id=user.tenant_id,

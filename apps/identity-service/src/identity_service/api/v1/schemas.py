@@ -127,12 +127,6 @@ class InvitationResponse(BaseModel):
     created_at: dt.datetime
 
 
-class InvitationAcceptRequest(BaseModel):
-    token: Annotated[str, Field(min_length=16, max_length=256)]
-    idp_subject: Annotated[str, Field(min_length=1, max_length=255)]
-    display_name: Annotated[str, Field(max_length=255)] | None = None
-
-
 class RoleChangeRequest(BaseModel):
     grant: list[str] = Field(default_factory=list)
     revoke: list[str] = Field(default_factory=list)

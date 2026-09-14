@@ -93,26 +93,31 @@ def _decode_transaction(raw: str) -> dict[str, Any]:
     return decoded
 
 
-@router.get("/auth/login", include_in_schema=True)
-async def login(request: Request, settings: AppSettings, repository: PreAuthRepo) -> Response:
-    """**Public.** Redirect to the IdP with a fresh PKCE challenge (Section 9)."""
-    service = build_auth_service(request, repository)
-    redirect = service.begin_login()
+def start_login_response(
+    request: Request,
+    settings: Settings,
+    repository: IdentityRepository,
+    *,
+    status_code: int,
+    invitation_token_hash: str | None = None,
+) -> Response:
+    """Redirect to the IdP with a fresh PKCE challenge and park the transaction.
 
-    response = RedirectResponse(
-        redirect.authorization_url, status_code=status.HTTP_307_TEMPORARY_REDIRECT
-    )
-    # The verifier never reaches browser JavaScript, so an XSS bug cannot steal
-    # it and redeem an intercepted authorization code (Section 6.2).
+    The HttpOnly transaction cookie holds the PKCE verifier, state and nonce and,
+    for an invitation, only the *hash* of the invitation token (Section 6.2).
+    """
+    redirect = build_auth_service(request, repository).begin_login()
+    payload = {
+        "verifier": redirect.challenge.verifier,
+        "state": redirect.challenge.state,
+        "nonce": redirect.challenge.nonce,
+    }
+    if invitation_token_hash:
+        payload["invitation"] = invitation_token_hash
+    response = RedirectResponse(redirect.authorization_url, status_code=status_code)
     response.set_cookie(
         key=settings.oidc_transaction_cookie_name,
-        value=_encode_transaction(
-            {
-                "verifier": redirect.challenge.verifier,
-                "state": redirect.challenge.state,
-                "nonce": redirect.challenge.nonce,
-            }
-        ),
+        value=_encode_transaction(payload),
         httponly=True,
         secure=settings.session_cookie_secure,
         # Lax, not Strict: the cookie has to survive the IdP's cross-site
@@ -123,6 +128,14 @@ async def login(request: Request, settings: AppSettings, repository: PreAuthRepo
         max_age=settings.oidc_transaction_ttl_seconds,
     )
     return response
+
+
+@router.get("/auth/login", include_in_schema=True)
+async def login(request: Request, settings: AppSettings, repository: PreAuthRepo) -> Response:
+    """**Public.** Redirect to the IdP with a fresh PKCE challenge (Section 9)."""
+    return start_login_response(
+        request, settings, repository, status_code=status.HTTP_307_TEMPORARY_REDIRECT
+    )
 
 
 @router.get("/auth/callback")
@@ -151,6 +164,7 @@ async def callback(
         nonce=str(transaction.get("nonce", "")),
         ip_address=client_ip(request),
         user_agent=request.headers.get("user-agent"),
+        invitation_token_hash=str(transaction.get("invitation") or "") or None,
     )
 
     response = Response(status_code=status.HTTP_204_NO_CONTENT)

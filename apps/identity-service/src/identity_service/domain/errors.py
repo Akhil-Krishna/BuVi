@@ -134,6 +134,14 @@ class InvitationInvalidError(DomainError):
     message = "This invitation is no longer valid."
 
 
+class InvitationEmailMismatchError(DomainError):
+    """The IdP identity redeeming an invitation is not the invited address (Section 6.7)."""
+
+    code = "INVITATION_EMAIL_MISMATCH"
+    status_code = 403
+    message = "This invitation was sent to a different email address."
+
+
 class UserAlreadyExistsError(DomainError):
     code = "USER_ALREADY_EXISTS"
     status_code = 409

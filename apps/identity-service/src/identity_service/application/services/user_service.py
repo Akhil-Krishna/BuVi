@@ -21,7 +21,6 @@ from identity_service.application.services.audit_service import AuditService
 from identity_service.application.services.session_service import SessionService
 from identity_service.core.config import Settings
 from identity_service.domain.errors import (
-    InvitationInvalidError,
     NotFoundError,
     UserAlreadyExistsError,
 )
@@ -33,7 +32,7 @@ from identity_service.domain.policies.roles import (
     validate_role_keys,
 )
 from identity_service.domain.value_objects.tokens import generate_token, hash_token
-from identity_service.infrastructure.db.models import Invitation, User
+from identity_service.infrastructure.db.models import Invitation
 from identity_service.infrastructure.db.repositories.identity_repository import (
     IdentityRepository,
 )
@@ -122,62 +121,6 @@ class UserService:
             )
         )
         return IssuedInvitation(invitation=invitation, token=token)
-
-    async def accept_invitation(
-        self,
-        *,
-        token: str,
-        idp_subject: str,
-        display_name: str | None = None,
-        ip_address: str | None = None,
-    ) -> User:
-        """Redeem an invitation, creating the user record (Section 6.7).
-
-        Unknown, expired, revoked and already-used tokens all fail identically,
-        so a caller cannot use the response to learn which invitations exist.
-        """
-        invitation = await self._repository.find_pending_invitation_by_token_hash(hash_token(token))
-        if invitation is None:
-            raise InvitationInvalidError()
-        await self._repository.bind_tenant(invitation.tenant_id)
-
-        now = dt.datetime.now(dt.UTC)
-        if invitation.expires_at <= now:
-            await self._repository.set_invitation_status(invitation.id, "expired")
-            raise InvitationInvalidError()
-
-        existing = await self._repository.find_user_by_email(invitation.tenant_id, invitation.email)
-        if existing is not None:
-            await self._repository.set_invitation_status(invitation.id, "accepted")
-            raise UserAlreadyExistsError()
-
-        user = await self._repository.add_user(
-            User(
-                id=uuid.uuid4(),
-                tenant_id=invitation.tenant_id,
-                idp_subject=idp_subject,
-                email=invitation.email,
-                display_name=display_name or invitation.email,
-                # Active on acceptance: possession of the emailed token is the
-                # email-verification step Section 6.5 requires.
-                status="active",
-            )
-        )
-        role = await self._repository.ensure_role(invitation.tenant_id, invitation.role_key)
-        await self._repository.grant_role(
-            user_id=user.id, role_id=role.id, granted_by=invitation.invited_by
-        )
-        await self._repository.set_invitation_status(invitation.id, "accepted")
-        await self._audit.record(
-            event_type=events.EVENT_INVITATION_ACCEPTED,
-            tenant_id=invitation.tenant_id,
-            actor_user_id=user.id,
-            resource_type="invitation",
-            resource_id=str(invitation.id),
-            after_state={"user_id": str(user.id), "role_key": invitation.role_key},
-            ip_address=ip_address,
-        )
-        return user
 
     # --- roles -------------------------------------------------------------
 
