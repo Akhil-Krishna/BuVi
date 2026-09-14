@@ -410,10 +410,10 @@ OIDC identity provider, never a hand-rolled token protocol.
 5. The Next.js server (not the browser) exchanges the code for tokens directly with Keycloak's
    token endpoint. The response (access token, refresh token, ID token) never touches browser
    JavaScript.
-6. The BFF creates an **application session**: a random opaque session token, stored server-side only as its
-   hash (`identity.sessions.token_hash`) and mapped to the token set, and sets a browser cookie
-   containing only that token
-   — `HttpOnly`, `Secure`, `SameSite=Lax` (or `Strict` for admin routes), scoped to the app path.
+6. An **application session** is created: a random opaque session token whose SHA-256 is stored
+   in `identity.sessions.token_hash` (Section 8.1), mapped to the token set, and a browser cookie
+   containing only that token — never the session row id —
+   `HttpOnly`, `Secure`, `SameSite=Lax` (or `Strict` for admin routes), scoped to the app path.
 7. All subsequent browser requests go only to the Next.js origin. The BFF looks up the session,
    attaches a short-lived access token (or performs on-behalf-of token exchange) when calling
    `api-gateway`.
@@ -465,12 +465,23 @@ sent automatically by the browser.
 - TOTP (authenticator app) MUST be available to every role.
 - WebAuthn/hardware keys MUST be available and MUST be **required** for `platform_super_admin`
   and SHOULD be required (tenant-configurable policy) for `org_admin`.
-- MFA enrollment and reset are themselves step-up-protected and audited (Section 8.6).
+- MFA **reset/removal** is step-up-protected and audited (Section 7.3). MFA **first enrollment**
+  requires only a valid, authenticated session — a user with no factor yet cannot satisfy a
+  step-up check, so the contradiction is resolved by treating first enrollment as the exception:
+  it establishes the factor, it doesn't need one. Every subsequent MFA change does require
+  step-up using the now-existing factor.
 
 ### 6.7 User lifecycle: invitation, SCIM, deprovisioning
 
 - `org_admin` invites a user by email + role. Invitation = single-use signed token, 7-day
   expiry, stored in `identity.invitations`.
+- **Invitation acceptance is a trust boundary, not just a token check.** The token alone does not
+  prove which account is accepting it — accepting the invitation must additionally verify that
+  the authenticated IdP identity's email matches the invited email exactly (case-insensitive),
+  otherwise a stolen/leaked invitation link could be bound to an attacker-controlled account. Once
+  real browser OIDC login exists (Section 31 Track B, Phase B1), invitation acceptance MUST only
+  be reachable via a completed real IdP login — never accept an invitation token alongside a
+  caller-asserted identity from any other auth path.
 - Enterprise tenants MAY connect SCIM 2.0 for automated provisioning/deprovisioning from their
   HR/IdP system — deprovisioning MUST revoke all active sessions and API keys immediately, not
   on next token expiry.
@@ -636,7 +647,9 @@ CREATE TABLE identity.roles (
     tenant_id UUID REFERENCES identity.tenants(id),  -- NULL for platform-level roles
     key TEXT NOT NULL,                                -- 'org_admin','developer','client', etc.
     is_system BOOLEAN NOT NULL DEFAULT true,
-    UNIQUE (tenant_id, key)
+    UNIQUE NULLS NOT DISTINCT (tenant_id, key)
+    -- plain UNIQUE treats every NULL tenant_id as distinct, which would allow duplicate
+    -- platform-level (tenant_id IS NULL) roles; NULLS NOT DISTINCT (Postgres 15+) closes that.
 );
 
 CREATE TABLE identity.user_roles (
@@ -660,30 +673,61 @@ CREATE TABLE identity.invitations (
 );
 
 CREATE TABLE identity.sessions (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),      -- internal correlation id only; NEVER
+                                                          -- accepted as a bearer credential
+    token_hash TEXT NOT NULL UNIQUE,                     -- SHA-256 of the opaque session token;
+                                                          -- the raw token is returned to the
+                                                          -- caller once at creation and is never
+                                                          -- stored — same discipline as api_keys
+                                                          -- below. A DB read (backup, replica,
+                                                          -- broad-access tooling) must not yield
+                                                          -- a usable credential.
     user_id UUID NOT NULL REFERENCES identity.users(id) ON DELETE CASCADE,
     tenant_id UUID NOT NULL REFERENCES identity.tenants(id),
     device_label TEXT,
     ip_address INET,
     user_agent TEXT,
-    token_hash TEXT NOT NULL,              -- SHA-256 of the opaque session token; the raw token is
-                                           -- returned once (Set-Cookie), never stored or logged
     idp_refresh_token_ref TEXT NOT NULL,   -- reference into Vault, never the raw token
+    mfa_verified_at TIMESTAMPTZ,           -- set on successful MFA check; step-up (Section 7.3)
+                                            -- requires now() - mfa_verified_at <= 5 minutes
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     last_seen_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     expires_at TIMESTAMPTZ NOT NULL,
     revoked_at TIMESTAMPTZ
 );
 CREATE INDEX idx_sessions_user ON identity.sessions(user_id);
--- Sessions are looked up only by the hash of the presented token, never by raw id.
-CREATE UNIQUE INDEX idx_sessions_token_hash ON identity.sessions(token_hash);
+
+CREATE TABLE identity.mfa_credentials (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id UUID NOT NULL REFERENCES identity.tenants(id),  -- tenant-owned: RLS (Section 19)
+    user_id UUID NOT NULL REFERENCES identity.users(id) ON DELETE CASCADE,
+    method TEXT NOT NULL CHECK (method IN ('totp','webauthn')),
+    secret_ref TEXT NOT NULL,          -- Vault path; the TOTP secret / WebAuthn credential
+                                        -- material itself never lives in Postgres
+    label TEXT,                         -- e.g. device name for WebAuthn keys
+    confirmed_at TIMESTAMPTZ,           -- set when the user first proves possession (e.g. a valid
+                                        -- TOTP code); an unconfirmed row is not an active factor
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    last_used_at TIMESTAMPTZ,           -- last accepted use; for TOTP also the replay guard: a code
+                                        -- from the same or an earlier 30s step is rejected
+    revoked_at TIMESTAMPTZ
+);
+CREATE INDEX idx_mfa_credentials_user ON identity.mfa_credentials(user_id);
+-- At most one active TOTP factor per user; WebAuthn users may register several keys.
+CREATE UNIQUE INDEX idx_mfa_credentials_one_totp ON identity.mfa_credentials(user_id)
+    WHERE method = 'totp' AND revoked_at IS NULL;
+-- identity.users.mfa_enabled is a derived/cached flag (true if any non-revoked, confirmed row
+-- exists here), not the source of truth.
 
 CREATE TABLE identity.api_keys (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id UUID NOT NULL REFERENCES identity.tenants(id),
     owner_user_id UUID REFERENCES identity.users(id),   -- NULL for pure service accounts
     name TEXT NOT NULL,
-    key_prefix TEXT NOT NULL,          -- first 8 chars shown in UI, e.g. 'sk_live_'
+    key_prefix TEXT NOT NULL,          -- constant scheme prefix + random chars for display/
+                                        -- lookup disambiguation, e.g. 'sk_live_4f9a2c' — the
+                                        -- scheme constant alone ('sk_live_') is identical across
+                                        -- every key and cannot distinguish them in a UI list
     secret_hash TEXT NOT NULL,         -- argon2id hash of the full key
     scopes TEXT[] NOT NULL DEFAULT '{}',
     expires_at TIMESTAMPTZ,
@@ -1044,9 +1088,12 @@ optional `Idempotency-Key` header. All responses use the error envelope in Secti
 | Auth | `GET /auth/callback` **(public)** | — | OIDC callback |
 | Auth | `POST /auth/logout` | session | revokes session + IdP token |
 | Auth | `GET /auth/session` | session | current principal, roles, tenant |
-| Auth | `POST /auth/mfa/enroll` | session, step-up | starts TOTP/WebAuthn enrollment |
+| Auth | `POST /auth/mfa/enroll` | session (first enrollment); step-up once a factor exists (Section 6.6) | starts TOTP/WebAuthn enrollment |
 | Auth | `POST /auth/mfa/verify` | session | completes MFA |
 | Users | `GET /admin/users` | `user:manage` | tenant-scoped list |
+| Invitations | `POST /invitations/{token}/accept` **(public, token-gated)** | signed invitation token + IdP login | creates/activates the invited user; IdP email MUST match the invited email (Section 6.7) |
+| Sessions | `GET /me/sessions` | session | list the caller's own active sessions (Section 6.9) |
+| Sessions | `DELETE /me/sessions/{id}` | session (owner only) | revoke one of the caller's own sessions |
 | Users | `POST /admin/invitations` | `user:manage`, step-up | invite by email+role |
 | Users | `PATCH /admin/users/{id}/roles` | `role:manage`, step-up | grant/revoke role |
 | Users | `POST /admin/users/{id}/sessions/revoke` | `user:manage`, step-up | force logout |
@@ -1738,7 +1785,6 @@ jobs:
 ## 27. Local development environment (docker-compose.dev.yml)
 
 ```yaml
-version: "3.9"
 services:
   postgres:
     image: postgres:16
@@ -1773,7 +1819,7 @@ services:
     ports: ["8200:8200"]
 
   minio:
-    image: minio/minio
+    image: quay.io/minio/minio
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: minioadmin
