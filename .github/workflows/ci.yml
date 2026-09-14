@@ -81,6 +81,8 @@ jobs:
       - run: uv run --package ${{ matrix.service }} ruff check apps/${{ matrix.service }}
       - run: uv run --package ${{ matrix.service }} ruff format --check apps/${{ matrix.service }}
       - name: mypy (core, domain, application layers)
+        env:
+          MYPYPATH: apps/${{ matrix.service }}/src
         run: |
           module=$(echo "${{ matrix.service }}" | tr '-' '_')
           for layer in core domain application; do

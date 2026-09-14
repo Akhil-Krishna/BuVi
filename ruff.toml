@@ -42,7 +42,9 @@ ignore = [
 
 [lint.per-file-ignores]
 # Tests may use hardcoded dummy credentials and bind to test hosts.
-"**/tests/**" = ["S105", "S106", "S107", "S311", "ARG001", "ARG002"]
+# Operator scripts print progress by design.
+"scripts/**" = ["T201", "E501"]
+"**/tests/**" = ["S105", "S106", "S107", "S311", "ARG001", "ARG002", "E501"]
 
 [lint.flake8-tidy-imports]
 ban-relative-imports = "all"

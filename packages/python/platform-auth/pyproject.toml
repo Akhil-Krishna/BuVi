@@ -7,7 +7,9 @@ authors = [
     { name = "Akhil Krishna", email = "akhilmavannoor@gmail.com" }
 ]
 requires-python = ">=3.12,<3.13"
-dependencies = []
+dependencies = [
+    "fastapi>=0.141.1",
+]
 
 [build-system]
 requires = ["uv_build>=0.12.13,<0.13.0"]

@@ -8,7 +8,7 @@ WEB := web/next-app
 
 .DEFAULT_GOAL := help
 .PHONY: help sync lint fmt typecheck test web-install web-lint web-typecheck web-test \
-        web-build check up down migrate seed dev
+        web-build check up down migrate seed dev test-login
 
 help: ## List available targets
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) \
@@ -30,13 +30,13 @@ fmt: ## Apply Ruff formatting and safe lint fixes
 typecheck: ## mypy over shared packages and every service's core/domain/application layers
 	uv run mypy packages/python
 	@for svc in apps/*/; do \
-		[ -d "$$svc" ] || continue; \
-		name=$$(basename "$$svc"); module=$$(echo "$$name" | tr '-' '_'); \
+		[ -d "$$svc/src" ] || continue; \
+		module=$$(basename "$$svc" | tr '-' '_'); \
 		for layer in core domain application; do \
 			path="$$svc/src/$$module/$$layer"; \
 			[ -d "$$path" ] || continue; \
 			echo "mypy $$path"; \
-			uv run mypy "$$path" || exit 1; \
+			MYPYPATH="$$svc/src" uv run mypy "$$path" || exit 1; \
 		done; \
 	done
 
@@ -66,26 +66,24 @@ check: lint typecheck test web-lint web-typecheck web-test ## Everything CI runs
 # --- Local infrastructure (Section 27) ---------------------------------------
 
 up: ## Start Postgres, Redis, NATS, Keycloak, Vault, MinIO, MailHog, OTel collector
-	@test -f $(COMPOSE_FILE) \
-		|| { echo "$(COMPOSE_FILE) is introduced in Phase A1."; exit 1; }
 	docker compose -f $(COMPOSE_FILE) up -d
 
 down: ## Stop the local infrastructure stack
-	@test -f $(COMPOSE_FILE) \
-		|| { echo "$(COMPOSE_FILE) is introduced in Phase A1."; exit 1; }
 	docker compose -f $(COMPOSE_FILE) down
 
 migrate: ## Run Alembic upgrade for every service, one schema each
 	@test -x scripts/migrate-all.sh \
-		|| { echo "scripts/migrate-all.sh is introduced in Phase A1 with the first migration."; exit 1; }
+		|| { echo "scripts/migrate-all.sh missing."; exit 1; }
 	scripts/migrate-all.sh
 
 seed: ## Seed a demo tenant, sample-sales-db, and demo users for all three roles
 	@test -x scripts/seed.sh \
-		|| { echo "scripts/seed.sh is introduced in Phase A1 alongside the Keycloak dev realm."; exit 1; }
+		|| { echo "scripts/seed.sh missing."; exit 1; }
 	scripts/seed.sh
 
-dev: ## Start every FastAPI service with reload plus `next dev`
-	@test -n "$$(ls -A apps 2>/dev/null | grep -v .gitkeep)" \
-		|| { echo "No services yet -- the first service (identity-service) arrives in Phase A1."; exit 1; }
-	@echo "Per-service dev runner is wired in Phase A1."; exit 1
+dev: ## Start identity-service with reload on :8001
+	cd apps/identity-service && uv run --package identity-service \
+		uvicorn identity_service.main:create_app --factory --reload --port 8001
+
+test-login: ## Phase A1 scripted flow: invite, MailHog, login, logout for all three roles
+	scripts/test-login.sh

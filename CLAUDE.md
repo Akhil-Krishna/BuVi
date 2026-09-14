@@ -17,10 +17,11 @@ is genuinely missing, stop and ask, don't guess.
 
 > Update this line yourself after every completed phase, then commit it.
 
-**Phase A0 (Monorepo bootstrap) is complete — directory scaffold, uv workspace, Ruff/mypy/
-pytest config, ESLint/Prettier/Vitest, the Next.js scaffold, the CI pipeline, and the baseline
-ADR are all in place. Next up: Phase A1 (local infra + identity-service). See Section 31 of the
-build spec.**
+**Phase A1 (Local infra + identity-service) is complete — docker-compose dev stack, `identity`
+schema with RLS, `platform-auth` (Principal / require_permission / require_resource_owner /
+require_step_up), OIDC Code+PKCE login, sessions, TOTP MFA, invitations, API keys, audit log, and
+the scripted DoD flow (`make test-login`). Decisions: `docs/adr/0002-phase-a1-identity-decisions.md`.
+Next up: Phase A2 (API Gateway). See Section 31 of the build spec.**
 
 ## Build order (do not violate)
 
