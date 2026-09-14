@@ -75,7 +75,9 @@ jobs:
         with:
           enable-cache: true
       - run: uv python install ${{ env.PYTHON_VERSION }}
-      - run: uv sync --package ${{ matrix.service }} --locked
+      # `dev` carries the shared toolchain (ruff/mypy/pytest); a plain
+      # `--package` sync only pulls the service's own runtime dependencies.
+      - run: uv sync --package ${{ matrix.service }} --group dev --locked
       - run: uv run --package ${{ matrix.service }} ruff check apps/${{ matrix.service }}
       - run: uv run --package ${{ matrix.service }} ruff format --check apps/${{ matrix.service }}
       - name: mypy (core, domain, application layers)
@@ -142,6 +144,11 @@ jobs:
   security:
     name: security scans
     runs-on: ubuntu-latest
+    # gitleaks-action uploads a SARIF report via the code-scanning API; the
+    # top-level `contents: read` alone is not enough for that upload.
+    permissions:
+      contents: read
+      security-events: write
     steps:
       - uses: actions/checkout@v5
         with:
