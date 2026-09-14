@@ -8,11 +8,12 @@ have to know about API versions.
 
 from __future__ import annotations
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
 from identity_service.api.v1 import audit, auth, invitations, me, users
+from identity_service.dependencies import gateway_context
 
-api_router = APIRouter(prefix="/api/v1")
+api_router = APIRouter(prefix="/api/v1", dependencies=[Depends(gateway_context)])
 api_router.include_router(auth.router)
 api_router.include_router(invitations.router)
 api_router.include_router(users.router)

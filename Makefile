@@ -8,7 +8,7 @@ WEB := web/next-app
 
 .DEFAULT_GOAL := help
 .PHONY: help sync lint fmt typecheck test web-install web-lint web-typecheck web-test \
-        web-build check up down migrate seed dev test-login
+        web-build check up down migrate seed dev dev-gateway contracts contracts-check test-login
 
 help: ## List available targets
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) \
@@ -41,7 +41,7 @@ typecheck: ## mypy over shared packages and every service's core/domain/applicat
 	done
 
 test: ## pytest across the workspace
-	uv run pytest
+	uv run pytest tests packages/python apps
 
 # --- Frontend ----------------------------------------------------------------
 
@@ -85,5 +85,15 @@ dev: ## Start identity-service with reload on :8001
 	cd apps/identity-service && uv run --package identity-service \
 		uvicorn identity_service.main:create_app --factory --reload --port 8001
 
-test-login: ## Phase A1 scripted flow: invite, MailHog, login, logout for all three roles
+dev-gateway: ## Start api-gateway with reload on :8000
+	cd apps/api-gateway && uv run --package api-gateway \
+		uvicorn api_gateway.main:create_app --factory --reload --port 8000
+
+contracts: ## Export every service's OpenAPI document into contracts/openapi/
+	scripts/gen-openapi.sh
+
+contracts-check: ## Fail on OpenAPI drift or unversioned breaking changes
+	scripts/diff-contracts.sh
+
+test-login: ## Scripted flow through api-gateway: invite, MailHog, login, logout, rate limit
 	scripts/test-login.sh

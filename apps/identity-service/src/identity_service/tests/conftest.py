@@ -346,6 +346,20 @@ class Fixtures:
             )
             return [dict(row._mapping) for row in result]
 
+    async def latest_audit_ip(self, tenant_id: uuid.UUID, event_type: str) -> str | None:
+        from sqlalchemy import text
+
+        async with self._factory() as session:
+            result = await session.execute(
+                text(
+                    "SELECT host(ip_address) FROM identity.audit_events "
+                    "WHERE tenant_id = :tid AND event_type = :et ORDER BY created_at DESC LIMIT 1"
+                ),
+                {"tid": str(tenant_id), "et": event_type},
+            )
+            row = result.first()
+            return str(row[0]) if row and row[0] else None
+
     async def audit_event_types(self, tenant_id: uuid.UUID) -> list[str]:
         from sqlalchemy import text
 

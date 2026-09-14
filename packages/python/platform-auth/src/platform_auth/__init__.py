@@ -25,21 +25,41 @@ from platform_auth.permissions import (
     permissions_for_roles,
 )
 from platform_auth.principal import STEP_UP_MAX_AGE, AuthMethod, Principal
+from platform_auth.service_tokens import (
+    SERVICE_AUTH_HEADER,
+    ServiceIdentity,
+    ServiceTokenClient,
+    ServiceTokenError,
+    ServiceTokenIssuer,
+    ServiceTokenVerifier,
+    install_service_token_verifier,
+    require_service_scope,
+    verify_service_request,
+)
 
 __all__ = [
     "ALL_PERMISSIONS",
     "DEMO_ROLES",
     "ROLE_PERMISSIONS",
+    "SERVICE_AUTH_HEADER",
     "STEP_UP_MAX_AGE",
     "TENANT_ROLES",
     "AuthMethod",
     "Principal",
     "PrincipalResolver",
+    "ServiceIdentity",
+    "ServiceTokenClient",
+    "ServiceTokenError",
+    "ServiceTokenIssuer",
+    "ServiceTokenVerifier",
     "TenantLoader",
     "get_principal",
     "install_principal_resolver",
+    "install_service_token_verifier",
     "permissions_for_roles",
     "require_permission",
     "require_resource_owner",
+    "require_service_scope",
     "require_step_up",
+    "verify_service_request",
 ]

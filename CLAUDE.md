@@ -17,11 +17,11 @@ is genuinely missing, stop and ask, don't guess.
 
 > Update this line yourself after every completed phase, then commit it.
 
-**Phase A1 (Local infra + identity-service) is complete — docker-compose dev stack, `identity`
-schema with RLS, `platform-auth` (Principal / require_permission / require_resource_owner /
-require_step_up), OIDC Code+PKCE login, sessions, TOTP MFA, invitations, API keys, audit log, and
-the scripted DoD flow (`make test-login`). Decisions: `docs/adr/0002-phase-a1-identity-decisions.md`.
-Next up: Phase A2 (API Gateway). See Section 31 of the build spec.**
+**Phase A2 (API Gateway) is complete — `apps/api-gateway` routes every Section 9 route (501 stubs
+for unbuilt backends) with authentication via identity-service introspection, Redis token-bucket
+rate limiting (IP/auth, user, tenant), service-JWT proxying, the shared Section 21 error envelope,
+and `contracts/openapi/*.json` with a CI drift check. Decisions: `docs/adr/0003-phase-a2-api-gateway.md`.
+Next up: Phase A3 (Metadata Service). See Section 31 of the build spec.**
 
 ## Build order (do not violate)
 

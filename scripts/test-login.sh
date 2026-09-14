@@ -5,7 +5,7 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PGCONTAINER="${PGCONTAINER:-buvi-dev-postgres-1}"
-SERVICE_URL="${IDENTITY_URL:-http://localhost:8001}"
+SERVICE_URL="${GATEWAY_URL:-http://localhost:8000}"
 
 "$ROOT/scripts/keycloak-bootstrap.sh" >/dev/null
 "$ROOT/scripts/migrate-all.sh" >/dev/null
@@ -21,20 +21,32 @@ UPDATE identity.users SET mfa_enabled = false WHERE email = 'admin@demo.example.
 SQL
 curl -sf -X DELETE "${MAILHOG_URL:-http://localhost:8025}/api/v1/messages" >/dev/null
 
-SERVICE_PID=""
-if ! curl -sf "$SERVICE_URL/health/ready" >/dev/null 2>&1; then
-  LOG="$(mktemp -t identity-service.XXXX.log)"
-  echo "Starting identity-service (log: $LOG)"
-  (cd "$ROOT/apps/identity-service" && exec uv run --package identity-service \
-     uvicorn identity_service.main:create_app --factory --port 8001) >"$LOG" 2>&1 &
-  SERVICE_PID=$!
-  trap '[ -n "$SERVICE_PID" ] && kill "$SERVICE_PID" 2>/dev/null || true' EXIT
+PIDS=()
+cleanup() { for pid in "${PIDS[@]:-}"; do [ -n "$pid" ] && kill "$pid" 2>/dev/null || true; done; }
+trap cleanup EXIT
+
+start_service() {  # name, port, health url, env..., command...
+  local name="$1" port="$2"; shift 2
+  if curl -sf "http://localhost:${port}/health/live" >/dev/null 2>&1; then
+    echo "$name already running on :$port"; return
+  fi
+  local log; log="$(mktemp -t "$name.XXXX.log")"
+  echo "Starting $name on :$port (log: $log)"
+  (cd "$ROOT/apps/$name" && exec env "$@") >"$log" 2>&1 &
+  PIDS+=("$!")
   for _ in $(seq 1 60); do
-    curl -sf "$SERVICE_URL/health/ready" >/dev/null 2>&1 && break
+    curl -sf "http://localhost:${port}/health/live" >/dev/null 2>&1 && return
     sleep 1
   done
-  curl -sf "$SERVICE_URL/health/ready" >/dev/null || { echo "service failed to start"; tail -40 "$LOG"; exit 1; }
-fi
+  echo "$name failed to start"; tail -40 "$log"; exit 1
+}
+
+# identity-service refuses /api/v1 calls that did not come through the gateway.
+start_service identity-service 8001 IDENTITY_REQUIRE_GATEWAY_TOKEN=true \
+  uv run --package identity-service uvicorn identity_service.main:create_app --factory --port 8001
+start_service api-gateway 8000 \
+  uv run --package api-gateway uvicorn api_gateway.main:create_app --factory --port 8000
 
 cd "$ROOT"
-uv run --package identity-service python scripts/test_login.py
+GATEWAY_URL="$SERVICE_URL" IDENTITY_DIRECT_URL="http://localhost:8001" \
+  uv run --package identity-service python scripts/test_login.py

@@ -1,10 +1,8 @@
 # CI for the buvi monorepo (Section 26 of the build spec).
 #
-# Phase A0 scope: lint, type-check, test, and security scanning. The per-service
+# Scope: lint, type-check, test, contract drift, and security scanning. The per-service
 # matrix discovers `apps/*` at run time, so it is empty today and picks up each
-# service automatically from Phase A1 onward without editing this file. The
-# contract jobs (OpenAPI export + diff against `contracts/openapi/`) are added in
-# Phase A2, when the first service actually exports an OpenAPI document.
+# service automatically without editing this file.
 
 name: ci
 
@@ -59,8 +57,8 @@ jobs:
         run: uv run ruff format --check .
       - name: mypy (shared platform packages)
         run: uv run mypy packages/python
-      - name: pytest (repo-level conformance)
-        run: uv run pytest tests
+      - name: pytest (repo-level conformance + shared packages)
+        run: uv run pytest tests packages/python
 
   python-services:
     name: ${{ matrix.service }}
@@ -95,11 +93,31 @@ jobs:
           module=$(echo "${{ matrix.service }}" | tr '-' '_')
           uv run --package ${{ matrix.service }} \
             pytest "apps/${{ matrix.service }}/src/$module/tests/unit"
+      - name: Contract tests
+        run: |
+          module=$(echo "${{ matrix.service }}" | tr '-' '_')
+          dir="apps/${{ matrix.service }}/src/$module/tests/contract"
+          if [ -n "$(find "$dir" -name 'test_*.py' 2>/dev/null)" ]; then
+            uv run --package ${{ matrix.service }} pytest "$dir"
+          fi
       - name: Integration tests
         run: |
           module=$(echo "${{ matrix.service }}" | tr '-' '_')
           uv run --package ${{ matrix.service }} \
             pytest "apps/${{ matrix.service }}/src/$module/tests/integration"
+
+  contracts:
+    name: contracts (OpenAPI drift and breaking changes)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - run: uv python install ${{ env.PYTHON_VERSION }}
+      - run: uv sync --all-packages --locked
+      - name: Diff exported OpenAPI against contracts/openapi
+        run: scripts/diff-contracts.sh
 
   frontend:
     name: frontend

@@ -1,0 +1,29 @@
+[project]
+name = "api-gateway"
+version = "0.1.0"
+description = "Public API surface: request correlation, authentication handoff, rate limiting, routing"
+readme = "README.md"
+authors = [
+    { name = "Akhil Krishna", email = "akhilmavannoor@gmail.com" }
+]
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "fastapi>=0.141.1",
+    "httpx>=0.28.1",
+    "platform-auth",
+    "platform-observability",
+    "pydantic-settings>=2.15.0",
+    "redis>=8.1.0",
+    "uvicorn>=0.52.4",
+]
+
+[project.scripts]
+api-gateway = "api_gateway.main:run"
+
+[build-system]
+requires = ["uv_build>=0.12.13,<0.13.0"]
+build-backend = "uv_build"
+
+[tool.uv.sources]
+platform-auth = { workspace = true }
+platform-observability = { workspace = true }

@@ -10,20 +10,19 @@ detail; the full diagnostic is logged server-side against the `request_id`.
 
 from __future__ import annotations
 
-from typing import Any
+from platform_observability.errors import ApiError
 
 
-class DomainError(Exception):
-    """Base class for every error the API maps to an error envelope."""
+class DomainError(ApiError):
+    """Base class for every error the API maps to an error envelope.
+
+    `ApiError` is plain Python (no FastAPI import), so the domain layer stays
+    framework-free while every service shares one envelope (Section 21).
+    """
 
     code: str = "INTERNAL_ERROR"
     status_code: int = 500
     message: str = "An unexpected error occurred."
-
-    def __init__(self, message: str | None = None, **details: Any) -> None:
-        super().__init__(message or self.message)
-        self.detail_message = message or self.message
-        self.details: dict[str, Any] = details
 
 
 # --- Generic ----------------------------------------------------------------
@@ -180,3 +179,26 @@ class ApiKeyRevokedError(DomainError):
     code = "API_KEY_REVOKED"
     status_code = 401
     message = "This API key has been revoked or has expired."
+
+
+# --- Service-to-service auth (Section 6.3) ------------------------------------
+
+
+class InvalidServiceClientError(DomainError):
+    code = "INVALID_SERVICE_CLIENT"
+    status_code = 401
+    message = "Service client authentication failed."
+
+
+class ServiceGrantNotAllowedError(DomainError):
+    """The client may not obtain a token for that audience or scope."""
+
+    code = "SERVICE_GRANT_NOT_ALLOWED"
+    status_code = 403
+    message = "This service client may not obtain that token."
+
+
+class UnsupportedGrantTypeError(DomainError):
+    code = "UNSUPPORTED_GRANT_TYPE"
+    status_code = 400
+    message = "Only the client_credentials grant is supported."

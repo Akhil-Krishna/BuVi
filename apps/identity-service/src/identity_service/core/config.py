@@ -7,11 +7,36 @@ service without a `.env` file, and every one of them is obviously a throwaway.
 
 from __future__ import annotations
 
+import hashlib
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field, PostgresDsn, SecretStr
+from pydantic import BaseModel, Field, PostgresDsn, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+#: Service scopes identity-service grants (Section 6.3).
+SCOPE_INTROSPECT = "identity-service:introspect"
+SCOPE_PROXY = "identity-service:proxy"
+
+_DEV_GATEWAY_SECRET_SHA256 = hashlib.sha256(b"dev-gateway-secret").hexdigest()
+
+
+class ServiceClient(BaseModel):
+    """A registered workload allowed to use the client-credentials grant."""
+
+    #: SHA-256 of the client secret. Secrets are high-entropy, so a fast hash suffices.
+    secret_sha256: str
+    #: audience -> scopes this client may request for it.
+    audiences: dict[str, list[str]]
+
+
+def _dev_service_clients() -> dict[str, ServiceClient]:
+    return {
+        "api-gateway": ServiceClient(
+            secret_sha256=_DEV_GATEWAY_SECRET_SHA256,
+            audiences={"identity-service": [SCOPE_INTROSPECT, SCOPE_PROXY]},
+        )
+    }
 
 
 class Settings(BaseSettings):
@@ -47,7 +72,8 @@ class Settings(BaseSettings):
     oidc_issuer: str = "http://localhost:8080/realms/buvi"
     oidc_client_id: str = "buvi-platform"
     oidc_client_secret: SecretStr = SecretStr("dev-client-secret")
-    oidc_redirect_uri: str = "http://localhost:8001/api/v1/auth/callback"
+    #: Public callback URL. The browser reaches identity-service through api-gateway.
+    oidc_redirect_uri: str = "http://localhost:8000/api/v1/auth/callback"
     oidc_scopes: str = "openid profile email"
     oidc_admin_base_url: str = "http://localhost:8080"
 
@@ -92,6 +118,16 @@ class Settings(BaseSettings):
     # --- API keys (Section 6.8) ------------------------------------------
     api_key_prefix: str = "sk_live_"
 
+    # --- Service-to-service auth (Section 6.3) ----------------------------
+    service_token_issuer: str = "identity-service"  # noqa: S105 - issuer name
+    service_token_key_id: str = "identity-service-1"  # noqa: S105 - key id
+    #: PEM RSA private key. Unset => ephemeral key (dev/test only).
+    service_token_private_key: SecretStr | None = None
+    service_token_ttl_seconds: int = 300
+    service_clients: dict[str, ServiceClient] = Field(default_factory=_dev_service_clients)
+    #: Require a valid api-gateway service token on every `/api/v1` request.
+    require_gateway_token: bool = False
+
     def assert_production_safe(self) -> None:
         """Fail fast on a configuration that is only safe on a laptop.
 
@@ -107,6 +143,14 @@ class Settings(BaseSettings):
             problems.append("session_cookie_secure is off")
         if self.oidc_client_secret.get_secret_value().startswith("dev-"):
             problems.append("oidc_client_secret is still the development value")
+        if self.service_token_private_key is None:
+            problems.append("service_token_private_key is unset (ephemeral signing key)")
+        if not self.require_gateway_token:
+            problems.append("require_gateway_token is off (service reachable around the gateway)")
+        if any(
+            c.secret_sha256 == _DEV_GATEWAY_SECRET_SHA256 for c in self.service_clients.values()
+        ):
+            problems.append("a service client still uses the development secret")
         if self.vault_token.get_secret_value() == "devroot":
             problems.append("vault_token is still the development root token")
         if problems:

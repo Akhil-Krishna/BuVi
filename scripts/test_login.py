@@ -22,7 +22,8 @@ import time
 import httpx
 import pyotp
 
-SERVICE = os.environ.get("IDENTITY_URL", "http://localhost:8001")
+SERVICE = os.environ.get("GATEWAY_URL", "http://localhost:8000")
+IDENTITY_DIRECT = os.environ.get("IDENTITY_DIRECT_URL", "http://localhost:8001")
 KEYCLOAK = os.environ.get("KEYCLOAK_URL", "http://localhost:8080")
 MAILHOG = os.environ.get("MAILHOG_URL", "http://localhost:8025")
 REALM = os.environ.get("BUVI_REALM", "buvi")
@@ -105,7 +106,9 @@ def login(username: str, method: str = "GET", path: str = "/api/v1/auth/login") 
 
 
 def api(method: str, path: str, session: str | None = None, **kwargs: object) -> httpx.Response:
-    headers = {"Cookie": f"buvi_session={session}"} if session else {}
+    headers: dict[str, str] = dict(kwargs.pop("headers", None) or {})  # type: ignore[call-overload]
+    if session:
+        headers["Cookie"] = f"buvi_session={session}"
     with httpx.Client(base_url=SERVICE, timeout=15) as svc:
         return svc.request(method, path, headers=headers, **kwargs)  # type: ignore[arg-type]
 
@@ -165,6 +168,30 @@ def main() -> int:
     admin, header = login(admin_username)
     check_cookie("org_admin", header)
     tenant_id = str(check_session("org_admin", admin, None).get("tenant_id"))
+
+    print("gateway: boundary checks")
+    direct = httpx.get(
+        f"{IDENTITY_DIRECT}/api/v1/auth/session", headers={"Cookie": f"buvi_session={admin}"}
+    )
+    check(
+        "identity-service refuses a call that bypasses the gateway (401)", direct.status_code == 401
+    )
+    spoofed = api(
+        "GET", "/api/v1/auth/session", admin, headers={"X-Request-ID": "client-chosen-id-0001"}
+    )
+    rid = spoofed.headers.get("x-request-id", "")
+    check(
+        "gateway mints its own request id",
+        rid.startswith("req_") and rid != "client-chosen-id-0001",
+    )
+    stub = api("GET", "/api/v1/dashboards", admin)
+    stub_code = stub.json().get("error", {}).get("code") if stub.content else None
+    check(
+        "stubbed backend answers 501 NOT_IMPLEMENTED after auth",
+        stub.status_code == 501 and stub_code == "NOT_IMPLEMENTED",
+    )
+    anon = api("GET", "/api/v1/dashboards")
+    check("unauthenticated catalog route answers 401", anon.status_code == 401)
 
     print("org_admin: enroll TOTP (invitations require step-up, Section 7.3)")
     enroll = api("POST", "/api/v1/auth/mfa/enroll", admin)
@@ -229,6 +256,22 @@ def main() -> int:
     ):
         check(f"audit: {event} recorded", event in types)
     logout("org_admin", admin)
+
+    print("gateway: rate limit burst on a public route")
+    statuses: list[int] = []
+    retry_after = None
+    with httpx.Client(base_url=SERVICE, timeout=15) as burst:
+        for _ in range(90):
+            response = burst.get("/api/v1/share/burst-probe-token")
+            statuses.append(response.status_code)
+            if response.status_code == 429 and retry_after is None:
+                retry_after = response.headers.get("retry-after")
+                limited_code = response.json()["error"]["code"]
+    check("burst is rate limited (429)", 429 in statuses, str(sorted(set(statuses))))
+    check(
+        "429 carries Retry-After and RATE_LIMITED",
+        bool(retry_after) and 429 in statuses and limited_code == "RATE_LIMITED",
+    )
 
     print(f"\n{'PASSED' if not failures else 'FAILED'}: {len(failures)} failure(s)")
     for name in failures:

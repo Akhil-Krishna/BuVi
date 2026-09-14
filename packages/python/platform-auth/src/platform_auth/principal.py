@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
-from typing import Final, Literal
+from typing import Any, Final, Literal
 
 AuthMethod = Literal["session", "api_key", "service_jwt"]
 
@@ -60,3 +60,34 @@ class Principal:
             return False
         moment = now or datetime.now(UTC)
         return (moment - self.mfa_verified_at) <= STEP_UP_MAX_AGE
+
+    def to_dict(self) -> dict[str, Any]:
+        """Wire form, for identity-service introspection responses."""
+        return {
+            "user_id": self.user_id,
+            "tenant_id": self.tenant_id,
+            "permissions": sorted(self.permissions),
+            "roles": sorted(self.roles),
+            "auth_method": self.auth_method,
+            "mfa_verified": self.mfa_verified,
+            "mfa_verified_at": self.mfa_verified_at.isoformat() if self.mfa_verified_at else None,
+            "session_id": self.session_id,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> Principal:
+        """Rebuild a principal from `to_dict` output. Raises on a malformed payload."""
+        method = data["auth_method"]
+        if method not in ("session", "api_key", "service_jwt"):
+            raise ValueError("unknown auth_method")
+        verified_at = data.get("mfa_verified_at")
+        return cls(
+            user_id=str(data["user_id"]),
+            tenant_id=str(data["tenant_id"]),
+            permissions=frozenset(str(p) for p in data.get("permissions", [])),
+            auth_method=method,
+            mfa_verified=bool(data.get("mfa_verified", False)),
+            session_id=str(data["session_id"]) if data.get("session_id") else None,
+            mfa_verified_at=datetime.fromisoformat(verified_at) if verified_at else None,
+            roles=frozenset(str(r) for r in data.get("roles", [])),
+        )

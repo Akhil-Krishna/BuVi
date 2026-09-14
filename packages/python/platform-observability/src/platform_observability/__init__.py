@@ -1,6 +1,27 @@
-"""OpenTelemetry bootstrap, logging config, and SSRF-safe egress (Sections 15, 22, 33).
+"""OpenTelemetry bootstrap, logging config, correlation and the error envelope (Sections 21, 22).
 
-Contract: `request_id`/`run_id` correlation, W3C trace-context propagation, and
-the single outbound-fetch client that enforces the Section 15 SSRF controls.
-No service performs an ad-hoc `httpx.get` on a user's behalf.
+Contract: `configure_logging`, `redact`, `request_id_var`, `RequestIdMiddleware`,
+`ApiError`, `error_response`, `install_error_handlers`. The SSRF-safe outbound fetch
+client (Section 15/33) joins this package when the first user-directed fetch lands.
 """
+
+from platform_observability.correlation import (
+    REQUEST_ID_HEADER,
+    RequestIdMiddleware,
+    new_request_id,
+)
+from platform_observability.errors import ApiError, error_response, install_error_handlers
+from platform_observability.logging import REDACTED, configure_logging, redact, request_id_var
+
+__all__ = [
+    "REDACTED",
+    "REQUEST_ID_HEADER",
+    "ApiError",
+    "RequestIdMiddleware",
+    "configure_logging",
+    "error_response",
+    "install_error_handlers",
+    "new_request_id",
+    "redact",
+    "request_id_var",
+]

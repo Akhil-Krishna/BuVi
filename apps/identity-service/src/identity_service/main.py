@@ -15,21 +15,16 @@ from __future__ import annotations
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import Any
 
 import httpx
-from fastapi import FastAPI, Request, Response
-from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
-from starlette.exceptions import HTTPException as StarletteHTTPException
+from fastapi import FastAPI
 
+from identity_service.api.internal import router as internal_router
 from identity_service.api.v1.health import router as health_router
 from identity_service.api.v1.router import api_router
 from identity_service.core.config import Settings, get_settings
-from identity_service.core.logging import configure_logging, request_id_var
-from identity_service.core.telemetry import new_request_id
+from identity_service.core.logging import configure_logging
 from identity_service.dependencies import resolve_principal
-from identity_service.domain.errors import DomainError
 from identity_service.infrastructure.db.session import create_engine, create_session_factory
 from identity_service.infrastructure.email.sender import EmailSender, SmtpEmailSender
 from identity_service.infrastructure.oidc.client import KeycloakOidcClient, OidcClient
@@ -38,27 +33,15 @@ from identity_service.infrastructure.secrets.store import (
     SecretStore,
     VaultSecretStore,
 )
-from platform_auth import install_principal_resolver
+from platform_auth import (
+    ServiceTokenIssuer,
+    ServiceTokenVerifier,
+    install_principal_resolver,
+    install_service_token_verifier,
+)
+from platform_observability import RequestIdMiddleware, install_error_handlers
 
 logger = logging.getLogger(__name__)
-
-REQUEST_ID_HEADER = "X-Request-ID"
-
-
-def _error_response(
-    *, status_code: int, code: str, message: str, details: dict[str, Any] | None = None
-) -> JSONResponse:
-    """The Section 21 envelope. Every 4xx/5xx in this service goes through it."""
-    body: dict[str, Any] = {
-        "error": {
-            "code": code,
-            "message": message,
-            "request_id": request_id_var.get(),
-        }
-    }
-    if details:
-        body["error"]["details"] = details
-    return JSONResponse(status_code=status_code, content=body)
 
 
 @asynccontextmanager
@@ -98,6 +81,7 @@ def create_app(
     secrets: SecretStore | None = None,
     oidc: OidcClient | None = None,
     email: EmailSender | None = None,
+    service_token_issuer: ServiceTokenIssuer | None = None,
 ) -> FastAPI:
     """Build the application.
 
@@ -124,84 +108,35 @@ def create_app(
 
     install_principal_resolver(app, resolve_principal)
 
-    @app.middleware("http")
-    async def correlate(request: Request, call_next: Any) -> Response:
-        """Attach a `request_id` to the request, the logs and the response.
+    # Section 6.3: identity-service issues service tokens and verifies the ones
+    # addressed to it against its own public key -- no network hop to itself.
+    issuer = service_token_issuer or ServiceTokenIssuer(
+        issuer=resolved.service_token_issuer,
+        private_key_pem=(
+            resolved.service_token_private_key.get_secret_value()
+            if resolved.service_token_private_key
+            else None
+        ),
+        key_id=resolved.service_token_key_id,
+    )
+    app.state.service_token_issuer = issuer
+    install_service_token_verifier(
+        app,
+        ServiceTokenVerifier(
+            issuer=resolved.service_token_issuer,
+            audience=resolved.service_name,
+            keyset=issuer.jwks(),
+        ),
+    )
 
-        An inbound header is honoured so a trace started at api-gateway carries
-        through (Section 22); one is minted when absent.
-        """
-        request_id = request.headers.get(REQUEST_ID_HEADER) or new_request_id()
-        token = request_id_var.set(request_id)
-        try:
-            response: Response = await call_next(request)
-        finally:
-            request_id_var.reset(token)
-        response.headers[REQUEST_ID_HEADER] = request_id
-        return response
-
-    @app.exception_handler(DomainError)
-    async def handle_domain_error(_request: Request, exc: DomainError) -> JSONResponse:
-        return _error_response(
-            status_code=exc.status_code,
-            code=exc.code,
-            message=exc.detail_message,
-            details=exc.details or None,
-        )
-
-    @app.exception_handler(StarletteHTTPException)
-    async def handle_http_exception(_request: Request, exc: StarletteHTTPException) -> JSONResponse:
-        codes = {
-            401: "AUTHENTICATION_REQUIRED",
-            403: "FORBIDDEN",
-            404: "NOT_FOUND",
-            405: "METHOD_NOT_ALLOWED",
-            429: "RATE_LIMITED",
-        }
-        response = _error_response(
-            status_code=exc.status_code,
-            code=codes.get(exc.status_code, "HTTP_ERROR"),
-            message=str(exc.detail),
-        )
-        # Preserve challenge headers such as the step-up WWW-Authenticate.
-        for key, value in (exc.headers or {}).items():
-            response.headers[key] = value
-        return response
-
-    @app.exception_handler(RequestValidationError)
-    async def handle_validation_error(
-        _request: Request, exc: RequestValidationError
-    ) -> JSONResponse:
-        return _error_response(
-            status_code=422,
-            code="VALIDATION_FAILED",
-            message="The request payload is invalid.",
-            # Field names and locations only. Pydantic's `input` echoes the
-            # submitted value, which can be a password or a token (Section 21).
-            details={
-                "fields": [
-                    {
-                        "loc": [str(part) for part in error.get("loc", ())],
-                        "type": str(error.get("type", "")),
-                    }
-                    for error in exc.errors()
-                ]
-            },
-        )
-
-    @app.exception_handler(Exception)
-    async def handle_unexpected(_request: Request, exc: Exception) -> JSONResponse:
-        # Full diagnostic to the log, keyed by request_id; nothing to the client
-        # (Section 21: never return a stack trace or driver error text).
-        logger.exception("Unhandled error", extra={"context": {"error_type": type(exc).__name__}})
-        return _error_response(
-            status_code=500,
-            code="INTERNAL_ERROR",
-            message="An unexpected error occurred.",
-        )
+    # Behind api-gateway: trust the forwarded request id (validated) so one request is
+    # traceable across hops (Section 22). The shared handlers give the Section 21 envelope.
+    app.add_middleware(RequestIdMiddleware, trust_inbound=True)
+    install_error_handlers(app)
 
     app.include_router(health_router)
     app.include_router(api_router)
+    app.include_router(internal_router)
     return app
 
 

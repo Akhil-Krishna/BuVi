@@ -25,7 +25,7 @@ ADMIN_PASS="${KEYCLOAK_ADMIN_PASSWORD:-admin}"
 REALM="${BUVI_REALM:-buvi}"
 CLIENT_ID="${BUVI_CLIENT_ID:-buvi-platform}"
 CLIENT_SECRET="${BUVI_CLIENT_SECRET:-dev-client-secret}"
-REDIRECT_URI="${BUVI_REDIRECT_URI:-http://localhost:8001/api/v1/auth/callback}"
+REDIRECT_URI="${BUVI_REDIRECT_URI:-http://localhost:8000/api/v1/auth/callback}"
 TENANT_SLUG="${BUVI_TENANT_SLUG:-demo}"
 DEMO_PASSWORD="${BUVI_DEMO_PASSWORD:-Demo-Passw0rd!23}"
 
@@ -155,6 +155,13 @@ JSON
 else
   log "already exists"
 fi
+
+# Keep redirect URIs current on existing realms: since Phase A2 the browser-facing
+# callback is served through api-gateway (:8000).
+api_get "/${REALM}/clients/${CLIENT_UUID}" \
+  | jq --arg r "$REDIRECT_URI" '.redirectUris = ([$r, "http://localhost:3000/*"] | unique)' \
+  | api PUT "/${REALM}/clients/${CLIENT_UUID}" --data @- >/dev/null
+log "redirect URIs: ${REDIRECT_URI}"
 
 # --- protocol mappers -------------------------------------------------------
 # Section 6.1 step 8: tenant and roles must arrive as verified token claims.
