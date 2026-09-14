@@ -410,8 +410,9 @@ OIDC identity provider, never a hand-rolled token protocol.
 5. The Next.js server (not the browser) exchanges the code for tokens directly with Keycloak's
    token endpoint. The response (access token, refresh token, ID token) never touches browser
    JavaScript.
-6. The BFF creates an **application session**: a random session ID stored server-side (Redis,
-   TTL-bound) mapped to the token set, and sets a browser cookie containing only the session ID
+6. The BFF creates an **application session**: a random opaque session token, stored server-side only as its
+   hash (`identity.sessions.token_hash`) and mapped to the token set, and sets a browser cookie
+   containing only that token
    — `HttpOnly`, `Secure`, `SameSite=Lax` (or `Strict` for admin routes), scoped to the app path.
 7. All subsequent browser requests go only to the Next.js origin. The BFF looks up the session,
    attaches a short-lived access token (or performs on-behalf-of token exchange) when calling
@@ -665,6 +666,8 @@ CREATE TABLE identity.sessions (
     device_label TEXT,
     ip_address INET,
     user_agent TEXT,
+    token_hash TEXT NOT NULL,              -- SHA-256 of the opaque session token; the raw token is
+                                           -- returned once (Set-Cookie), never stored or logged
     idp_refresh_token_ref TEXT NOT NULL,   -- reference into Vault, never the raw token
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     last_seen_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -672,6 +675,8 @@ CREATE TABLE identity.sessions (
     revoked_at TIMESTAMPTZ
 );
 CREATE INDEX idx_sessions_user ON identity.sessions(user_id);
+-- Sessions are looked up only by the hash of the presented token, never by raw id.
+CREATE UNIQUE INDEX idx_sessions_token_hash ON identity.sessions(token_hash);
 
 CREATE TABLE identity.api_keys (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

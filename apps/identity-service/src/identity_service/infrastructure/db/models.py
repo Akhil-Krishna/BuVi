@@ -184,6 +184,7 @@ class Session(Base):
     __tablename__ = "sessions"
     __table_args__ = (
         Index("idx_sessions_user", "user_id"),
+        Index("idx_sessions_token_hash", "token_hash", unique=True),
         {"schema": SCHEMA},
     )
 
@@ -201,6 +202,10 @@ class Session(Base):
     device_label: Mapped[str | None] = mapped_column(Text)
     ip_address: Mapped[str | None] = mapped_column(INET)
     user_agent: Mapped[str | None] = mapped_column(Text)
+    #: SHA-256 of the opaque cookie token (Section 8.1). The raw token is returned
+    #: once, to set the cookie, and is never stored or logged; the row id is not a
+    #: credential.
+    token_hash: Mapped[str] = mapped_column(Text, nullable=False)
     #: Vault path, never the raw token (Section 8.1, Section 24).
     idp_refresh_token_ref: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[dt.datetime] = mapped_column(

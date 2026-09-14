@@ -105,7 +105,9 @@ async def test_full_login_sets_a_locked_down_session_cookie(
 
     # Only the session id -- no token of any kind reaches the browser.
     value = _cookie_value(header)
-    uuid.UUID(value)
+    assert len(value) >= 43
+    with pytest.raises(ValueError):
+        uuid.UUID(value)  # an opaque token, not the session row id
     assert "stub-access-token" not in header
     assert "stub-refresh-token" not in header
     assert "stub-refresh-token" not in response.text
@@ -289,3 +291,70 @@ async def test_login_and_logout_are_audited(
     events = await fixtures.audit_event_types(tenant_id)
     assert "auth.login" in events
     assert "auth.logout" in events
+
+
+# --- Hashed session tokens (Section 8.1) -------------------------------------------
+
+
+async def test_session_token_is_stored_only_as_its_hash_and_never_logged(
+    client: httpx.AsyncClient,
+    fixtures: Fixtures,
+    oidc: StubOidcClient,
+    capfd: pytest.CaptureFixture[str],
+) -> None:
+    import hashlib
+
+    tenant_id = await fixtures.create_tenant("hash-acme")
+    user_id = await fixtures.create_user(
+        tenant_id=tenant_id,
+        email="hashed@acme.example.com",
+        roles=frozenset({"client"}),
+        idp_subject="idp-hash-1",
+    )
+    oidc.identity = type(oidc.identity)(
+        subject="idp-hash-1",
+        email="hashed@acme.example.com",
+        display_name="Hashed",
+        tenant_slug="hash-acme",
+        roles=frozenset({"client"}),
+        raw_claims={},
+    )
+    state, txn = await _begin_login(client)
+    login = await client.get(
+        "/api/v1/auth/callback",
+        params={"code": "authz-code", "state": state},
+        cookies={TXN_COOKIE: txn},
+    )
+    token = _cookie_value(_set_cookie_header(login, SESSION_COOKIE))
+    session = await client.get("/api/v1/auth/session", cookies={SESSION_COOKIE: token})
+    assert session.status_code == 200
+
+    rows = await fixtures.session_rows(user_id)
+    assert len(rows) == 1
+    assert rows[0]["token_hash"] == hashlib.sha256(token.encode()).hexdigest()
+    assert all(token not in str(value) for value in rows[0].values()), "raw token stored"
+    assert token not in session.text, "raw token echoed in a response body"
+
+    captured = capfd.readouterr()
+    assert token not in captured.out and token not in captured.err, "raw token logged"
+
+
+async def test_session_row_id_is_not_a_credential(
+    client: httpx.AsyncClient, fixtures: Fixtures
+) -> None:
+    """The pre-hashing design accepted the row id as the cookie; that must be dead."""
+    tenant_id = await fixtures.create_tenant("rowid-acme")
+    user_id = await fixtures.create_user(
+        tenant_id=tenant_id, email="rowid@acme.example.com", roles=frozenset({"client"})
+    )
+    handle = await fixtures.create_session(tenant_id=tenant_id, user_id=user_id)
+
+    by_id = await client.get("/api/v1/auth/session", cookies={SESSION_COOKIE: str(handle.id)})
+    assert by_id.status_code == 401
+    by_token = await client.get("/api/v1/auth/session", cookies={SESSION_COOKIE: str(handle)})
+    assert by_token.status_code == 200
+
+
+async def test_oversized_session_cookie_is_refused(client: httpx.AsyncClient) -> None:
+    response = await client.get("/api/v1/auth/session", cookies={SESSION_COOKIE: "a" * 4096})
+    assert response.status_code == 401

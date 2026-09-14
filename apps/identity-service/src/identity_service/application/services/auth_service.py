@@ -44,6 +44,8 @@ class LoginRedirect:
 @dataclass(frozen=True)
 class LoginResult:
     session: Session
+    #: Opaque cookie token, returned once to set the cookie; never stored.
+    session_token: str
     user: User
     is_new_user: bool
 
@@ -115,13 +117,14 @@ class AuthService:
             await self._repository.set_user_status(user.tenant_id, user.id, "active")
             user.status = "active"
 
-        session = await self._sessions.create(
+        issued = await self._sessions.create(
             user=user,
             tokens=tokens,
             device_label=None,
             ip_address=ip_address,
             user_agent=user_agent,
         )
+        session = issued.session
         await self._repository.record_login(user.tenant_id, user.id, dt.datetime.now(dt.UTC))
         await self._audit.record(
             event_type=events.EVENT_LOGIN,
@@ -132,7 +135,12 @@ class AuthService:
             after_state={"auth_method": "session", "is_new_user": is_new_user},
             ip_address=ip_address,
         )
-        return LoginResult(session=session, user=user, is_new_user=is_new_user)
+        return LoginResult(
+            session=session,
+            session_token=issued.token,
+            user=user,
+            is_new_user=is_new_user,
+        )
 
     async def _resolve_user(self, identity: OidcIdentity) -> tuple[User, bool]:
         """Find the user behind a verified ID token, provisioning if needed.

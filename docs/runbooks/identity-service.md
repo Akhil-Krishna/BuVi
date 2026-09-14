@@ -28,4 +28,5 @@
 ## Deploy / rollback
 
 1. `alembic upgrade head` as `buvi_migrator` (separate job, Section 26), then roll the deployment.
+   Migration `0002_session_token_hash` revokes every session that predates it: all users log in once more.
 2. Rollback: redeploy the previous image; run `alembic downgrade -1` only if the migration is confirmed unused.

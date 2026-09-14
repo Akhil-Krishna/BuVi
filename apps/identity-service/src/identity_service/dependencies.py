@@ -25,10 +25,14 @@ from identity_service.application.services.api_key_service import ApiKeyService
 from identity_service.application.services.audit_service import AuditService
 from identity_service.application.services.auth_service import AuthService
 from identity_service.application.services.mfa_service import MfaService
-from identity_service.application.services.session_service import SessionService
+from identity_service.application.services.session_service import (
+    MAX_SESSION_TOKEN_LENGTH,
+    SessionService,
+)
 from identity_service.application.services.user_service import UserService
 from identity_service.core.config import Settings
 from identity_service.domain.errors import AuthenticationRequiredError
+from identity_service.domain.value_objects.tokens import hash_token
 from identity_service.infrastructure.db.repositories.identity_repository import (
     IdentityRepository,
 )
@@ -93,15 +97,15 @@ async def resolve_principal(request: Request) -> Principal:
 
     cookie_value = request.cookies.get(settings.session_cookie_name)
     if cookie_value:
-        try:
-            session_id = uuid.UUID(cookie_value)
-        except ValueError as exc:
-            raise AuthenticationRequiredError() from exc
+        # The cookie holds an opaque token; only its hash is ever looked up.
+        if len(cookie_value) > MAX_SESSION_TOKEN_LENGTH:
+            raise AuthenticationRequiredError()
         async with pre_auth_scope(factory) as db:
             repository = IdentityRepository(db)
-            tenant_id = await repository.get_session_tenant_id(session_id)
-        if tenant_id is None:
+            found = await repository.get_session_by_token_hash(hash_token(cookie_value))
+        if found is None:
             raise AuthenticationRequiredError()
+        tenant_id = found.tenant_id
         async with tenant_scope(factory, tenant_id) as db:
             repository = IdentityRepository(db)
             service = SessionService(
@@ -109,7 +113,7 @@ async def resolve_principal(request: Request) -> Principal:
                 secrets=get_secret_store(request),
                 settings=settings,
             )
-            session_row, user, principal = await service.resolve(session_id)
+            session_row, user, principal = await service.resolve(cookie_value)
             await db.commit()
         request.state.principal = principal
         request.state.session_row = session_row

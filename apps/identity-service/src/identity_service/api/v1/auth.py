@@ -154,7 +154,7 @@ async def callback(
     )
 
     response = Response(status_code=status.HTTP_204_NO_CONTENT)
-    _set_session_cookie(response, settings, str(result.session.id))
+    _set_session_cookie(response, settings, result.session_token)
     _clear_cookie(response, settings, settings.oidc_transaction_cookie_name)
     return response
 

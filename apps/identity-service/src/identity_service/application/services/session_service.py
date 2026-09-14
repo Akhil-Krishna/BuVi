@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import datetime as dt
 import uuid
+from dataclasses import dataclass
 
 from identity_service.core.config import Settings
 from identity_service.domain.errors import SessionExpiredError, UserNotActiveError
@@ -23,6 +24,7 @@ from identity_service.domain.policies.sessions import (
     absolute_expiry,
     is_expired,
 )
+from identity_service.domain.value_objects.tokens import generate_token, hash_token
 from identity_service.infrastructure.db.models import Session, User
 from identity_service.infrastructure.db.repositories.identity_repository import (
     IdentityRepository,
@@ -30,6 +32,22 @@ from identity_service.infrastructure.db.repositories.identity_repository import 
 from identity_service.infrastructure.oidc.client import OidcTokens
 from identity_service.infrastructure.secrets.store import SecretStore, session_token_ref
 from platform_auth import Principal, permissions_for_roles
+
+#: Upper bound on a presented cookie token. Anything longer is refused before it
+#: is hashed or reaches the database.
+MAX_SESSION_TOKEN_LENGTH = 256
+
+
+@dataclass(frozen=True)
+class IssuedSession:
+    """A newly opened session and its cookie token.
+
+    `token` exists only here: it is written to the Set-Cookie header once and is
+    never stored or logged. The database keeps `hash_token(token)`.
+    """
+
+    session: Session
+    token: str
 
 
 class SessionService:
@@ -62,7 +80,7 @@ class SessionService:
         device_label: str | None,
         ip_address: str | None,
         user_agent: str | None,
-    ) -> Session:
+    ) -> IssuedSession:
         """Open a session and stash the IdP refresh token in Vault.
 
         The row is written first so the Vault path can name the session id, then
@@ -72,6 +90,7 @@ class SessionService:
         """
         now = dt.datetime.now(dt.UTC)
         session_id = uuid.uuid4()
+        token = generate_token()
         ref = session_token_ref(user.tenant_id, session_id)
 
         if tokens.refresh_token:
@@ -87,14 +106,15 @@ class SessionService:
             device_label=device_label,
             ip_address=ip_address,
             user_agent=user_agent,
+            token_hash=hash_token(token),
             idp_refresh_token_ref=ref,
             created_at=now,
             last_seen_at=now,
             expires_at=absolute_expiry(now, self._lifetime),
         )
-        return await self._repository.add_session(row)
+        return IssuedSession(session=await self._repository.add_session(row), token=token)
 
-    async def resolve(self, session_id: uuid.UUID) -> tuple[Session, User, Principal]:
+    async def resolve(self, token: str) -> tuple[Session, User, Principal]:
         """Turn a session id into the caller's `Principal`.
 
         Permissions come from the Section 7.1 matrix applied to the roles stored
@@ -102,7 +122,9 @@ class SessionService:
         design rule. A session that is revoked, past its absolute lifetime, or
         idle beyond the timeout is refused here rather than at the endpoint.
         """
-        row = await self._repository.get_session(session_id)
+        if not token or len(token) > MAX_SESSION_TOKEN_LENGTH:
+            raise SessionExpiredError()
+        row = await self._repository.get_session_by_token_hash(hash_token(token))
         if row is None:
             raise SessionExpiredError()
 

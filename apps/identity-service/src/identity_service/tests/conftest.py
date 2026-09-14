@@ -31,6 +31,22 @@ from identity_service.infrastructure.secrets.store import InMemorySecretStore
 
 SERVICE_ROOT = Path(__file__).resolve().parents[3]
 
+
+class SessionHandle(str):
+    """A session's cookie token (the `str` value) plus its row `id`.
+
+    Tests pass the handle as a cookie exactly as a browser would, and use `.id`
+    where an endpoint addresses the session row (e.g. `DELETE /me/sessions/{id}`).
+    """
+
+    id: uuid.UUID
+
+    def __new__(cls, token: str, session_id: uuid.UUID) -> SessionHandle:
+        handle = super().__new__(cls, token)
+        handle.id = session_id
+        return handle
+
+
 DEMO_TENANT_SLUG = "acme"
 OTHER_TENANT_SLUG = "globex"
 
@@ -286,10 +302,13 @@ class Fixtures:
         user_id: uuid.UUID,
         mfa_verified_at: dt.datetime | None = None,
         expires_in: dt.timedelta = dt.timedelta(days=7),
-    ) -> uuid.UUID:
+    ) -> SessionHandle:
         from sqlalchemy import text
 
+        from identity_service.domain.value_objects.tokens import generate_token, hash_token
+
         session_id = uuid.uuid4()
+        token = generate_token()
         ref = f"tenants/{tenant_id}/sessions/{session_id}"
         await self._secrets.write(ref, {"refresh_token": "stub-refresh-token"})
         async with self._factory() as session:
@@ -300,20 +319,32 @@ class Fixtures:
             await session.execute(
                 text(
                     "INSERT INTO identity.sessions "
-                    "(id, user_id, tenant_id, idp_refresh_token_ref, expires_at, mfa_verified_at) "
-                    "VALUES (:sid, :uid, :tid, :ref, :exp, :mfa)"
+                    "(id, user_id, tenant_id, token_hash, idp_refresh_token_ref, expires_at, mfa_verified_at) "
+                    "VALUES (:sid, :uid, :tid, :th, :ref, :exp, :mfa)"
                 ),
                 {
                     "sid": str(session_id),
                     "uid": str(user_id),
                     "tid": str(tenant_id),
+                    "th": hash_token(token),
                     "ref": ref,
                     "exp": dt.datetime.now(dt.UTC) + expires_in,
                     "mfa": mfa_verified_at,
                 },
             )
             await session.commit()
-        return session_id
+        return SessionHandle(token, session_id)
+
+    async def session_rows(self, user_id: uuid.UUID) -> list[dict[str, object]]:
+        """Every stored column of a user's sessions, read as the superuser."""
+        from sqlalchemy import text
+
+        async with self._factory() as session:
+            result = await session.execute(
+                text("SELECT * FROM identity.sessions WHERE user_id = :uid"),
+                {"uid": str(user_id)},
+            )
+            return [dict(row._mapping) for row in result]
 
     async def audit_event_types(self, tenant_id: uuid.UUID) -> list[str]:
         from sqlalchemy import text

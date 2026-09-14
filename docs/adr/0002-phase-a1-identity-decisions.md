@@ -56,7 +56,8 @@ contradiction or an error in the v6 spec; none adds a service, role or product f
 
 ## Known follow-ups (not A1 scope)
 
-- Session ids are stored as the primary key, as Section 8.1 specifies; a DB read therefore exposes live session ids.
-  Recommend a `token_hash` column in Phase C1 hardening.
+- ~~Session ids are stored as the primary key; a DB read exposes live session ids.~~ **Resolved** by the updated
+  Section 8.1 and migration `0002_session_token_hash`: the cookie carries an opaque token, only its SHA-256 is stored,
+  and the row id is no longer accepted as a credential. Pre-existing sessions are revoked by that migration.
 - `/auth/invitations/accept` takes `idp_subject` from the caller; a stolen token could bind another subject. Mitigated by
   requiring the IdP email to match the user's email at login. Phase B1 should accept invitations only from an authenticated IdP session.

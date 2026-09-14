@@ -255,9 +255,15 @@ class IdentityRepository:
     async def get_session(self, session_id: uuid.UUID) -> Session | None:
         return await self._session.get(Session, session_id)
 
-    async def get_session_tenant_id(self, session_id: uuid.UUID) -> uuid.UUID | None:
+    async def get_session_by_token_hash(self, token_hash: str) -> Session | None:
+        """Resolve a session from the hash of its cookie token (Section 8.1).
+
+        The only lookup that turns a presented cookie into a session: the raw
+        token is never stored, and the row id is not accepted as a credential.
+        Runs in the pre-auth scope when the tenant is not yet known.
+        """
         result = await self._session.execute(
-            select(Session.tenant_id).where(Session.id == session_id)
+            select(Session).where(Session.token_hash == token_hash)
         )
         return result.scalar_one_or_none()
 

@@ -229,15 +229,15 @@ async def test_user_lists_and_revokes_only_their_own_sessions(
     cookies = {COOKIE: str(current)}
 
     listed = (await client.get("/api/v1/me/sessions", cookies=cookies)).json()["items"]
-    assert {item["id"] for item in listed} == {str(current), str(other_device)}
-    assert [item["current"] for item in listed if item["id"] == str(current)] == [True]
+    assert {item["id"] for item in listed} == {str(current.id), str(other_device.id)}
+    assert [item["current"] for item in listed if item["id"] == str(current.id)] == [True]
 
-    for foreign in (colleague_session, stranger_session, uuid.uuid4()):
+    for foreign in (colleague_session.id, stranger_session.id, uuid.uuid4()):
         response = await client.delete(f"/api/v1/me/sessions/{foreign}", cookies=cookies)
         assert response.status_code == 404
 
     assert (
-        await client.delete(f"/api/v1/me/sessions/{other_device}", cookies=cookies)
+        await client.delete(f"/api/v1/me/sessions/{other_device.id}", cookies=cookies)
     ).status_code == 204
     assert (
         await client.get("/api/v1/auth/session", cookies={COOKIE: str(other_device)})
