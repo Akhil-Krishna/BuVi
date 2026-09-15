@@ -22,7 +22,10 @@ SCOPE_AUDIT_WRITE = "identity-service:audit"
 
 _DEV_GATEWAY_SECRET_SHA256 = hashlib.sha256(b"dev-gateway-secret").hexdigest()
 _DEV_METADATA_SECRET_SHA256 = hashlib.sha256(b"dev-metadata-secret").hexdigest()
-_DEV_SECRET_HASHES = frozenset({_DEV_GATEWAY_SECRET_SHA256, _DEV_METADATA_SECRET_SHA256})
+_DEV_QUERY_GATEWAY_SECRET_SHA256 = hashlib.sha256(b"dev-query-gateway-secret").hexdigest()
+_DEV_SECRET_HASHES = frozenset(
+    {_DEV_GATEWAY_SECRET_SHA256, _DEV_METADATA_SECRET_SHA256, _DEV_QUERY_GATEWAY_SECRET_SHA256}
+)
 
 
 class ServiceClient(BaseModel):
@@ -44,12 +47,21 @@ def _dev_service_clients() -> dict[str, ServiceClient]:
             audiences={
                 "identity-service": [SCOPE_INTROSPECT, SCOPE_PROXY],
                 "metadata-service": ["metadata-service:proxy"],
+                # Section 9 `/sql/execute` proxies here once a public SQL route exists.
+                "query-gateway": ["query-gateway:execute"],
             },
         ),
         "metadata-service": ServiceClient(
             secret_sha256=_DEV_METADATA_SECRET_SHA256,
             audiences={"identity-service": [SCOPE_INTROSPECT, SCOPE_AUDIT_WRITE]},
             audit_event_prefixes=["connection."],
+        ),
+        "query-gateway": ServiceClient(
+            secret_sha256=_DEV_QUERY_GATEWAY_SECRET_SHA256,
+            audiences={
+                "identity-service": [SCOPE_INTROSPECT],
+                "metadata-service": ["metadata-service:query-policy"],
+            },
         ),
     }
 

@@ -17,13 +17,14 @@ is genuinely missing, stop and ask, don't guess.
 
 > Update this line yourself after every completed phase, then commit it.
 
-**Phase A3 (Metadata Service) is complete — `apps/metadata-service` owns the Section 8.2 `metadata`
-schema (RLS on every table): data-source CRUD with credentials only in Vault via the new shared
-`platform-secrets` client, a sanitized connectivity test, synchronous Postgres catalog sync
-(egress-controlled, read-only), catalog read APIs, audit via identity-service's internal
-`/internal/v1/audit-events`, the authorization triplet, and `make test-data-sources` (live DoD flow).
-Decisions: `docs/adr/0004-phase-a3-metadata-service.md`.
-Next up: Phase A4 (Query Gateway). See Section 31 of the build spec.**
+**Phase A4 (Query Gateway) is complete — `apps/query-gateway` exposes `POST /internal/v1/queries`
+(service JWT `query-gateway:execute` + re-authenticated user; purpose bound to caller and permission),
+validates SQL with the sqlglot allow-list in `domain/policies/sql_validator.py` (unsafe-SQL corpus 100%
+rejected), executes the regenerated SQL read-only with timeout and row/byte caps, stores TTL-bound
+result handles in MinIO, and writes an append-only `query_executions` row for every outcome. Policy comes
+from metadata-service's internal query-policy endpoint; egress rules live in `platform-egress`.
+Live flow: `make test-query-gateway`. Decisions and open gaps (per-connection grants): `docs/adr/0005-phase-a4-query-gateway.md`.
+Next up: Phase A5 (Analytics Orchestrator + first CrewAI Flow; includes Idempotency-Key). See Section 31 of the build spec.**
 
 ## Build order (do not violate)
 

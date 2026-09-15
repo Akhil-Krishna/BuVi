@@ -1,0 +1,14 @@
+[project]
+name = "platform-egress"
+version = "0.1.0"
+description = "Outbound-destination policy and connect-time DNS resolution (Section 15 SSRF controls)"
+readme = "README.md"
+authors = [
+    { name = "Akhil Krishna", email = "akhilmavannoor@gmail.com" }
+]
+requires-python = ">=3.12,<3.13"
+dependencies = []
+
+[build-system]
+requires = ["uv_build>=0.12.13,<0.13.0"]
+build-backend = "uv_build"

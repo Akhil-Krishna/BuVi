@@ -177,6 +177,42 @@ class MetadataRepository:
         row = (await self._session.execute(statement)).first()
         return (row[0], int(row[1])) if row else None
 
+    async def list_catalog(
+        self, tenant_id: uuid.UUID, data_source_id: uuid.UUID
+    ) -> list[tuple[CatalogTable, list[CatalogColumn]]]:
+        """Every catalogued table of a data source with its columns, for query policy."""
+        tables = list(
+            (
+                await self._session.execute(
+                    select(CatalogTable)
+                    .where(
+                        CatalogTable.tenant_id == tenant_id,
+                        CatalogTable.data_source_id == data_source_id,
+                    )
+                    .order_by(CatalogTable.schema_name, CatalogTable.table_name)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        if not tables:
+            return []
+        columns = (
+            (
+                await self._session.execute(
+                    select(CatalogColumn)
+                    .where(CatalogColumn.table_id.in_([t.id for t in tables]))
+                    .order_by(CatalogColumn.column_name)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        by_table: dict[uuid.UUID, list[CatalogColumn]] = {t.id: [] for t in tables}
+        for column in columns:
+            by_table[column.table_id].append(column)
+        return [(table, by_table[table.id]) for table in tables]
+
     async def list_columns(self, table_id: uuid.UUID) -> list[CatalogColumn]:
         result = await self._session.execute(
             select(CatalogColumn)

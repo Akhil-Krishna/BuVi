@@ -27,7 +27,6 @@ from metadata_service.domain.errors import (
     UpstreamUnavailableError,
     UserNotActiveError,
 )
-from metadata_service.domain.policies.egress import EgressPolicy
 from metadata_service.infrastructure.audit.sink import AuditSink
 from metadata_service.infrastructure.connectors.base import CatalogConnector
 from metadata_service.infrastructure.db.repositories.metadata_repository import (
@@ -44,6 +43,7 @@ from platform_auth import (
     request_credentials,
     verify_service_request,
 )
+from platform_egress import EgressPolicy
 from platform_secrets import SecretStore
 
 # --- Application-scoped singletons, installed by `main.create_app` ------------------

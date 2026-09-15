@@ -6,7 +6,7 @@ import ipaddress
 
 import pytest
 
-from metadata_service.domain.policies.egress import EgressPolicy, is_public_address
+from platform_egress import EgressPolicy, is_public_address
 
 pytestmark = [pytest.mark.unit, pytest.mark.security]
 

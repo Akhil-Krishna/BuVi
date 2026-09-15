@@ -195,3 +195,46 @@ class RelationshipResponse(BaseModel):
 class TableDetailResponse(TableSummaryResponse):
     columns: list[ColumnResponse]
     relationships: list[RelationshipResponse]
+
+
+# --- Internal: query policy for query-gateway (Section 13) ---------------------------------
+
+
+class QueryPolicyColumn(BaseModel):
+    column_name: str
+    data_type: str
+    is_pii: bool
+
+
+class QueryPolicyTable(BaseModel):
+    schema_name: str
+    table_name: str
+    is_visible_to_agent: bool
+    columns: list[QueryPolicyColumn]
+
+    @classmethod
+    def from_catalog(cls, table: Any, columns: list[Any]) -> QueryPolicyTable:
+        return cls(
+            schema_name=table.schema_name,
+            table_name=table.table_name,
+            is_visible_to_agent=table.is_visible_to_agent,
+            columns=[
+                QueryPolicyColumn(column_name=c.column_name, data_type=c.data_type, is_pii=c.is_pii)
+                for c in columns
+            ],
+        )
+
+
+class QueryPolicyResponse(BaseModel):
+    """Everything query-gateway needs to validate and route a query. A pointer, never a secret."""
+
+    data_source_id: uuid.UUID
+    tenant_id: uuid.UUID
+    engine: str
+    database_name: str
+    allowed_schemas: list[str]
+    status: str
+    #: Vault path of the credential, read by query-gateway itself (Section 13.1).
+    secret_ref: str
+    last_sync_at: dt.datetime | None
+    tables: list[QueryPolicyTable]

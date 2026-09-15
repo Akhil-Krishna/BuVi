@@ -58,6 +58,7 @@ ban-relative-imports = "all"
 known-first-party = [
     "platform_auth",
     "platform_contracts",
+    "platform_egress",
     "platform_observability",
     "platform_secrets",
     "platform_testing",

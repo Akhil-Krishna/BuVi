@@ -332,3 +332,31 @@ async def test_audit_event_refusals_write_nothing(
     assert response.status_code == status, response.text
     assert response.json()["error"]["code"] == code
     assert await _audit_rows(fixtures, tenant) == []
+
+
+async def test_token_grant_for_query_gateway_is_limited_to_its_audiences(
+    client: httpx.AsyncClient,
+) -> None:
+    def grant(audience: str, scope: str) -> dict[str, str]:
+        return _grant(
+            client_id="query-gateway",
+            client_secret="dev-query-gateway-secret",
+            audience=audience,
+            scope=scope,
+        )
+
+    policy = await client.post(
+        "/internal/v1/oauth/token", data=grant("metadata-service", "metadata-service:query-policy")
+    )
+    assert policy.status_code == 200, policy.text
+    introspect = await client.post(
+        "/internal/v1/oauth/token", data=grant("identity-service", SCOPE_INTROSPECT)
+    )
+    assert introspect.status_code == 200
+    for audience, scope in (
+        ("identity-service", SCOPE_AUDIT_WRITE),
+        ("metadata-service", "metadata-service:proxy"),
+        ("query-gateway", "query-gateway:execute"),
+    ):
+        refused = await client.post("/internal/v1/oauth/token", data=grant(audience, scope))
+        assert refused.status_code == 403, (audience, scope)

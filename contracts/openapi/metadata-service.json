@@ -393,6 +393,130 @@
         "title": "HealthResponse",
         "type": "object"
       },
+      "QueryPolicyColumn": {
+        "properties": {
+          "column_name": {
+            "title": "Column Name",
+            "type": "string"
+          },
+          "data_type": {
+            "title": "Data Type",
+            "type": "string"
+          },
+          "is_pii": {
+            "title": "Is Pii",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "column_name",
+          "data_type",
+          "is_pii"
+        ],
+        "title": "QueryPolicyColumn",
+        "type": "object"
+      },
+      "QueryPolicyResponse": {
+        "description": "Everything query-gateway needs to validate and route a query. A pointer, never a secret.",
+        "properties": {
+          "allowed_schemas": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Allowed Schemas",
+            "type": "array"
+          },
+          "data_source_id": {
+            "format": "uuid",
+            "title": "Data Source Id",
+            "type": "string"
+          },
+          "database_name": {
+            "title": "Database Name",
+            "type": "string"
+          },
+          "engine": {
+            "title": "Engine",
+            "type": "string"
+          },
+          "last_sync_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Sync At"
+          },
+          "secret_ref": {
+            "title": "Secret Ref",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "tables": {
+            "items": {
+              "$ref": "#/components/schemas/QueryPolicyTable"
+            },
+            "title": "Tables",
+            "type": "array"
+          },
+          "tenant_id": {
+            "format": "uuid",
+            "title": "Tenant Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "data_source_id",
+          "tenant_id",
+          "engine",
+          "database_name",
+          "allowed_schemas",
+          "status",
+          "secret_ref",
+          "last_sync_at",
+          "tables"
+        ],
+        "title": "QueryPolicyResponse",
+        "type": "object"
+      },
+      "QueryPolicyTable": {
+        "properties": {
+          "columns": {
+            "items": {
+              "$ref": "#/components/schemas/QueryPolicyColumn"
+            },
+            "title": "Columns",
+            "type": "array"
+          },
+          "is_visible_to_agent": {
+            "title": "Is Visible To Agent",
+            "type": "boolean"
+          },
+          "schema_name": {
+            "title": "Schema Name",
+            "type": "string"
+          },
+          "table_name": {
+            "title": "Table Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_name",
+          "table_name",
+          "is_visible_to_agent",
+          "columns"
+        ],
+        "title": "QueryPolicyTable",
+        "type": "object"
+      },
       "RelationshipResponse": {
         "properties": {
           "from_column": {
@@ -1163,6 +1287,59 @@
         "summary": "Ready",
         "tags": [
           "health"
+        ]
+      }
+    },
+    "/internal/v1/data-sources/{data_source_id}/query-policy": {
+      "get": {
+        "operationId": "query_policy_internal_v1_data_sources__data_source_id__query_policy_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "data_source_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Data Source Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QueryPolicyResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Query Policy",
+        "tags": [
+          "internal"
         ]
       }
     }

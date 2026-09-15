@@ -29,7 +29,6 @@ from typing import Any, Final
 
 import asyncpg
 
-from metadata_service.domain.policies.egress import EgressPolicy
 from metadata_service.domain.value_objects.catalog import (
     IntrospectedCatalog,
     IntrospectedColumn,
@@ -46,6 +45,7 @@ from metadata_service.domain.value_objects.diagnostics import (
 )
 from metadata_service.infrastructure.connectors.base import ConnectorLimits
 from metadata_service.infrastructure.connectors.egress import HostResolver, resolve_host
+from platform_egress import EgressPolicy
 
 logger = logging.getLogger(__name__)
 

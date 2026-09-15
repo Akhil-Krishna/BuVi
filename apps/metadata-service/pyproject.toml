@@ -13,6 +13,7 @@ dependencies = [
     "fastapi>=0.141.1",
     "httpx>=0.28.1",
     "platform-auth",
+    "platform-egress",
     "platform-observability",
     "platform-secrets",
     "pydantic-settings>=2.15.0",
@@ -30,5 +31,6 @@ build-backend = "uv_build"
 
 [tool.uv.sources]
 platform-auth = { workspace = true }
+platform-egress = { workspace = true }
 platform-observability = { workspace = true }
 platform-secrets = { workspace = true }

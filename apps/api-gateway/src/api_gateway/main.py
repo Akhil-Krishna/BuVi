@@ -125,9 +125,30 @@ def compose_openapi(app: FastAPI, contracts_dir: Path | None) -> dict[str, Any]:
             upstream_success = {c for c in up.get("responses", {}) if c.startswith("2")}
             if upstream_success and "200" not in upstream_success:
                 op["responses"].pop("200", None)
-        for name, definition in upstream.get("components", {}).get("schemas", {}).items():
-            components.setdefault(name, definition)
+        upstream_schemas = upstream.get("components", {}).get("schemas", {})
+        for name in _referenced_schema_names(schema["paths"], upstream_schemas):
+            components.setdefault(name, upstream_schemas[name])
     return schema
+
+
+def _referenced_schema_names(node: Any, available: dict[str, Any]) -> set[str]:
+    """Schemas reachable from `node` through `$ref`s -- so internal-only upstream schemas
+    (e.g. a service-to-service response) never leak into the public contract."""
+    found: set[str] = set()
+    pending: list[Any] = [node]
+    while pending:
+        current = pending.pop()
+        if isinstance(current, dict):
+            ref = current.get("$ref")
+            if isinstance(ref, str) and ref.startswith("#/components/schemas/"):
+                name = ref.rsplit("/", 1)[-1]
+                if name in available and name not in found:
+                    found.add(name)
+                    pending.append(available[name])
+            pending.extend(current.values())
+        elif isinstance(current, list):
+            pending.extend(current)
+    return found
 
 
 def create_app(

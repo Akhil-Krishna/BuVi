@@ -49,7 +49,9 @@ def test_no_response_schema_has_a_secret_shaped_property() -> None:
     spec = _generated()
     schemas = spec["components"]["schemas"]
     responses: set[str] = set()
-    for ops in spec["paths"].values():
+    for path, ops in spec["paths"].items():
+        if not path.startswith("/api/v1/"):
+            continue  # internal service-to-service routes are checked below
         for op in ops.values():
             _referenced_schemas(op.get("responses", {}), responses)
     pending = set(responses)
@@ -69,3 +71,12 @@ def test_every_route_documents_its_errors_as_the_envelope() -> None:
     paths = _generated()["paths"]
     assert "/api/v1/data-sources/{data_source_id}/secret" in paths
     assert "/api/v1/data-sources/{data_source_id}/tables/{table_id}" in paths
+
+
+def test_internal_query_policy_carries_a_pointer_and_no_credential() -> None:
+    schemas = _generated()["components"]["schemas"]
+    policy = set(schemas["QueryPolicyResponse"]["properties"])
+    assert "secret_ref" in policy
+    assert not policy & (SECRET_SHAPED - {"secret_ref"})
+    for nested in ("QueryPolicyTable", "QueryPolicyColumn"):
+        assert not set(schemas[nested]["properties"]) & SECRET_SHAPED

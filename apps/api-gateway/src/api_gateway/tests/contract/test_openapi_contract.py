@@ -79,3 +79,15 @@ def test_metadata_routes_exist_in_the_metadata_contract() -> None:
     assert isinstance(paths, dict)
     create = paths["/api/v1/data-sources"]["post"]
     assert "requestBody" in create and "201" in create["responses"]
+
+
+def test_internal_upstream_schemas_do_not_leak_into_the_public_contract() -> None:
+    schemas = _generated()["components"]["schemas"]
+    for internal in (
+        "QueryPolicyResponse",
+        "IntrospectRequest",
+        "AuditEventRequest",
+        "TokenResponse",
+    ):
+        assert internal not in schemas, internal
+    assert not any("secret_ref" in s.get("properties", {}) for s in schemas.values())

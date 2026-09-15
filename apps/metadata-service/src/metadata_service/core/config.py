@@ -17,6 +17,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 SCOPE_PROXY = "metadata-service:proxy"
 #: Scope this service needs to record audit events in identity-service (ADR 0004).
 SCOPE_AUDIT_WRITE = "identity-service:audit"
+#: Scope query-gateway needs to load a data source's query policy (Section 13, ADR 0005).
+SCOPE_QUERY_POLICY = "metadata-service:query-policy"
 
 _LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
 

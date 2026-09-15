@@ -1,8 +1,8 @@
-"""Outbound-destination policy for data-source connections (Section 15).
+"""Outbound-destination policy (Section 15).
 
-Section 15 names data-source connectivity tests as an SSRF vector: a tenant who can
-set a connection host can otherwise make the platform open TCP connections to the
-cluster's own services. Rules:
+Section 15 names every user-directed outbound connection an SSRF vector: a tenant who can
+set a host can otherwise make the platform open connections to the cluster's own services.
+Rules:
 
 * every resolved address must be globally routable -- loopback, private (RFC 1918 /
   RFC 4193), link-local, CGNAT, multicast, reserved and unspecified addresses are
@@ -12,7 +12,7 @@ cluster's own services. Rules:
 * an explicitly allow-listed internal host is exempt ("unless the destination is an
   explicitly allow-listed internal service").
 
-Pure: no DNS, no sockets. Resolution lives in the connector infrastructure.
+Pure: no DNS, no sockets. Resolution is `platform_egress.resolve_host`.
 """
 
 from __future__ import annotations

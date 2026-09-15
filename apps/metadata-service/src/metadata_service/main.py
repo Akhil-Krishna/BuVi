@@ -15,12 +15,12 @@ from contextlib import asynccontextmanager
 import httpx
 from fastapi import FastAPI
 
+from metadata_service.api.internal import router as internal_router
 from metadata_service.api.v1.health import router as health_router
 from metadata_service.api.v1.router import api_router
 from metadata_service.core.config import Settings, get_settings
 from metadata_service.core.logging import configure_logging
 from metadata_service.dependencies import resolve_principal
-from metadata_service.domain.policies.egress import EgressPolicy
 from metadata_service.infrastructure.audit.sink import IdentityAuditSink
 from metadata_service.infrastructure.connectors.base import CatalogConnector, ConnectorLimits
 from metadata_service.infrastructure.connectors.postgres import PostgresCatalogConnector
@@ -33,6 +33,7 @@ from platform_auth import (
     install_principal_resolver,
     install_service_token_verifier,
 )
+from platform_egress import EgressPolicy
 from platform_observability import RequestIdMiddleware, install_error_handlers
 from platform_secrets import SecretStore
 
@@ -128,6 +129,7 @@ def create_app(
     install_error_handlers(app)
     app.include_router(health_router)
     app.include_router(api_router)
+    app.include_router(internal_router)
     return app
 
 

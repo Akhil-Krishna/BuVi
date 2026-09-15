@@ -154,113 +154,6 @@
         "title": "AuditEventListResponse",
         "type": "object"
       },
-      "AuditEventRequest": {
-        "additionalProperties": false,
-        "description": "One `identity.audit_events` row, recorded on behalf of a calling service.",
-        "properties": {
-          "actor_type": {
-            "default": "user",
-            "enum": [
-              "user",
-              "service_account",
-              "system"
-            ],
-            "title": "Actor Type",
-            "type": "string"
-          },
-          "actor_user_id": {
-            "anyOf": [
-              {
-                "format": "uuid",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Actor User Id"
-          },
-          "after_state": {
-            "anyOf": [
-              {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "After State"
-          },
-          "before_state": {
-            "anyOf": [
-              {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Before State"
-          },
-          "event_type": {
-            "maxLength": 100,
-            "pattern": "^[a-z][a-z_]*(\\.[a-z][a-z_]*)+$",
-            "title": "Event Type",
-            "type": "string"
-          },
-          "ip_address": {
-            "anyOf": [
-              {
-                "format": "ipvanyaddress",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Ip Address"
-          },
-          "resource_id": {
-            "anyOf": [
-              {
-                "maxLength": 200,
-                "minLength": 1,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Resource Id"
-          },
-          "resource_type": {
-            "anyOf": [
-              {
-                "maxLength": 100,
-                "minLength": 1,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Resource Type"
-          },
-          "tenant_id": {
-            "format": "uuid",
-            "title": "Tenant Id",
-            "type": "string"
-          }
-        },
-        "required": [
-          "tenant_id",
-          "event_type"
-        ],
-        "title": "AuditEventRequest",
-        "type": "object"
-      },
       "AuditEventResponse": {
         "properties": {
           "actor_type": {
@@ -734,19 +627,6 @@
         ],
         "type": "object"
       },
-      "HTTPValidationError": {
-        "properties": {
-          "detail": {
-            "items": {
-              "$ref": "#/components/schemas/ValidationError"
-            },
-            "title": "Detail",
-            "type": "array"
-          }
-        },
-        "title": "HTTPValidationError",
-        "type": "object"
-      },
       "HealthResponse": {
         "properties": {
           "checks": {
@@ -770,52 +650,6 @@
           "service"
         ],
         "title": "HealthResponse",
-        "type": "object"
-      },
-      "IntrospectRequest": {
-        "properties": {
-          "api_key": {
-            "anyOf": [
-              {
-                "maxLength": 512,
-                "minLength": 1,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Api Key"
-          },
-          "session_token": {
-            "anyOf": [
-              {
-                "maxLength": 256,
-                "minLength": 1,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Session Token"
-          }
-        },
-        "title": "IntrospectRequest",
-        "type": "object"
-      },
-      "IntrospectResponse": {
-        "properties": {
-          "principal": {
-            "additionalProperties": true,
-            "title": "Principal",
-            "type": "object"
-          }
-        },
-        "required": [
-          "principal"
-        ],
-        "title": "IntrospectResponse",
         "type": "object"
       },
       "InvitationCreateRequest": {
@@ -1383,34 +1217,6 @@
         "title": "TableSummaryResponse",
         "type": "object"
       },
-      "TokenResponse": {
-        "properties": {
-          "access_token": {
-            "title": "Access Token",
-            "type": "string"
-          },
-          "expires_in": {
-            "title": "Expires In",
-            "type": "integer"
-          },
-          "scope": {
-            "title": "Scope",
-            "type": "string"
-          },
-          "token_type": {
-            "default": "Bearer",
-            "title": "Token Type",
-            "type": "string"
-          }
-        },
-        "required": [
-          "access_token",
-          "expires_in",
-          "scope"
-        ],
-        "title": "TokenResponse",
-        "type": "object"
-      },
       "UserListResponse": {
         "properties": {
           "items": {
@@ -1591,46 +1397,6 @@
           "expires_at"
         ],
         "title": "UserSessionResponse",
-        "type": "object"
-      },
-      "ValidationError": {
-        "properties": {
-          "ctx": {
-            "title": "Context",
-            "type": "object"
-          },
-          "input": {
-            "title": "Input"
-          },
-          "loc": {
-            "items": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "integer"
-                }
-              ]
-            },
-            "title": "Location",
-            "type": "array"
-          },
-          "msg": {
-            "title": "Message",
-            "type": "string"
-          },
-          "type": {
-            "title": "Error Type",
-            "type": "string"
-          }
-        },
-        "required": [
-          "loc",
-          "msg",
-          "type"
-        ],
-        "title": "ValidationError",
         "type": "object"
       }
     }

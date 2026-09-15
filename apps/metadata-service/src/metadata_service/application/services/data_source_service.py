@@ -23,7 +23,6 @@ from metadata_service.domain.errors import (
     SecretNotConfiguredError,
     SecretStoreUnavailableError,
 )
-from metadata_service.domain.policies.egress import EgressPolicy
 from metadata_service.domain.value_objects.connection import (
     STATUS_ACTIVE,
     STATUS_DISABLED,
@@ -42,6 +41,7 @@ from metadata_service.infrastructure.db.repositories.metadata_repository import 
     MetadataRepository,
 )
 from platform_auth import Principal
+from platform_egress import EgressPolicy
 from platform_secrets import SecretStore, SecretStoreError, vault_kv2_path
 
 EVENT_CONNECTION_CREATED: Final = "connection.created"
