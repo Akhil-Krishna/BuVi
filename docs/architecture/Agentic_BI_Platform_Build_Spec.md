@@ -524,7 +524,8 @@ Authorization always checks **both** layers, server-side, on every protected ope
 | `dashboard:share` | tenant policy | ✅ | ✅ | ❌ | ❌ |
 | `artifact:read` | ✅ (approved data only) | ✅ | ✅ | ❌ | ✅ |
 | `sql:execute` | ❌ | ✅ (per-connection grant) | ✅ | ❌ | ❌ |
-| `data:manage` (connections) | ❌ | ✅ (create/test), approval by admin for prod | ✅ | ❌ | ❌ (read metadata only) |
+| `data:manage` (connections) | ❌ | ✅ (create/test), approval by admin for prod | ✅ | ❌ | ❌ (reads metadata via `catalog:read`) |
+| `catalog:read` (connection metadata, schema catalog) | ❌ | ✅ | ✅ | ❌ | ✅ |
 | `semantic:manage` | ❌ | ✅ | ✅ | ❌ | ❌ |
 | `mcp:manage` | ❌ | ✅ (if granted) | ✅ (approve servers) | ❌ | ❌ |
 | `run:debug` | ❌ | ✅ | ✅ | ❌ | ✅ (read-only) |
@@ -811,8 +812,8 @@ CREATE TABLE metadata.columns (
 CREATE TABLE metadata.relationships (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id UUID NOT NULL,
-    from_column_id UUID NOT NULL REFERENCES metadata.columns(id),
-    to_column_id UUID NOT NULL REFERENCES metadata.columns(id),
+    from_column_id UUID NOT NULL REFERENCES metadata.columns(id) ON DELETE CASCADE,
+    to_column_id UUID NOT NULL REFERENCES metadata.columns(id) ON DELETE CASCADE,
     relationship_type TEXT NOT NULL DEFAULT 'fk' CHECK (relationship_type IN ('fk','inferred'))
 );
 ```
@@ -1113,6 +1114,9 @@ optional `Idempotency-Key` header. All responses use the error envelope in Secti
 | Data sources | `POST /data-sources/{id}/secret` | `data:manage`, step-up | writes to Vault via metadata-service→secrets |
 | Data sources | `POST /data-sources/{id}/test` | `data:manage` | sanitized connectivity result only |
 | Data sources | `POST /data-sources/{id}/sync` | `data:manage` | enqueues catalog sync job |
+| Data sources | `GET /data-sources/{id}` | `catalog:read` + resource-tenant check | status, `last_sync_at`; never credentials |
+| Catalog | `GET /data-sources/{id}/tables` | `catalog:read` + resource-tenant check | tables of a data source, paginated |
+| Catalog | `GET /data-sources/{id}/tables/{table_id}` | `catalog:read` + resource-tenant check | columns and relationships |
 | SQL | `POST /sql/validate` | `sql:execute` | dry validation, no execution |
 | SQL | `POST /sql/execute` | `sql:execute` + per-connection grant | proxies to query-gateway |
 | SQL | `GET /sql/history` | `sql:execute` (own) or `run:debug` | — |
@@ -1293,7 +1297,11 @@ that data source; even then, PII values are masked in chat-visible previews by d
 
 ## 13. Query Gateway — hard security boundary
 
-The only service permitted to hold or use customer database credentials. Supports
+The only service permitted to execute arbitrary or business SQL using customer database
+credentials. metadata-service holds a narrow, explicit exception: it may use the same stored
+credential only for (a) a bounded connectivity check, and (b) read-only introspection against
+the database's own catalog views — never for arbitrary SQL, and never for a query whose text
+originates from a user, developer, or agent. Supports
 database-specific adapters, connection pooling, read-only principals, statement timeouts, max
 result sizes, concurrency limits, cost estimation where available, and full audit.
 
