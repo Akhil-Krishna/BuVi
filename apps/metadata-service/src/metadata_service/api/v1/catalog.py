@@ -1,4 +1,4 @@
-"""Catalog read endpoints (Phase A3 DoD; beyond Section 9, recorded in ADR 0004)."""
+"""Catalog read endpoints (Section 9: `catalog:read` + resource-tenant check)."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from fastapi import APIRouter, Query
 from metadata_service.api.v1.data_sources import (
     DEFAULT_PAGE_SIZE,
     MAX_PAGE_SIZE,
-    DataManage,
+    CatalogRead,
     OwnsDataSource,
 )
 from metadata_service.api.v1.schemas import (
@@ -55,7 +55,7 @@ def _ref(ref: ColumnRef) -> ColumnRefResponse:
 @router.get("/data-sources/{data_source_id}/tables", response_model=TableListResponse)
 async def list_tables(
     data_source_id: uuid.UUID,
-    principal: DataManage,
+    principal: CatalogRead,
     _owns: OwnsDataSource,
     repository: ScopedRepo,
     limit: Annotated[int, Query(ge=1, le=MAX_PAGE_SIZE)] = DEFAULT_PAGE_SIZE,
@@ -74,7 +74,7 @@ async def list_tables(
 async def read_table(
     data_source_id: uuid.UUID,
     table_id: uuid.UUID,
-    principal: DataManage,
+    principal: CatalogRead,
     _owns: OwnsDataSource,
     repository: ScopedRepo,
 ) -> TableDetailResponse:

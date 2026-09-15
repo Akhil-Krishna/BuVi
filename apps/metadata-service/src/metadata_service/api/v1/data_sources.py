@@ -32,7 +32,7 @@ from metadata_service.dependencies import (
 from metadata_service.domain.errors import ValidationFailedError
 from metadata_service.domain.value_objects.connection import ConnectionSecret
 from platform_auth import Principal, require_permission, require_resource_owner, require_step_up
-from platform_auth.permissions import PERM_DATA_MANAGE
+from platform_auth.permissions import PERM_CATALOG_READ, PERM_DATA_MANAGE
 
 router = APIRouter(tags=["data-sources"])
 
@@ -40,6 +40,7 @@ DEFAULT_PAGE_SIZE = 50
 MAX_PAGE_SIZE = 200
 
 DataManage = Annotated[Principal, Depends(require_permission(PERM_DATA_MANAGE))]
+CatalogRead = Annotated[Principal, Depends(require_permission(PERM_CATALOG_READ))]
 OwnsDataSource = Annotated[Principal, Depends(require_resource_owner(load_data_source_tenant_id))]
 StepUp = Annotated[Principal, Depends(require_step_up)]
 
@@ -90,11 +91,11 @@ async def create_data_source(
 async def read_data_source(
     request: Request,
     data_source_id: uuid.UUID,
-    principal: DataManage,
+    principal: CatalogRead,
     _owns: OwnsDataSource,
     repository: ScopedRepo,
 ) -> DataSourceResponse:
-    """One data source, including `status` and `last_sync_at` (ADR 0004)."""
+    """One data source, including `status` and `last_sync_at` (Section 9: `catalog:read`)."""
     found = await build_data_source_service(request, repository).get(principal, data_source_id)
     return DataSourceResponse.model_validate(found)
 

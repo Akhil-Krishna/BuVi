@@ -1,7 +1,6 @@
 """Catalog reads: tables of a data source, and one table with columns and relationships.
 
-Section 9 lists no catalog read endpoint, but the Phase A3 DoD requires one ("see
-tables/columns in the catalog API"); ADR 0004 records the two routes added.
+Section 9: `GET /data-sources/{id}/tables` and `.../tables/{table_id}`, `catalog:read`.
 """
 
 from __future__ import annotations

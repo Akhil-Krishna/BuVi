@@ -815,7 +815,7 @@
     },
     "/api/v1/data-sources/{data_source_id}": {
       "get": {
-        "description": "One data source, including `status` and `last_sync_at` (ADR 0004).",
+        "description": "One data source, including `status` and `last_sync_at` (Section 9: `catalog:read`).",
         "operationId": "read_data_source_api_v1_data_sources__data_source_id__get",
         "parameters": [
           {

@@ -17,19 +17,20 @@ and catalog sync (build spec Sections 3, 8.2, 12, 13.1; Phase A3).
 
 ## Endpoints
 
-All require `data:manage` (Section 7.1: `developer`, `org_admin`). Every `{data_source_id}`
-route also checks the resource belongs to the caller's tenant: cross-tenant ids return `404`.
+Writes and the list require `data:manage` (`developer`, `org_admin`); the three reads marked
+`catalog:read` also admit `auditor` (Section 7.1). Every `{data_source_id}` route also checks the
+resource belongs to the caller's tenant: cross-tenant ids return `404`.
 
 | Method & path | Notes |
 |---|---|
 | `GET /data-sources` | tenant-scoped, paginated |
 | `POST /data-sources` | non-secret metadata only; `pending` until credentials are set |
-| `GET /data-sources/{id}` | status, `last_sync_at` (beyond Section 9, ADR 0004) |
+| `GET /data-sources/{id}` | `catalog:read`; status, `last_sync_at` |
 | `POST /data-sources/{id}/secret` | **step-up**; `{host, port, username, password, sslmode}` written to Vault, never returned |
 | `POST /data-sources/{id}/test` | bounded connectivity check; sanitized code + message only |
 | `POST /data-sources/{id}/sync` | introspect → `tables`/`columns`/`relationships` (synchronous until worker-runtime) |
-| `GET /data-sources/{id}/tables` | catalog, paginated (beyond Section 9, ADR 0004) |
-| `GET /data-sources/{id}/tables/{table_id}` | columns + relationships (beyond Section 9, ADR 0004) |
+| `GET /data-sources/{id}/tables` | `catalog:read`; paginated |
+| `GET /data-sources/{id}/tables/{table_id}` | `catalog:read`; columns + relationships |
 
 ## Security properties
 

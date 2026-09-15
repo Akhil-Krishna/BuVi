@@ -232,30 +232,15 @@ CATALOG: Final[tuple[RouteSpec, ...]] = (
         "Run catalog sync (synchronous until worker-runtime)",
         permission="data:manage",
     ),
-    # metadata-service catalog reads beyond Section 9: the Phase A3 DoD's catalog API.
+    _metadata("GET", "/data-sources/{id}", "Read a data source", permission="catalog:read"),
     _metadata(
-        "GET",
-        "/data-sources/{id}",
-        "Read a data source",
-        permission="data:manage",
-        in_section_9=False,
-        decision="ADR 0004 item 6",
-    ),
-    _metadata(
-        "GET",
-        "/data-sources/{id}/tables",
-        "Catalog: tables of a data source",
-        permission="data:manage",
-        in_section_9=False,
-        decision="ADR 0004 item 6",
+        "GET", "/data-sources/{id}/tables", "Tables of a data source", permission="catalog:read"
     ),
     _metadata(
         "GET",
         "/data-sources/{id}/tables/{table_id}",
-        "Catalog: one table with columns and relationships",
-        permission="data:manage",
-        in_section_9=False,
-        decision="ADR 0004 item 6",
+        "One table with columns and relationships",
+        permission="catalog:read",
     ),
     # --- SQL (Section 13) ----------------------------------------------------------------------
     _stub(

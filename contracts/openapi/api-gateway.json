@@ -3747,9 +3747,8 @@
         "tags": [
           "metadata-service"
         ],
-        "x-auth": "session or API key, data:manage",
+        "x-auth": "session or API key, catalog:read",
         "x-backend": "metadata-service",
-        "x-beyond-section-9": "ADR 0004 item 6",
         "x-rate-tier": "authenticated"
       }
     },
@@ -4022,13 +4021,12 @@
             "description": "Upstream timeout"
           }
         },
-        "summary": "Catalog: tables of a data source",
+        "summary": "Tables of a data source",
         "tags": [
           "metadata-service"
         ],
-        "x-auth": "session or API key, data:manage",
+        "x-auth": "session or API key, catalog:read",
         "x-backend": "metadata-service",
-        "x-beyond-section-9": "ADR 0004 item 6",
         "x-rate-tier": "authenticated"
       }
     },
@@ -4115,13 +4113,12 @@
             "description": "Upstream timeout"
           }
         },
-        "summary": "Catalog: one table with columns and relationships",
+        "summary": "One table with columns and relationships",
         "tags": [
           "metadata-service"
         ],
-        "x-auth": "session or API key, data:manage",
+        "x-auth": "session or API key, catalog:read",
         "x-backend": "metadata-service",
-        "x-beyond-section-9": "ADR 0004 item 6",
         "x-rate-tier": "authenticated"
       }
     },

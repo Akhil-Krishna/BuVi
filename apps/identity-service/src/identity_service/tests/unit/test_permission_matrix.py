@@ -38,6 +38,7 @@ dashboard:share         -         Y          Y         -        -
 artifact:read           Y         Y          Y         -        Y
 sql:execute             -         Y          Y         -        -
 data:manage             -         Y          Y         -        -
+catalog:read            -         Y          Y         -        Y
 semantic:manage         -         Y          Y         -        -
 mcp:manage              -         -          Y         -        -
 run:debug               -         Y          Y         -        Y

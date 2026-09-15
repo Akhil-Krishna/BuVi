@@ -44,6 +44,8 @@ PERM_DASHBOARD_SHARE: Final = "dashboard:share"
 PERM_ARTIFACT_READ: Final = "artifact:read"
 PERM_SQL_EXECUTE: Final = "sql:execute"
 PERM_DATA_MANAGE: Final = "data:manage"
+#: Read connection metadata and the schema catalog; never credentials.
+PERM_CATALOG_READ: Final = "catalog:read"
 PERM_SEMANTIC_MANAGE: Final = "semantic:manage"
 PERM_MCP_MANAGE: Final = "mcp:manage"
 PERM_RUN_DEBUG: Final = "run:debug"
@@ -67,6 +69,7 @@ ALL_PERMISSIONS: Final[frozenset[str]] = frozenset(
         PERM_ARTIFACT_READ,
         PERM_SQL_EXECUTE,
         PERM_DATA_MANAGE,
+        PERM_CATALOG_READ,
         PERM_SEMANTIC_MANAGE,
         PERM_MCP_MANAGE,
         PERM_RUN_DEBUG,
@@ -117,6 +120,7 @@ ROLE_PERMISSIONS: Final[dict[str, frozenset[str]]] = {
             PERM_ARTIFACT_READ,
             PERM_SQL_EXECUTE,
             PERM_DATA_MANAGE,
+            PERM_CATALOG_READ,
             PERM_SEMANTIC_MANAGE,
             PERM_RUN_DEBUG,
         }
@@ -130,6 +134,7 @@ ROLE_PERMISSIONS: Final[dict[str, frozenset[str]]] = {
             PERM_ARTIFACT_READ,
             PERM_SQL_EXECUTE,
             PERM_DATA_MANAGE,
+            PERM_CATALOG_READ,
             PERM_SEMANTIC_MANAGE,
             PERM_MCP_MANAGE,
             PERM_RUN_DEBUG,
@@ -144,6 +149,7 @@ ROLE_PERMISSIONS: Final[dict[str, frozenset[str]]] = {
     ROLE_BILLING_ADMIN: frozenset({PERM_BILLING_READ, PERM_BILLING_MANAGE}),
     ROLE_AUDITOR: frozenset(
         {
+            PERM_CATALOG_READ,
             PERM_DASHBOARD_READ,
             PERM_ARTIFACT_READ,
             PERM_RUN_DEBUG,

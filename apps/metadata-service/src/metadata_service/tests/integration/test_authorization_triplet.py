@@ -22,9 +22,15 @@ from metadata_service.tests.conftest import Caller, FakeIdentity, Flows
 
 pytestmark = [pytest.mark.integration, pytest.mark.security]
 
-ALLOWED_ROLES = ("org_admin", "developer")
-#: Section 7.1: none of these holds `data:manage`.
-DENIED_ROLES = ("client", "auditor", "billing_admin")
+#: Section 7.1: who holds each permission these endpoints require.
+ALLOWED_ROLES = {
+    "data:manage": ("org_admin", "developer"),
+    "catalog:read": ("org_admin", "developer", "auditor"),
+}
+DENIED_ROLES = {
+    "data:manage": ("client", "auditor", "billing_admin"),
+    "catalog:read": ("client", "billing_admin"),
+}
 
 
 @dataclass(frozen=True)
@@ -32,6 +38,7 @@ class Endpoint:
     name: str
     method: str
     path: str
+    permission: Literal["data:manage", "catalog:read"]
     body: Literal["create", "secret"] | None = None
     step_up: bool = False
 
@@ -43,16 +50,32 @@ class Endpoint:
         return self.path.format(ds=ds, table=table)
 
 
+MANAGE, READ = "data:manage", "catalog:read"
 ENDPOINTS = [
-    Endpoint("list_data_sources", "GET", "/api/v1/data-sources"),
-    Endpoint("create_data_source", "POST", "/api/v1/data-sources", body="create"),
-    Endpoint("read_data_source", "GET", "/api/v1/data-sources/{ds}"),
-    Endpoint("set_secret", "POST", "/api/v1/data-sources/{ds}/secret", body="secret", step_up=True),
-    Endpoint("test_connection", "POST", "/api/v1/data-sources/{ds}/test"),
-    Endpoint("sync_catalog", "POST", "/api/v1/data-sources/{ds}/sync"),
-    Endpoint("list_tables", "GET", "/api/v1/data-sources/{ds}/tables"),
-    Endpoint("read_table", "GET", "/api/v1/data-sources/{ds}/tables/{table}"),
+    Endpoint("list_data_sources", "GET", "/api/v1/data-sources", MANAGE),
+    Endpoint("create_data_source", "POST", "/api/v1/data-sources", MANAGE, body="create"),
+    Endpoint("read_data_source", "GET", "/api/v1/data-sources/{ds}", READ),
+    Endpoint(
+        "set_secret",
+        "POST",
+        "/api/v1/data-sources/{ds}/secret",
+        MANAGE,
+        body="secret",
+        step_up=True,
+    ),
+    Endpoint("test_connection", "POST", "/api/v1/data-sources/{ds}/test", MANAGE),
+    Endpoint("sync_catalog", "POST", "/api/v1/data-sources/{ds}/sync", MANAGE),
+    Endpoint("list_tables", "GET", "/api/v1/data-sources/{ds}/tables", READ),
+    Endpoint("read_table", "GET", "/api/v1/data-sources/{ds}/tables/{table}", READ),
 ]
+ALLOWED_CASES = [(e, role) for e in ENDPOINTS for role in ALLOWED_ROLES[e.permission]]
+DENIED_CASES = [(e, role) for e in ENDPOINTS for role in DENIED_ROLES[e.permission]]
+
+
+def _case_id(case: object) -> str:
+    return case.name if isinstance(case, Endpoint) else str(case)
+
+
 WITH_ID = [e for e in ENDPOINTS if e.takes_id]
 
 
@@ -93,11 +116,10 @@ async def _call(
     )
 
 
-# --- 1. Same tenant, holding `data:manage` -> allowed ---------------------------------------
+# --- 1. Same tenant, holding the endpoint's permission -> allowed ---------------------------------------
 
 
-@pytest.mark.parametrize("role", ALLOWED_ROLES)
-@pytest.mark.parametrize("endpoint", ENDPOINTS, ids=lambda e: e.name)
+@pytest.mark.parametrize(("endpoint", "role"), ALLOWED_CASES, ids=_case_id)
 async def test_same_tenant_with_permission_is_allowed(
     endpoint: Endpoint,
     role: str,
@@ -176,11 +198,10 @@ async def test_cross_tenant_writes_change_nothing(
     assert seeded.theirs["id"] not in ours.text
 
 
-# --- 3. Authenticated without `data:manage` -> 403 -------------------------------------------------
+# --- 3. Authenticated without the endpoint's permission -> 403 -------------------------------------------------
 
 
-@pytest.mark.parametrize("role", DENIED_ROLES)
-@pytest.mark.parametrize("endpoint", ENDPOINTS, ids=lambda e: e.name)
+@pytest.mark.parametrize(("endpoint", "role"), DENIED_CASES, ids=_case_id)
 async def test_missing_permission_is_403(
     endpoint: Endpoint,
     role: str,

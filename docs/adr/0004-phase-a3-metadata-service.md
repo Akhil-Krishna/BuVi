@@ -126,11 +126,36 @@ the existing audit owner needs an internal write route.
 ## Known gaps and follow-ups
 
 - **`Idempotency-Key`** (Section 9) is accepted and forwarded but has no replay semantics in any
-  service yet (identity-service included). This is a platform-wide item for Phase A10 (quotas and
-  admin backend) or earlier, recorded here so it is not mistaken for done.
+  service yet (identity-service included). **Scheduled for Phase A5** (see Spec sync below), where
+  `POST /conversations/{id}/messages` is the first create-a-run command a browser retries.
 - **Per-connection grants** (Section 7.1 "`sql:execute` (per-connection grant)", "approval by admin for
   prod") are enforced by query-gateway (Phase A4) and the admin backend (A10). Phase A3 authorizes on
   `data:manage` plus tenant ownership.
 - Sync moves to worker-runtime with `metadata.sync.*` events (Phase A5). Profiling there fills
   `sample_values` and `is_pii`.
 - A connection deletion endpoint is not in Section 9 and is not added. The cascade is ready for it.
+
+## Spec sync (2026-09-15, after Phase A3 review)
+
+Applied to `docs/architecture/Agentic_BI_Platform_Build_Spec.md` in its own commit:
+
+- **§13 opening** now reads that query-gateway is the only service permitted to execute arbitrary or
+  business SQL with customer credentials, and names metadata-service's narrow exception (bounded
+  connectivity check, read-only catalog introspection, never user/developer/agent-originated SQL).
+  Resolves item 2's follow-up.
+- **§7.1** gains `catalog:read` (`developer`, `org_admin`, `auditor`), and **§9** lists
+  `GET /data-sources/{id}`, `GET /data-sources/{id}/tables` and `GET /data-sources/{id}/tables/{table_id}`
+  under it with the resource-tenant check. Supersedes item 6: the routes are Section 9 routes and
+  `auditor` may read them. Code: `platform_auth.PERM_CATALOG_READ`, gateway catalog, metadata-service
+  guards, and the authorization triplet (auditor now in the allowed half for those three routes).
+- **§8.2** `relationships` foreign keys are `ON DELETE CASCADE`. Item 9's first correction is now spec.
+
+Open after the sync:
+
+- `GET /data-sources` (the list) stays `data:manage` as Section 9 writes it, so an `auditor` can read a
+  data source and its catalog by id but cannot list data sources to discover ids. Moving the list to
+  `catalog:read` is a one-row spec change, not made here without the spec owner's decision.
+- **Audit delivery has no replay mechanism.** A failed delivery (item 10) is only an ERROR log line
+  carrying `event_type`, `resource_type`, `resource_id`, `tenant_id` and `request_id` (not the
+  before/after state); a human replays it per the runbook. The transactional outbox remains the fix.
+- `Idempotency-Key` replay semantics: Phase A5.
