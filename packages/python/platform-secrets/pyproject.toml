@@ -1,0 +1,16 @@
+[project]
+name = "platform-secrets"
+version = "0.1.0"
+description = "Secret-store client: read, write and delete secrets by opaque Vault reference"
+readme = "README.md"
+authors = [
+    { name = "Akhil Krishna", email = "akhilmavannoor@gmail.com" }
+]
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "httpx>=0.28.1",
+]
+
+[build-system]
+requires = ["uv_build>=0.12.13,<0.13.0"]
+build-backend = "uv_build"

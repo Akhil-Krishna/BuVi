@@ -47,11 +47,13 @@ REQUIRED_FILES = [
 ]
 
 # Section 4: the shared Python packages, with their importable module names.
+# `platform-secrets` was extracted in Phase A3 (ADR 0002 item 13, ADR 0004).
 PLATFORM_PACKAGES = {
     "platform-contracts": "platform_contracts",
     "platform-observability": "platform_observability",
     "platform-auth": "platform_auth",
     "platform-testing": "platform_testing",
+    "platform-secrets": "platform_secrets",
 }
 
 

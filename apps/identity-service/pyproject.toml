@@ -16,6 +16,7 @@ dependencies = [
     "httpx>=0.28.1",
     "platform-auth",
     "platform-observability",
+    "platform-secrets",
     "pydantic-settings>=2.15.0",
     "pydantic[email]>=2.13.5",
     "pyotp>=2.10.0",
@@ -33,3 +34,4 @@ build-backend = "uv_build"
 [tool.uv.sources]
 platform-auth = { workspace = true }
 platform-observability = { workspace = true }
+platform-secrets = { workspace = true }

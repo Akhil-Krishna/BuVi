@@ -279,3 +279,21 @@ async def test_health_probes(client: httpx.AsyncClient) -> None:
         "identity-service": "ok",
         "redis": "ok",
     }
+
+
+# --- metadata-service backend (Phase A3) ------------------------------------------------
+
+
+@pytest.mark.parametrize("route", [r for r in CATALOG if r.backend == "metadata-service"], ids=_id)
+async def test_data_source_routes_proxy_to_metadata_service(
+    client: httpx.AsyncClient, upstreams: FakeUpstreams, route: RouteSpec
+) -> None:
+    response = await _call(client, route, "super")
+    assert response.status_code in (200, 201), response.text
+    proxied = upstreams.proxied[-1]
+    assert (proxied.url.host, proxied.url.port) == ("localhost", 8002)
+    assert proxied.url.path == _url(route)
+    assert (
+        proxied.headers["x-service-authorization"]
+        == "Bearer svc:metadata-service:metadata-service:proxy"
+    )

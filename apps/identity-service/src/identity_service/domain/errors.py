@@ -202,3 +202,11 @@ class UnsupportedGrantTypeError(DomainError):
     code = "UNSUPPORTED_GRANT_TYPE"
     status_code = 400
     message = "Only the client_credentials grant is supported."
+
+
+class AuditEventNotAllowedError(DomainError):
+    """A service client tried to record an audit event outside its registered namespace."""
+
+    code = "AUDIT_EVENT_NOT_ALLOWED"
+    status_code = 403
+    message = "This service client may not record that audit event."

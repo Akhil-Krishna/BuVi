@@ -17,8 +17,12 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 #: Service scopes identity-service grants (Section 6.3).
 SCOPE_INTROSPECT = "identity-service:introspect"
 SCOPE_PROXY = "identity-service:proxy"
+#: Append audit events on behalf of another service (Sections 7.3, 22; ADR 0004).
+SCOPE_AUDIT_WRITE = "identity-service:audit"
 
 _DEV_GATEWAY_SECRET_SHA256 = hashlib.sha256(b"dev-gateway-secret").hexdigest()
+_DEV_METADATA_SECRET_SHA256 = hashlib.sha256(b"dev-metadata-secret").hexdigest()
+_DEV_SECRET_HASHES = frozenset({_DEV_GATEWAY_SECRET_SHA256, _DEV_METADATA_SECRET_SHA256})
 
 
 class ServiceClient(BaseModel):
@@ -28,14 +32,25 @@ class ServiceClient(BaseModel):
     secret_sha256: str
     #: audience -> scopes this client may request for it.
     audiences: dict[str, list[str]]
+    #: Event-type prefixes this client may append through `/internal/v1/audit-events`.
+    #: Empty means none: a service cannot forge another domain's audit rows.
+    audit_event_prefixes: list[str] = Field(default_factory=list)
 
 
 def _dev_service_clients() -> dict[str, ServiceClient]:
     return {
         "api-gateway": ServiceClient(
             secret_sha256=_DEV_GATEWAY_SECRET_SHA256,
-            audiences={"identity-service": [SCOPE_INTROSPECT, SCOPE_PROXY]},
-        )
+            audiences={
+                "identity-service": [SCOPE_INTROSPECT, SCOPE_PROXY],
+                "metadata-service": ["metadata-service:proxy"],
+            },
+        ),
+        "metadata-service": ServiceClient(
+            secret_sha256=_DEV_METADATA_SECRET_SHA256,
+            audiences={"identity-service": [SCOPE_INTROSPECT, SCOPE_AUDIT_WRITE]},
+            audit_event_prefixes=["connection."],
+        ),
     }
 
 
@@ -147,9 +162,7 @@ class Settings(BaseSettings):
             problems.append("service_token_private_key is unset (ephemeral signing key)")
         if not self.require_gateway_token:
             problems.append("require_gateway_token is off (service reachable around the gateway)")
-        if any(
-            c.secret_sha256 == _DEV_GATEWAY_SECRET_SHA256 for c in self.service_clients.values()
-        ):
+        if any(c.secret_sha256 in _DEV_SECRET_HASHES for c in self.service_clients.values()):
             problems.append("a service client still uses the development secret")
         if self.vault_token.get_secret_value() == "devroot":
             problems.append("vault_token is still the development root token")

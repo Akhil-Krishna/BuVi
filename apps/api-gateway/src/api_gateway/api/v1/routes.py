@@ -67,7 +67,7 @@ def openapi_extra(route: RouteSpec) -> dict[str, Any]:
     if route.is_stub:
         extra["x-available-in-phase"] = route.available_in_phase
     if not route.in_section_9:
-        extra["x-beyond-section-9"] = "ADR 0002 item 8"
+        extra["x-beyond-section-9"] = route.decision
     return extra
 
 

@@ -154,6 +154,113 @@
         "title": "AuditEventListResponse",
         "type": "object"
       },
+      "AuditEventRequest": {
+        "additionalProperties": false,
+        "description": "One `identity.audit_events` row, recorded on behalf of a calling service.",
+        "properties": {
+          "actor_type": {
+            "default": "user",
+            "enum": [
+              "user",
+              "service_account",
+              "system"
+            ],
+            "title": "Actor Type",
+            "type": "string"
+          },
+          "actor_user_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actor User Id"
+          },
+          "after_state": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "After State"
+          },
+          "before_state": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Before State"
+          },
+          "event_type": {
+            "maxLength": 100,
+            "pattern": "^[a-z][a-z_]*(\\.[a-z][a-z_]*)+$",
+            "title": "Event Type",
+            "type": "string"
+          },
+          "ip_address": {
+            "anyOf": [
+              {
+                "format": "ipvanyaddress",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ip Address"
+          },
+          "resource_id": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resource Id"
+          },
+          "resource_type": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resource Type"
+          },
+          "tenant_id": {
+            "format": "uuid",
+            "title": "Tenant Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tenant_id",
+          "event_type"
+        ],
+        "title": "AuditEventRequest",
+        "type": "object"
+      },
       "AuditEventResponse": {
         "properties": {
           "actor_type": {
@@ -1679,6 +1786,41 @@
         "summary": "Ready",
         "tags": [
           "health"
+        ]
+      }
+    },
+    "/internal/v1/audit-events": {
+      "post": {
+        "description": "Append an audit event for another service (Sections 7.3, 22).\n\n`identity.audit_events` has one owner, so services that perform audited operations\n(metadata-service: connection creation and credential changes) record them here\ninstead of writing another service's table (Section 37). The client's registered\nnamespace bounds what it may write, so a compromised caller cannot forge, say, a\n`user.role_changed` row. Secret-shaped keys are redacted like every other row.",
+        "operationId": "record_audit_event_internal_v1_audit_events_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AuditEventRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Record Audit Event",
+        "tags": [
+          "internal"
         ]
       }
     },

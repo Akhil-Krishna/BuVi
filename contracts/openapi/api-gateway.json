@@ -154,6 +154,113 @@
         "title": "AuditEventListResponse",
         "type": "object"
       },
+      "AuditEventRequest": {
+        "additionalProperties": false,
+        "description": "One `identity.audit_events` row, recorded on behalf of a calling service.",
+        "properties": {
+          "actor_type": {
+            "default": "user",
+            "enum": [
+              "user",
+              "service_account",
+              "system"
+            ],
+            "title": "Actor Type",
+            "type": "string"
+          },
+          "actor_user_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actor User Id"
+          },
+          "after_state": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "After State"
+          },
+          "before_state": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Before State"
+          },
+          "event_type": {
+            "maxLength": 100,
+            "pattern": "^[a-z][a-z_]*(\\.[a-z][a-z_]*)+$",
+            "title": "Event Type",
+            "type": "string"
+          },
+          "ip_address": {
+            "anyOf": [
+              {
+                "format": "ipvanyaddress",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ip Address"
+          },
+          "resource_id": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resource Id"
+          },
+          "resource_type": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resource Type"
+          },
+          "tenant_id": {
+            "format": "uuid",
+            "title": "Tenant Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tenant_id",
+          "event_type"
+        ],
+        "title": "AuditEventRequest",
+        "type": "object"
+      },
       "AuditEventResponse": {
         "properties": {
           "actor_type": {
@@ -244,6 +351,355 @@
           "created_at"
         ],
         "title": "AuditEventResponse",
+        "type": "object"
+      },
+      "ColumnRefResponse": {
+        "properties": {
+          "column_id": {
+            "format": "uuid",
+            "title": "Column Id",
+            "type": "string"
+          },
+          "column_name": {
+            "title": "Column Name",
+            "type": "string"
+          },
+          "schema_name": {
+            "title": "Schema Name",
+            "type": "string"
+          },
+          "table_id": {
+            "format": "uuid",
+            "title": "Table Id",
+            "type": "string"
+          },
+          "table_name": {
+            "title": "Table Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "column_id",
+          "table_id",
+          "schema_name",
+          "table_name",
+          "column_name"
+        ],
+        "title": "ColumnRefResponse",
+        "type": "object"
+      },
+      "ColumnResponse": {
+        "properties": {
+          "column_name": {
+            "title": "Column Name",
+            "type": "string"
+          },
+          "data_type": {
+            "title": "Data Type",
+            "type": "string"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "is_pii": {
+            "title": "Is Pii",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "column_name",
+          "data_type",
+          "is_pii",
+          "description"
+        ],
+        "title": "ColumnResponse",
+        "type": "object"
+      },
+      "ConnectionSecretRequest": {
+        "additionalProperties": false,
+        "description": "Credentials, written to Vault and never returned (Section 13.1).",
+        "properties": {
+          "host": {
+            "maxLength": 253,
+            "minLength": 1,
+            "title": "Host",
+            "type": "string"
+          },
+          "password": {
+            "format": "password",
+            "maxLength": 1024,
+            "minLength": 1,
+            "title": "Password",
+            "type": "string",
+            "writeOnly": true
+          },
+          "port": {
+            "default": 5432,
+            "maximum": 65535.0,
+            "minimum": 1.0,
+            "title": "Port",
+            "type": "integer"
+          },
+          "sslmode": {
+            "default": "require",
+            "enum": [
+              "disable",
+              "require",
+              "verify-full"
+            ],
+            "title": "Sslmode",
+            "type": "string"
+          },
+          "username": {
+            "maxLength": 63,
+            "minLength": 1,
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "host",
+          "username",
+          "password"
+        ],
+        "title": "ConnectionSecretRequest",
+        "type": "object"
+      },
+      "ConnectivityTestResponse": {
+        "description": "Sanitized: a stable code and a fixed message, never driver text (Section 13.1).",
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "data_source_id": {
+            "format": "uuid",
+            "title": "Data Source Id",
+            "type": "string"
+          },
+          "latency_ms": {
+            "title": "Latency Ms",
+            "type": "integer"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "tables_discovered": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tables Discovered"
+          }
+        },
+        "required": [
+          "data_source_id",
+          "ok",
+          "code",
+          "message",
+          "tables_discovered",
+          "latency_ms",
+          "status"
+        ],
+        "title": "ConnectivityTestResponse",
+        "type": "object"
+      },
+      "DataSourceCreateRequest": {
+        "additionalProperties": false,
+        "description": "Non-secret connection metadata. Credentials go to `POST .../secret`.",
+        "properties": {
+          "allowed_schemas": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Allowed Schemas",
+            "type": "array"
+          },
+          "database_name": {
+            "maxLength": 63,
+            "minLength": 1,
+            "title": "Database Name",
+            "type": "string"
+          },
+          "engine": {
+            "enum": [
+              "postgres",
+              "mysql",
+              "snowflake",
+              "bigquery",
+              "redshift"
+            ],
+            "title": "Engine",
+            "type": "string"
+          },
+          "host_label": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Host Label",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "engine",
+          "host_label",
+          "database_name",
+          "allowed_schemas"
+        ],
+        "title": "DataSourceCreateRequest",
+        "type": "object"
+      },
+      "DataSourceListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/DataSourceResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "DataSourceListResponse",
+        "type": "object"
+      },
+      "DataSourceResponse": {
+        "properties": {
+          "allowed_schemas": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Allowed Schemas",
+            "type": "array"
+          },
+          "capabilities": {
+            "additionalProperties": true,
+            "title": "Capabilities",
+            "type": "object"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "format": "uuid",
+            "title": "Created By",
+            "type": "string"
+          },
+          "database_name": {
+            "title": "Database Name",
+            "type": "string"
+          },
+          "engine": {
+            "title": "Engine",
+            "type": "string"
+          },
+          "host_label": {
+            "title": "Host Label",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "last_sync_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Sync At"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "tenant_id": {
+            "format": "uuid",
+            "title": "Tenant Id",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "tenant_id",
+          "name",
+          "engine",
+          "host_label",
+          "database_name",
+          "allowed_schemas",
+          "capabilities",
+          "status",
+          "last_sync_at",
+          "created_by",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "DataSourceResponse",
         "type": "object"
       },
       "ErrorResponse": {
@@ -510,6 +966,33 @@
         "title": "MfaVerifyResponse",
         "type": "object"
       },
+      "RelationshipResponse": {
+        "properties": {
+          "from_column": {
+            "$ref": "#/components/schemas/ColumnRefResponse"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "relationship_type": {
+            "title": "Relationship Type",
+            "type": "string"
+          },
+          "to_column": {
+            "$ref": "#/components/schemas/ColumnRefResponse"
+          }
+        },
+        "required": [
+          "id",
+          "relationship_type",
+          "from_column",
+          "to_column"
+        ],
+        "title": "RelationshipResponse",
+        "type": "object"
+      },
       "RoleChangeRequest": {
         "properties": {
           "grant": {
@@ -657,6 +1140,247 @@
           "sessions_revoked"
         ],
         "title": "SessionsRevokedResponse",
+        "type": "object"
+      },
+      "SyncResponse": {
+        "description": "The `metadata.sync.completed` payload (Section 18.1), returned synchronously.",
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "columns_synced": {
+            "title": "Columns Synced",
+            "type": "integer"
+          },
+          "data_source_id": {
+            "format": "uuid",
+            "title": "Data Source Id",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "relationships_synced": {
+            "title": "Relationships Synced",
+            "type": "integer"
+          },
+          "snapshot_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Snapshot Id"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "synced_at": {
+            "format": "date-time",
+            "title": "Synced At",
+            "type": "string"
+          },
+          "tables_synced": {
+            "title": "Tables Synced",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "data_source_id",
+          "ok",
+          "code",
+          "message",
+          "status",
+          "tables_synced",
+          "columns_synced",
+          "relationships_synced",
+          "snapshot_id",
+          "synced_at"
+        ],
+        "title": "SyncResponse",
+        "type": "object"
+      },
+      "TableDetailResponse": {
+        "properties": {
+          "column_count": {
+            "title": "Column Count",
+            "type": "integer"
+          },
+          "columns": {
+            "items": {
+              "$ref": "#/components/schemas/ColumnResponse"
+            },
+            "title": "Columns",
+            "type": "array"
+          },
+          "data_source_id": {
+            "format": "uuid",
+            "title": "Data Source Id",
+            "type": "string"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "is_visible_to_agent": {
+            "title": "Is Visible To Agent",
+            "type": "boolean"
+          },
+          "relationships": {
+            "items": {
+              "$ref": "#/components/schemas/RelationshipResponse"
+            },
+            "title": "Relationships",
+            "type": "array"
+          },
+          "row_count_estimate": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Row Count Estimate"
+          },
+          "schema_name": {
+            "title": "Schema Name",
+            "type": "string"
+          },
+          "table_name": {
+            "title": "Table Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "data_source_id",
+          "schema_name",
+          "table_name",
+          "description",
+          "row_count_estimate",
+          "is_visible_to_agent",
+          "column_count",
+          "columns",
+          "relationships"
+        ],
+        "title": "TableDetailResponse",
+        "type": "object"
+      },
+      "TableListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/TableSummaryResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "TableListResponse",
+        "type": "object"
+      },
+      "TableSummaryResponse": {
+        "properties": {
+          "column_count": {
+            "title": "Column Count",
+            "type": "integer"
+          },
+          "data_source_id": {
+            "format": "uuid",
+            "title": "Data Source Id",
+            "type": "string"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "is_visible_to_agent": {
+            "title": "Is Visible To Agent",
+            "type": "boolean"
+          },
+          "row_count_estimate": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Row Count Estimate"
+          },
+          "schema_name": {
+            "title": "Schema Name",
+            "type": "string"
+          },
+          "table_name": {
+            "title": "Table Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "data_source_id",
+          "schema_name",
+          "table_name",
+          "description",
+          "row_count_estimate",
+          "is_visible_to_agent",
+          "column_count"
+        ],
+        "title": "TableSummaryResponse",
         "type": "object"
       },
       "TokenResponse": {
@@ -2785,7 +3509,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/DataSourceListResponse"
+                }
               }
             },
             "description": "Successful Response"
@@ -2820,7 +3546,7 @@
             },
             "description": "Rate limited"
           },
-          "501": {
+          "502": {
             "content": {
               "application/json": {
                 "schema": {
@@ -2828,7 +3554,17 @@
                 }
               }
             },
-            "description": "Backing service not available yet"
+            "description": "Upstream unavailable"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Upstream timeout"
           }
         },
         "summary": "List data sources",
@@ -2836,7 +3572,6 @@
           "metadata-service"
         ],
         "x-auth": "session or API key, data:manage",
-        "x-available-in-phase": "A3",
         "x-backend": "metadata-service",
         "x-rate-tier": "authenticated"
       },
@@ -2852,11 +3587,23 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DataSourceCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
-          "200": {
+          "201": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/DataSourceResponse"
+                }
               }
             },
             "description": "Successful Response"
@@ -2891,7 +3638,7 @@
             },
             "description": "Rate limited"
           },
-          "501": {
+          "502": {
             "content": {
               "application/json": {
                 "schema": {
@@ -2899,7 +3646,17 @@
                 }
               }
             },
-            "description": "Backing service not available yet"
+            "description": "Upstream unavailable"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Upstream timeout"
           }
         },
         "summary": "Create a data source",
@@ -2907,8 +3664,92 @@
           "metadata-service"
         ],
         "x-auth": "session or API key, data:manage",
-        "x-available-in-phase": "A3",
         "x-backend": "metadata-service",
+        "x-rate-tier": "authenticated"
+      }
+    },
+    "/api/v1/data-sources/{id}": {
+      "get": {
+        "operationId": "get_data_sources_id",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataSourceResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Rate limited"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Upstream unavailable"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Upstream timeout"
+          }
+        },
+        "summary": "Read a data source",
+        "tags": [
+          "metadata-service"
+        ],
+        "x-auth": "session or API key, data:manage",
+        "x-backend": "metadata-service",
+        "x-beyond-section-9": "ADR 0004 item 6",
         "x-rate-tier": "authenticated"
       }
     },
@@ -2933,11 +3774,23 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConnectionSecretRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/DataSourceResponse"
+                }
               }
             },
             "description": "Successful Response"
@@ -2972,7 +3825,7 @@
             },
             "description": "Rate limited"
           },
-          "501": {
+          "502": {
             "content": {
               "application/json": {
                 "schema": {
@@ -2980,7 +3833,17 @@
                 }
               }
             },
-            "description": "Backing service not available yet"
+            "description": "Upstream unavailable"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Upstream timeout"
           }
         },
         "summary": "Set connection credentials",
@@ -2988,7 +3851,6 @@
           "metadata-service"
         ],
         "x-auth": "session or API key, data:manage, step-up",
-        "x-available-in-phase": "A3",
         "x-backend": "metadata-service",
         "x-rate-tier": "authenticated"
       }
@@ -3018,7 +3880,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/SyncResponse"
+                }
               }
             },
             "description": "Successful Response"
@@ -3053,7 +3917,7 @@
             },
             "description": "Rate limited"
           },
-          "501": {
+          "502": {
             "content": {
               "application/json": {
                 "schema": {
@@ -3061,16 +3925,203 @@
                 }
               }
             },
-            "description": "Backing service not available yet"
+            "description": "Upstream unavailable"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Upstream timeout"
           }
         },
-        "summary": "Enqueue catalog sync",
+        "summary": "Run catalog sync (synchronous until worker-runtime)",
         "tags": [
           "metadata-service"
         ],
         "x-auth": "session or API key, data:manage",
-        "x-available-in-phase": "A3",
         "x-backend": "metadata-service",
+        "x-rate-tier": "authenticated"
+      }
+    },
+    "/api/v1/data-sources/{id}/tables": {
+      "get": {
+        "operationId": "get_data_sources_id_tables",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TableListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Rate limited"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Upstream unavailable"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Upstream timeout"
+          }
+        },
+        "summary": "Catalog: tables of a data source",
+        "tags": [
+          "metadata-service"
+        ],
+        "x-auth": "session or API key, data:manage",
+        "x-backend": "metadata-service",
+        "x-beyond-section-9": "ADR 0004 item 6",
+        "x-rate-tier": "authenticated"
+      }
+    },
+    "/api/v1/data-sources/{id}/tables/{table_id}": {
+      "get": {
+        "operationId": "get_data_sources_id_tables_table_id",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "table_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TableDetailResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Rate limited"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Upstream unavailable"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Upstream timeout"
+          }
+        },
+        "summary": "Catalog: one table with columns and relationships",
+        "tags": [
+          "metadata-service"
+        ],
+        "x-auth": "session or API key, data:manage",
+        "x-backend": "metadata-service",
+        "x-beyond-section-9": "ADR 0004 item 6",
         "x-rate-tier": "authenticated"
       }
     },
@@ -3099,7 +4150,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectivityTestResponse"
+                }
               }
             },
             "description": "Successful Response"
@@ -3134,7 +4187,7 @@
             },
             "description": "Rate limited"
           },
-          "501": {
+          "502": {
             "content": {
               "application/json": {
                 "schema": {
@@ -3142,7 +4195,17 @@
                 }
               }
             },
-            "description": "Backing service not available yet"
+            "description": "Upstream unavailable"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Upstream timeout"
           }
         },
         "summary": "Sanitized connectivity test",
@@ -3150,7 +4213,6 @@
           "metadata-service"
         ],
         "x-auth": "session or API key, data:manage",
-        "x-available-in-phase": "A3",
         "x-backend": "metadata-service",
         "x-rate-tier": "authenticated"
       }

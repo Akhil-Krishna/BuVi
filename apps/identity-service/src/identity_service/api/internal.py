@@ -4,29 +4,41 @@
 * `GET  /internal/v1/jwks.json`   -- public keys for verifying service tokens.
 * `POST /internal/v1/introspect`  -- resolve a session token or API key to a Principal;
   requires a service token with `identity-service:introspect`.
+* `POST /internal/v1/audit-events` -- append an audit event on behalf of another service
+  (e.g. metadata-service `connection.*`, Sections 7.3 and 22); requires
+  `identity-service:audit` and an event type inside the client's registered namespace.
 """
 
 from __future__ import annotations
 
-from typing import Annotated, Any
+import json
+import uuid
+from typing import Annotated, Any, Literal
 from urllib.parse import parse_qs
 
-from fastapi import APIRouter, Depends, Request
-from pydantic import BaseModel, Field, model_validator
+from fastapi import APIRouter, Depends, Request, Response, status
+from pydantic import BaseModel, ConfigDict, Field, IPvAnyAddress, model_validator
 
+from identity_service.application.services.audit_service import AuditService
 from identity_service.application.services.service_token_service import ServiceTokenService
-from identity_service.core.config import SCOPE_INTROSPECT
+from identity_service.core.config import SCOPE_AUDIT_WRITE, SCOPE_INTROSPECT
 from identity_service.dependencies import (
     authenticate_credentials,
     get_app_settings,
     get_service_token_issuer,
+    get_session_factory,
 )
-from identity_service.domain.errors import ValidationFailedError
+from identity_service.domain.errors import AuditEventNotAllowedError, ValidationFailedError
+from identity_service.infrastructure.db.repositories.identity_repository import (
+    IdentityRepository,
+)
+from identity_service.infrastructure.db.session import tenant_scope
 from platform_auth import ServiceIdentity, require_service_scope
 
 router = APIRouter(prefix="/internal/v1", tags=["internal"])
 
 _MAX_FORM_BYTES = 4096
+_MAX_AUDIT_STATE_BYTES = 16_384
 
 
 class TokenResponse(BaseModel):
@@ -49,6 +61,22 @@ class IntrospectRequest(BaseModel):
 
 class IntrospectResponse(BaseModel):
     principal: dict[str, Any]
+
+
+class AuditEventRequest(BaseModel):
+    """One `identity.audit_events` row, recorded on behalf of a calling service."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    tenant_id: uuid.UUID
+    actor_user_id: uuid.UUID | None = None
+    actor_type: Literal["user", "service_account", "system"] = "user"
+    event_type: Annotated[str, Field(pattern=r"^[a-z][a-z_]*(\.[a-z][a-z_]*)+$", max_length=100)]
+    resource_type: Annotated[str, Field(min_length=1, max_length=100)] | None = None
+    resource_id: Annotated[str, Field(min_length=1, max_length=200)] | None = None
+    before_state: dict[str, Any] | None = None
+    after_state: dict[str, Any] | None = None
+    ip_address: IPvAnyAddress | None = None
 
 
 @router.post(
@@ -112,3 +140,41 @@ async def introspect(
         request, session_token=payload.session_token, api_key=payload.api_key
     )
     return IntrospectResponse(principal=principal.to_dict())
+
+
+@router.post("/audit-events", status_code=status.HTTP_204_NO_CONTENT, response_class=Response)
+async def record_audit_event(
+    request: Request,
+    payload: AuditEventRequest,
+    service: Annotated[ServiceIdentity, Depends(require_service_scope(SCOPE_AUDIT_WRITE))],
+) -> Response:
+    """Append an audit event for another service (Sections 7.3, 22).
+
+    `identity.audit_events` has one owner, so services that perform audited operations
+    (metadata-service: connection creation and credential changes) record them here
+    instead of writing another service's table (Section 37). The client's registered
+    namespace bounds what it may write, so a compromised caller cannot forge, say, a
+    `user.role_changed` row. Secret-shaped keys are redacted like every other row.
+    """
+    client = get_app_settings(request).service_clients.get(service.subject)
+    prefixes = tuple(client.audit_event_prefixes) if client else ()
+    if not prefixes or not payload.event_type.startswith(prefixes):
+        raise AuditEventNotAllowedError()
+    states = json.dumps([payload.before_state, payload.after_state], default=str)
+    if len(states.encode("utf-8")) > _MAX_AUDIT_STATE_BYTES:
+        raise ValidationFailedError()
+
+    async with tenant_scope(get_session_factory(request), payload.tenant_id) as db:
+        await AuditService(IdentityRepository(db)).record(
+            event_type=payload.event_type,
+            tenant_id=payload.tenant_id,
+            actor_user_id=payload.actor_user_id,
+            actor_type=payload.actor_type,
+            resource_type=payload.resource_type,
+            resource_id=payload.resource_id,
+            before_state=payload.before_state,
+            after_state=payload.after_state,
+            ip_address=str(payload.ip_address) if payload.ip_address else None,
+        )
+        await db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

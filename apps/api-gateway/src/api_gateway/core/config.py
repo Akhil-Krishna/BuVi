@@ -24,7 +24,10 @@ class Settings(BaseSettings):
     # --- Upstreams ------------------------------------------------------------
     #: Owning service -> base URL. Services join this map as their phases land.
     backend_urls: dict[str, str] = Field(
-        default_factory=lambda: {"identity-service": "http://localhost:8001"}
+        default_factory=lambda: {
+            "identity-service": "http://localhost:8001",
+            "metadata-service": "http://localhost:8002",
+        }
     )
     upstream_connect_timeout_seconds: float = 3.0
     upstream_timeout_seconds: float = 30.0

@@ -13,7 +13,7 @@ import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport
 
-from identity_service.core.config import SCOPE_INTROSPECT, SCOPE_PROXY, Settings
+from identity_service.core.config import SCOPE_AUDIT_WRITE, SCOPE_INTROSPECT, SCOPE_PROXY, Settings
 from identity_service.infrastructure.email.sender import InMemoryEmailSender
 from identity_service.infrastructure.secrets.store import InMemorySecretStore
 from identity_service.tests.conftest import Fixtures, StubOidcClient
@@ -217,3 +217,118 @@ async def test_forwarded_ip_is_trusted_only_from_the_gateway(
     )
     assert proxied.status_code == 201
     assert await fixtures.latest_audit_ip(tenant, "api_key.created") == "203.0.113.7"
+
+
+# --- Audit events recorded on behalf of other services (ADR 0004) ---------------------
+
+
+def _service_token(app: FastAPI, subject: str, *scopes: str) -> str:
+    return str(
+        app.state.service_token_issuer.issue(
+            subject=subject, audience="identity-service", scopes=frozenset(scopes)
+        )
+    )
+
+
+async def _audit_rows(fixtures: Fixtures, tenant: uuid.UUID) -> list[dict[str, object]]:
+    from sqlalchemy import text
+
+    async with fixtures._factory() as session:
+        result = await session.execute(
+            text(
+                "SELECT event_type, actor_user_id, resource_type, resource_id, before_state, "
+                "after_state, request_id, host(ip_address) AS ip FROM identity.audit_events "
+                "WHERE tenant_id = :tid ORDER BY created_at"
+            ),
+            {"tid": str(tenant)},
+        )
+        return [dict(row._mapping) for row in result]
+
+
+@pytest.mark.parametrize(
+    ("subject", "scope"), [("metadata-service", SCOPE_AUDIT_WRITE)], ids=["metadata-service"]
+)
+async def test_token_grant_for_metadata_service_audit_scope(
+    client: httpx.AsyncClient, subject: str, scope: str
+) -> None:
+    allowed = await client.post(
+        "/internal/v1/oauth/token",
+        data=_grant(client_id=subject, client_secret="dev-metadata-secret", scope=scope),
+    )
+    assert allowed.status_code == 200, allowed.text
+    refused = await client.post(
+        "/internal/v1/oauth/token",
+        data=_grant(client_id=subject, client_secret="dev-metadata-secret", scope=SCOPE_PROXY),
+    )
+    assert refused.status_code == 403
+
+
+async def test_service_records_audit_event_with_redaction_and_request_id(
+    app: FastAPI, client: httpx.AsyncClient, fixtures: Fixtures, tenant: uuid.UUID
+) -> None:
+    actor = await fixtures.create_user(
+        tenant_id=tenant, email="dev@acme.example.com", roles=frozenset({"developer"})
+    )
+    response = await client.post(
+        "/internal/v1/audit-events",
+        headers={
+            SVC: f"Bearer {_service_token(app, 'metadata-service', SCOPE_AUDIT_WRITE)}",
+            "X-Request-ID": "req_metadata_0001",
+        },
+        json={
+            "tenant_id": str(tenant),
+            "actor_user_id": str(actor),
+            "event_type": "connection.secret_rotated",
+            "resource_type": "data_source",
+            "resource_id": "ds-1",
+            "before_state": {"status": "active"},
+            "after_state": {"status": "pending", "password": "hunter2-audit"},
+            "ip_address": "203.0.113.9",
+        },
+    )
+    assert response.status_code == 204, response.text
+    row = (await _audit_rows(fixtures, tenant))[-1]
+    assert row["event_type"] == "connection.secret_rotated"
+    assert row["actor_user_id"] == actor
+    assert row["request_id"] == "req_metadata_0001"
+    assert row["ip"] == "203.0.113.9"
+    assert row["after_state"] == {"status": "pending", "password": "[REDACTED]"}
+    assert "hunter2-audit" not in str(row)
+
+
+@pytest.mark.parametrize(
+    ("subject", "scopes", "event_type", "status", "code"),
+    [
+        (
+            "metadata-service",
+            (SCOPE_AUDIT_WRITE,),
+            "user.role_changed",
+            403,
+            "AUDIT_EVENT_NOT_ALLOWED",
+        ),
+        ("api-gateway", (SCOPE_AUDIT_WRITE,), "connection.created", 403, "AUDIT_EVENT_NOT_ALLOWED"),
+        ("metadata-service", (SCOPE_INTROSPECT,), "connection.created", 403, "FORBIDDEN"),
+        (None, (), "connection.created", 401, "AUTHENTICATION_REQUIRED"),
+    ],
+    ids=["foreign-namespace", "client-without-namespace", "missing-scope", "no-token"],
+)
+async def test_audit_event_refusals_write_nothing(
+    app: FastAPI,
+    client: httpx.AsyncClient,
+    fixtures: Fixtures,
+    tenant: uuid.UUID,
+    subject: str | None,
+    scopes: tuple[str, ...],
+    event_type: str,
+    status: int,
+    code: str,
+) -> None:
+    headers = {SVC: f"Bearer {_service_token(app, subject, *scopes)}"} if subject else {}
+    response = await client.post(
+        "/internal/v1/audit-events",
+        headers=headers,
+        json={"tenant_id": str(tenant), "event_type": event_type},
+    )
+    assert response.status_code == status, response.text
+    assert response.json()["error"]["code"] == code
+    assert await _audit_rows(fixtures, tenant) == []

@@ -17,11 +17,13 @@ is genuinely missing, stop and ask, don't guess.
 
 > Update this line yourself after every completed phase, then commit it.
 
-**Phase A2 (API Gateway) is complete — `apps/api-gateway` routes every Section 9 route (501 stubs
-for unbuilt backends) with authentication via identity-service introspection, Redis token-bucket
-rate limiting (IP/auth, user, tenant), service-JWT proxying, the shared Section 21 error envelope,
-and `contracts/openapi/*.json` with a CI drift check. Decisions: `docs/adr/0003-phase-a2-api-gateway.md`.
-Next up: Phase A3 (Metadata Service). See Section 31 of the build spec.**
+**Phase A3 (Metadata Service) is complete — `apps/metadata-service` owns the Section 8.2 `metadata`
+schema (RLS on every table): data-source CRUD with credentials only in Vault via the new shared
+`platform-secrets` client, a sanitized connectivity test, synchronous Postgres catalog sync
+(egress-controlled, read-only), catalog read APIs, audit via identity-service's internal
+`/internal/v1/audit-events`, the authorization triplet, and `make test-data-sources` (live DoD flow).
+Decisions: `docs/adr/0004-phase-a3-metadata-service.md`.
+Next up: Phase A4 (Query Gateway). See Section 31 of the build spec.**
 
 ## Build order (do not violate)
 

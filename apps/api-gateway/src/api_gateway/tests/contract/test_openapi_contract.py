@@ -58,3 +58,24 @@ def test_identity_bodies_are_composed_from_its_contract() -> None:
     assert isinstance(paths, dict)
     invite = paths["/api/v1/admin/invitations"]["post"]
     assert "requestBody" in invite and "201" in invite["responses"]
+
+
+def test_metadata_routes_exist_in_the_metadata_contract() -> None:
+    """Every live metadata-service route the gateway exposes is served by the service."""
+    contract = DEFAULT_CONTRACTS_DIR / "metadata-service.json"
+    if not contract.is_file():
+        pytest.skip("metadata-service contract not exported yet")
+    upstream = json.loads(contract.read_text())
+    served = {
+        (re.sub(r"\{[^}]+\}", "{}", path), method.upper())
+        for path, ops in upstream["paths"].items()
+        for method in ops
+    }
+    for route in CATALOG:
+        if route.backend == "metadata-service" and not route.is_stub:
+            key = (re.sub(r"\{[^}]+\}", "{}", f"/api/v1{route.path}"), route.method)
+            assert key in served, key
+    paths = _generated()["paths"]
+    assert isinstance(paths, dict)
+    create = paths["/api/v1/data-sources"]["post"]
+    assert "requestBody" in create and "201" in create["responses"]

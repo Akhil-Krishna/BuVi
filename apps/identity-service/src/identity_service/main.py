@@ -61,7 +61,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.secrets = (
             InMemorySecretStore()
             if settings.vault_use_memory_stub
-            else VaultSecretStore(settings, http)
+            else VaultSecretStore(
+                addr=settings.vault_addr,
+                token=settings.vault_token.get_secret_value(),
+                mount=settings.vault_mount,
+                http=http,
+            )
         )
     if getattr(app.state, "oidc", None) is None:
         app.state.oidc = KeycloakOidcClient(settings, http)

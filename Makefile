@@ -8,7 +8,8 @@ WEB := web/next-app
 
 .DEFAULT_GOAL := help
 .PHONY: help sync lint fmt typecheck test web-install web-lint web-typecheck web-test \
-        web-build check up down migrate seed dev dev-gateway contracts contracts-check test-login
+        web-build check up down migrate seed dev dev-gateway dev-metadata contracts contracts-check \
+        test-login test-data-sources
 
 help: ## List available targets
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) \
@@ -89,6 +90,10 @@ dev-gateway: ## Start api-gateway with reload on :8000
 	cd apps/api-gateway && uv run --package api-gateway \
 		uvicorn api_gateway.main:create_app --factory --reload --port 8000
 
+dev-metadata: ## Start metadata-service with reload on :8002
+	cd apps/metadata-service && uv run --package metadata-service \
+		uvicorn metadata_service.main:create_app --factory --reload --port 8002
+
 contracts: ## Export every service's OpenAPI document into contracts/openapi/
 	scripts/gen-openapi.sh
 
@@ -97,3 +102,6 @@ contracts-check: ## Fail on OpenAPI drift or unversioned breaking changes
 
 test-login: ## Scripted flow through api-gateway: invite, MailHog, login, logout, rate limit
 	scripts/test-login.sh
+
+test-data-sources: ## Phase A3 scripted flow through api-gateway: add, test, sync, browse sample-sales-db
+	scripts/test-data-sources.sh

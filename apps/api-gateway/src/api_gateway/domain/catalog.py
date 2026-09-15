@@ -19,6 +19,7 @@ from typing import Final, Literal
 RateTier = Literal["auth", "public", "authenticated"]
 
 IDENTITY: Final = "identity-service"
+METADATA: Final = "metadata-service"
 
 
 @dataclass(frozen=True)
@@ -38,8 +39,10 @@ class RouteSpec:
     rate_tier: RateTier = "authenticated"
     #: Phase in which the backend is built; None when it is live now.
     available_in_phase: str | None = None
-    #: False for routes identity-service exposes beyond Section 9 (ADR 0002 item 8).
+    #: False for routes an owning service exposes beyond Section 9.
     in_section_9: bool = True
+    #: The decision record for a route beyond Section 9.
+    decision: str = "ADR 0002 item 8"
 
     @property
     def is_stub(self) -> bool:
@@ -53,6 +56,10 @@ class RouteSpec:
 
 def _identity(method: str, path: str, summary: str, **kwargs: object) -> RouteSpec:
     return RouteSpec(method, path, summary, IDENTITY, **kwargs)  # type: ignore[arg-type]
+
+
+def _metadata(method: str, path: str, summary: str, **kwargs: object) -> RouteSpec:
+    return RouteSpec(method, path, summary, METADATA, **kwargs)  # type: ignore[arg-type]
 
 
 def _stub(
@@ -207,46 +214,48 @@ CATALOG: Final[tuple[RouteSpec, ...]] = (
         step_up=True,
     ),
     # --- Data sources (Sections 8.2, 13.1) --------------------------------------------------
-    _stub(
-        "GET",
-        "/data-sources",
-        "List data sources",
-        "metadata-service",
-        "A3",
-        permission="data:manage",
-    ),
-    _stub(
-        "POST",
-        "/data-sources",
-        "Create a data source",
-        "metadata-service",
-        "A3",
-        permission="data:manage",
-    ),
-    _stub(
+    _metadata("GET", "/data-sources", "List data sources", permission="data:manage"),
+    _metadata("POST", "/data-sources", "Create a data source", permission="data:manage"),
+    _metadata(
         "POST",
         "/data-sources/{id}/secret",
         "Set connection credentials",
-        "metadata-service",
-        "A3",
         permission="data:manage",
         step_up=True,
     ),
-    _stub(
-        "POST",
-        "/data-sources/{id}/test",
-        "Sanitized connectivity test",
-        "metadata-service",
-        "A3",
-        permission="data:manage",
+    _metadata(
+        "POST", "/data-sources/{id}/test", "Sanitized connectivity test", permission="data:manage"
     ),
-    _stub(
+    _metadata(
         "POST",
         "/data-sources/{id}/sync",
-        "Enqueue catalog sync",
-        "metadata-service",
-        "A3",
+        "Run catalog sync (synchronous until worker-runtime)",
         permission="data:manage",
+    ),
+    # metadata-service catalog reads beyond Section 9: the Phase A3 DoD's catalog API.
+    _metadata(
+        "GET",
+        "/data-sources/{id}",
+        "Read a data source",
+        permission="data:manage",
+        in_section_9=False,
+        decision="ADR 0004 item 6",
+    ),
+    _metadata(
+        "GET",
+        "/data-sources/{id}/tables",
+        "Catalog: tables of a data source",
+        permission="data:manage",
+        in_section_9=False,
+        decision="ADR 0004 item 6",
+    ),
+    _metadata(
+        "GET",
+        "/data-sources/{id}/tables/{table_id}",
+        "Catalog: one table with columns and relationships",
+        permission="data:manage",
+        in_section_9=False,
+        decision="ADR 0004 item 6",
     ),
     # --- SQL (Section 13) ----------------------------------------------------------------------
     _stub(

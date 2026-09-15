@@ -7,7 +7,8 @@
 # Deviation from the Section 27 listing, recorded in ADR 0002:
 #   * the obsolete top-level `version:` key is dropped (Compose v2 warns on it);
 #   * health checks and an `identity`-schema init script are added so `make up`
-#     is usable as a test fixture rather than merely "the containers started".
+#     is usable as a test fixture rather than merely "the containers started";
+#   * sample-sales-db mounts a seed script for its `sales` schema (ADR 0004).
 
 name: buvi-dev
 
@@ -113,6 +114,10 @@ services:
       POSTGRES_PASSWORD: sales
       POSTGRES_DB: sample_sales
     ports: ["5433:5432"]
+    # Seeds the `sales` schema and the read-only `buvi_reader` role on a fresh
+    # container; `scripts/seed-sample-sales.sh` re-applies it to an existing one.
+    volumes:
+      - "./sample-sales-init:/docker-entrypoint-initdb.d:ro"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d sample_sales"]
       interval: 5s

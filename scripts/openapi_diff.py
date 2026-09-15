@@ -3,6 +3,10 @@
 Fails on any drift. A breaking change (removed operation, new required parameter or
 required body, removed success response) additionally needs a major `info.version`
 bump -- Section 26: "fail on breaking change without version bump".
+
+An operation the committed contract marks `x-available-in-phase` is a `501` stub for a
+backend that did not exist yet: it promised nothing, so replacing it with the real
+contract is not a breaking change (ADR 0004).
 """
 
 from __future__ import annotations
@@ -30,6 +34,8 @@ def breaking_changes(old: dict[str, Any], new: dict[str, Any]) -> list[str]:
     for key, old_op in old_ops.items():
         new_op = new_ops.get(key)
         label = f"{key[1].upper()} {key[0]}"
+        if old_op.get("x-available-in-phase") and new_op is not None:
+            continue
         if new_op is None:
             problems.append(f"removed operation {label}")
             continue

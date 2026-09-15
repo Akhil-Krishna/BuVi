@@ -1,8 +1,8 @@
 """Principal, OIDC/JWT validation, and authorization dependencies (Sections 6.3, 7.2).
 
-Contract: `Principal`, `require_permission`, `require_resource_owner`, and
-`require_step_up`. A permission check alone is never sufficient on an endpoint
-that takes a resource ID -- cross-tenant IDs return 404, not 403 (Section 7.2).
+Contract: `Principal`, `require_permission`, `require_resource_owner`, `require_step_up`,
+service tokens, and `IntrospectionClient`. A permission check alone is never sufficient on
+an endpoint that takes a resource ID -- cross-tenant IDs return 404, not 403 (Section 7.2).
 
 Role-to-permission resolution is the Section 7.1 matrix in `permissions`; no
 service re-derives it and none reads a permission list out of a token claim.
@@ -16,6 +16,14 @@ from platform_auth.dependencies import (
     require_permission,
     require_resource_owner,
     require_step_up,
+)
+from platform_auth.introspection import (
+    CredentialRejectedError,
+    IdentityTimeoutError,
+    IntrospectionClient,
+    IntrospectionError,
+    PrincipalNotActiveError,
+    request_credentials,
 )
 from platform_auth.permissions import (
     ALL_PERMISSIONS,
@@ -45,7 +53,12 @@ __all__ = [
     "STEP_UP_MAX_AGE",
     "TENANT_ROLES",
     "AuthMethod",
+    "CredentialRejectedError",
+    "IdentityTimeoutError",
+    "IntrospectionClient",
+    "IntrospectionError",
     "Principal",
+    "PrincipalNotActiveError",
     "PrincipalResolver",
     "ServiceIdentity",
     "ServiceTokenClient",
@@ -57,6 +70,7 @@ __all__ = [
     "install_principal_resolver",
     "install_service_token_verifier",
     "permissions_for_roles",
+    "request_credentials",
     "require_permission",
     "require_resource_owner",
     "require_service_scope",

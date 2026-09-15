@@ -59,6 +59,7 @@ known-first-party = [
     "platform_auth",
     "platform_contracts",
     "platform_observability",
+    "platform_secrets",
     "platform_testing",
 ]
 

@@ -7,9 +7,11 @@ members = [
     "api-gateway",
     "buvi",
     "identity-service",
+    "metadata-service",
     "platform-auth",
     "platform-contracts",
     "platform-observability",
+    "platform-secrets",
     "platform-testing",
 ]
 
@@ -488,6 +490,7 @@ dependencies = [
     { name = "httpx" },
     { name = "platform-auth" },
     { name = "platform-observability" },
+    { name = "platform-secrets" },
     { name = "pydantic", extra = ["email"] },
     { name = "pydantic-settings" },
     { name = "pyotp" },
@@ -505,6 +508,7 @@ requires-dist = [
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "platform-auth", editable = "packages/python/platform-auth" },
     { name = "platform-observability", editable = "packages/python/platform-observability" },
+    { name = "platform-secrets", editable = "packages/python/platform-secrets" },
     { name = "pydantic", extras = ["email"], specifier = ">=2.13.5" },
     { name = "pydantic-settings", specifier = ">=2.15.0" },
     { name = "pyotp", specifier = ">=2.10.0" },
@@ -597,6 +601,39 @@ wheels = [
 ]
 
 [[package]]
+name = "metadata-service"
+version = "0.1.0"
+source = { editable = "apps/metadata-service" }
+dependencies = [
+    { name = "alembic" },
+    { name = "asyncpg" },
+    { name = "fastapi" },
+    { name = "httpx" },
+    { name = "platform-auth" },
+    { name = "platform-observability" },
+    { name = "platform-secrets" },
+    { name = "pydantic" },
+    { name = "pydantic-settings" },
+    { name = "sqlalchemy", extra = ["asyncio"] },
+    { name = "uvicorn" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "alembic", specifier = ">=1.20.0" },
+    { name = "asyncpg", specifier = ">=0.31.0" },
+    { name = "fastapi", specifier = ">=0.141.1" },
+    { name = "httpx", specifier = ">=0.28.1" },
+    { name = "platform-auth", editable = "packages/python/platform-auth" },
+    { name = "platform-observability", editable = "packages/python/platform-observability" },
+    { name = "platform-secrets", editable = "packages/python/platform-secrets" },
+    { name = "pydantic", specifier = ">=2.13.5" },
+    { name = "pydantic-settings", specifier = ">=2.15.0" },
+    { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0.52" },
+    { name = "uvicorn", specifier = ">=0.52.4" },
+]
+
+[[package]]
 name = "mypy"
 version = "2.3.1"
 source = { registry = "https://pypi.org/simple" }
@@ -653,6 +690,7 @@ dependencies = [
     { name = "fastapi" },
     { name = "httpx" },
     { name = "joserfc" },
+    { name = "platform-observability" },
 ]
 
 [package.metadata]
@@ -660,6 +698,7 @@ requires-dist = [
     { name = "fastapi", specifier = ">=0.141.1" },
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "joserfc", specifier = ">=1.7.5" },
+    { name = "platform-observability", editable = "packages/python/platform-observability" },
 ]
 
 [[package]]
@@ -677,6 +716,17 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [{ name = "fastapi", specifier = ">=0.141.1" }]
+
+[[package]]
+name = "platform-secrets"
+version = "0.1.0"
+source = { editable = "packages/python/platform-secrets" }
+dependencies = [
+    { name = "httpx" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "httpx", specifier = ">=0.28.1" }]
 
 [[package]]
 name = "platform-testing"
