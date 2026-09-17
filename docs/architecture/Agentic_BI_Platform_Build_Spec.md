@@ -1135,8 +1135,9 @@ optional `Idempotency-Key` header. All responses use the error envelope in Secti
 
 ```jsonc
 // POST /conversations/{id}/messages
-// Request
-{ "content": "Create a sales dashboard for Q2 with monthly revenue and regional performance." }
+// Request (optional `Idempotency-Key` header; replays return the same run)
+{ "content": "Create a sales dashboard for Q2 with monthly revenue and regional performance.",
+  "data_source_id": "ds_01..." }  // optional; required only when the tenant has more than one active data source
 // Response 202
 { "run_id": "run_01HXYZ...", "conversation_id": "conv_01..." }
 ```
@@ -1249,13 +1250,17 @@ type AnalyticsRunEvent = {
   runId: string;
   seq: number;
   stage: "intent" | "schema" | "semantic" | "sql" | "validation"
-       | "execution" | "visualization" | "completed";
+       | "execution" | "visualization" | "artifact" | "run";
   status: "started" | "completed" | "failed";
   message: string;      // user-safe summary only
   artifactId?: string;
   createdAt: string;
 };
 ```
+
+On the SSE stream each event is sent with `id: <seq>` and `event: <stage>.<status>` (e.g.
+`execution.completed`, `run.completed`), so a reconnecting client resumes with `Last-Event-ID`.
+A run ends with exactly one `run.completed` or `run.failed` event.
 
 Use **Server-Sent Events (SSE)** for the browser stream (`GET /runs/{id}/events`) — the need is
 one-way server→client progress. FastAPI supports SSE via `StreamingResponse`; back it with a
@@ -1331,6 +1336,14 @@ POST /internal/v1/queries          (called only by analytics-orchestrator's exec
 -> store result handle in object storage with TTL (default 24h) + row-level audit record
 -> emit query.completed event
 ```
+
+`POST /internal/v1/queries/validate` runs the same authorization, policy load and validation
+without executing (audited as `validated` or `rejected`); the Flow's `validate_sql` stage calls it,
+so there is exactly one validator. A queued analytics run has no live user session:
+analytics-orchestrator (and only it, only for purpose `analytics_run`) may send
+`"on_behalf_of": {"tenant_id": ..., "user_id": ...}` with the `run_id`, and query-gateway
+re-resolves that user's *current* principal from identity-service -- roles and status are never
+taken from the caller.
 
 **SQL allow-list (v1):** `SELECT` statements only, single statement, no semicolon-chained
 statements, no CTEs that call volatile/administrative functions, no file/network functions, no
@@ -1497,7 +1510,7 @@ is.
 | Topic | Producer | Consumers | Payload (JSON Schema in `contracts/events/`) |
 |---|---|---|---|
 | `analytics.run.requested` | analytics-orchestrator | worker-runtime | `{run_id, tenant_id, conversation_id}` |
-| `analytics.run.stage_changed` | worker-runtime (Flow) | analytics-orchestrator (SSE bridge) | `AnalyticsRunEvent` (Section 11) |
+| `analytics.run.stage_changed` | analytics-orchestrator (Flow) | api-gateway (SSE bridge) | `AnalyticsRunEvent` (Section 11); carried on Redis pub/sub channel `analytics:run:{run_id}`, durable copy in `analytics.run_events` |
 | `query.completed` | query-gateway | analytics-orchestrator, notification-service | `{query_id, run_id, status, row_count}` |
 | `metadata.sync.requested` | metadata-service, scheduler | worker-runtime | `{data_source_id, tenant_id}` |
 | `metadata.sync.completed` | worker-runtime | metadata-service, notification-service | `{data_source_id, status, tables_synced}` |
@@ -2126,22 +2139,39 @@ mkdir -p apps web/next-app packages/python packages/ts infra/{docker,compose,kub
 ### Phase A5 — Analytics Orchestrator + first CrewAI Flow (single DB, single dialect)
 
 - Scaffold per Section 4.1; implement DDL from Section 8.4.
-- Implement the `AnalyticsFlow` (Section 10) end-to-end against **one** Postgres data source only:
-  `load_context → classify_intent → retrieve_schema → build_query_plan → generate_sql →
-  validate_sql → authorize_query → execute_query → build_chart_spec → validate_chart_spec →
-  persist_artifact → publish_events`. Skip `resolve_semantics` for this phase (Section 30 step 8
-  adds it later) — hardcode "use tenant-visible tables directly."
-- Implement Flow-state persistence to `analytics.runs.flow_state` after every stage (Section 10.2).
-- Wire `worker-runtime` as the consumer of `analytics.run.requested` (introduce worker-runtime
-  now, even though its full job catalog comes later).
-- Implement SSE bridge: worker publishes stage events to Redis pub/sub; api-gateway's
-  `GET /runs/{id}/events` streams them (Section 11, 18).
+- Implement the `AnalyticsFlow` (Section 10) as a CrewAI Flow, end-to-end against **one** Postgres
+  data source only: `load_context → classify_intent → retrieve_schema → build_query_plan →
+  generate_sql → validate_sql → authorize_query → execute_query → build_chart_spec →
+  validate_chart_spec → persist_artifact → publish_events`. Skip `resolve_semantics` for this phase
+  (Section 30 step 8 adds it later) — hardcode "use tenant-visible tables directly." `analyze_result`
+  is also deferred.
+- The Flow executes inside analytics-orchestrator (Sections 3, 10, 30.1). `retrieve_schema` reads an
+  agent context packet from metadata-service (agent-visible tables, non-PII columns, never
+  `secret_ref`; Sections 10.3, 12). `validate_sql` calls query-gateway's
+  `POST /internal/v1/queries/validate` and `execute_query` calls `POST /internal/v1/queries` on behalf
+  of the requesting user (Section 13) — the Flow never holds its own copy of the validator.
+- `validate_chart_spec` checks a strict `ChartSpec` model in `packages/python/platform-contracts`
+  (Section 17); Phase A6's visualization-service takes over that validation from the same model.
+  `persist_artifact` stores the `AnalyticsArtifact` (Section 16) in the run's `flow_state` and
+  references it by `artifact_id` in `run_events`; Phase A6 moves the canonical store to
+  dashboard-service (Section 8.9).
+- Implement Flow-state persistence to `analytics.runs.flow_state` after every stage (Section 10.2);
+  a resumed run skips completed stages and never re-emits their events.
+- Wire `worker-runtime` as the durable JetStream consumer of `analytics.run.requested` (introduce
+  worker-runtime now, even though its full job catalog comes later): it drives the run's execution
+  in analytics-orchestrator and redelivers it if the executor or the worker dies mid-run.
+- Implement SSE bridge: the Flow persists each `AnalyticsRunEvent` and publishes it to Redis pub/sub
+  channel `analytics:run:{run_id}`; api-gateway's `GET /runs/{id}/events` replays persisted events,
+  then streams live ones (Section 11, 18).
 - Implement the `ModelRouter` (Section 23) with one provider/model and budget enforcement from
-  day one — do not defer budget enforcement to "later."
+  day one — per-run token cap, per-tenant daily token cap, 90s per stage, 300s per run — do not
+  defer budget enforcement to "later."
+- `POST /conversations/{id}/messages` honours `Idempotency-Key` through `analytics.runs.idempotency_key`.
 - **DoD:** `POST /conversations/{id}/messages` with "Create a sales dashboard for Q2 with monthly
-  revenue" produces a `run_id`; the SSE stream shows the full user-safe stage sequence; a worker
-  restart mid-run resumes from the last persisted stage instead of restarting; token budget
-  enforcement test proves a run is failed with `RUN_BUDGET_EXCEEDED` when the cap is exceeded.
+  revenue" produces a `run_id`; the SSE stream shows the full user-safe stage sequence (Section 32);
+  a worker or executor restart mid-run resumes from the last persisted stage instead of restarting;
+  token budget enforcement test proves a run is failed with `RUN_BUDGET_EXCEEDED` when the cap is
+  exceeded.
 
 ### Phase A6 — Visualization Service + Dashboard Service (API only)
 
@@ -2321,14 +2351,15 @@ Step A — POST /api/v1/conversations/{id}/messages
   out: { "run_id": "run_01..." }
 
 Step B — GET /api/v1/runs/{run_id}/events   (SSE)
-  events, in order:
-    intent.started        intent.completed
-    schema.started         schema.completed
+  events, in order (each stage emits started then completed; on failure `<stage>.failed`
+  followed by `run.failed`):
+    intent.started          intent.completed
+    schema.started          schema.completed
     sql.started             sql.completed
-    validation.completed
+    validation.started      validation.completed
     execution.started       execution.completed
-    visualization.completed
-    artifact.created
+    visualization.started   visualization.completed
+    artifact.started        artifact.completed      (carries artifactId)
     run.completed
 
 Step C — GET /api/v1/artifacts/{artifact_id}
