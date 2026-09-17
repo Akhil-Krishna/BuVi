@@ -62,6 +62,14 @@ class PurposeNotSupportedError(DomainError):
     message = "This query purpose is not supported yet."
 
 
+class DelegationNotAllowedError(DomainError):
+    """`on_behalf_of` from a caller, purpose or request shape that may not delegate (Section 13)."""
+
+    code = "DELEGATION_NOT_ALLOWED"
+    status_code = 403
+    message = "This caller may not act on behalf of a user for this request."
+
+
 class DataSourceNotActiveError(DomainError):
     code = "DATA_SOURCE_NOT_ACTIVE"
     status_code = 409

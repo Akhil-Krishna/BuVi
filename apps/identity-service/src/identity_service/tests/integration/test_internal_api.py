@@ -13,7 +13,13 @@ import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport
 
-from identity_service.core.config import SCOPE_AUDIT_WRITE, SCOPE_INTROSPECT, SCOPE_PROXY, Settings
+from identity_service.core.config import (
+    SCOPE_AUDIT_WRITE,
+    SCOPE_INTROSPECT,
+    SCOPE_PROXY,
+    SCOPE_RESOLVE_PRINCIPAL,
+    Settings,
+)
 from identity_service.infrastructure.email.sender import InMemoryEmailSender
 from identity_service.infrastructure.secrets.store import InMemorySecretStore
 from identity_service.tests.conftest import Fixtures, StubOidcClient
@@ -360,3 +366,122 @@ async def test_token_grant_for_query_gateway_is_limited_to_its_audiences(
     ):
         refused = await client.post("/internal/v1/oauth/token", data=grant(audience, scope))
         assert refused.status_code == 403, (audience, scope)
+
+
+# --- Delegated principal resolution (ADR 0006) -------------------------------------------------
+
+
+async def test_resolve_principal_returns_current_roles_never_step_up(
+    app: FastAPI,
+    client: httpx.AsyncClient,
+    fixtures: Fixtures,
+    tenant: uuid.UUID,
+    other_tenant: uuid.UUID,
+) -> None:
+    user = await fixtures.create_user(
+        tenant_id=tenant, email="chat@acme.example.com", roles=frozenset({"client"})
+    )
+    headers = {
+        SVC: f"Bearer {_service_token(app, 'analytics-orchestrator', SCOPE_RESOLVE_PRINCIPAL)}"
+    }
+    response = await client.post(
+        "/internal/v1/principals/resolve",
+        headers=headers,
+        json={"tenant_id": str(tenant), "user_id": str(user)},
+    )
+    assert response.status_code == 200, response.text
+    principal = response.json()["principal"]
+    assert principal["user_id"] == str(user) and principal["tenant_id"] == str(tenant)
+    assert "chat:use" in principal["permissions"] and "sql:execute" not in principal["permissions"]
+    assert principal["auth_method"] == "service_jwt"
+    assert principal["mfa_verified"] is False and principal["mfa_verified_at"] is None
+
+    foreign = await client.post(
+        "/internal/v1/principals/resolve",
+        headers=headers,
+        json={"tenant_id": str(other_tenant), "user_id": str(user)},
+    )
+    assert foreign.status_code == 404
+    inactive = await fixtures.create_user(
+        tenant_id=tenant,
+        email="gone@acme.example.com",
+        roles=frozenset({"client"}),
+        status="deactivated",
+    )
+    refused = await client.post(
+        "/internal/v1/principals/resolve",
+        headers=headers,
+        json={"tenant_id": str(tenant), "user_id": str(inactive)},
+    )
+    assert refused.status_code == 403 and refused.json()["error"]["code"] == "USER_NOT_ACTIVE"
+    wrong_scope = {SVC: f"Bearer {_service_token(app, 'analytics-orchestrator', SCOPE_INTROSPECT)}"}
+    denied = await client.post(
+        "/internal/v1/principals/resolve",
+        headers=wrong_scope,
+        json={"tenant_id": str(tenant), "user_id": str(user)},
+    )
+    assert denied.status_code == 403
+
+
+@pytest.mark.parametrize(
+    ("client_id", "secret", "audience", "scope", "allowed"),
+    [
+        (
+            "analytics-orchestrator",
+            "dev-analytics-orchestrator-secret",
+            "query-gateway",
+            "query-gateway:execute",
+            True,
+        ),
+        (
+            "analytics-orchestrator",
+            "dev-analytics-orchestrator-secret",
+            "metadata-service",
+            "metadata-service:context",
+            True,
+        ),
+        (
+            "analytics-orchestrator",
+            "dev-analytics-orchestrator-secret",
+            "metadata-service",
+            "metadata-service:query-policy",
+            False,
+        ),
+        (
+            "worker-runtime",
+            "dev-worker-runtime-secret",
+            "analytics-orchestrator",
+            "analytics-orchestrator:execute",
+            True,
+        ),
+        (
+            "worker-runtime",
+            "dev-worker-runtime-secret",
+            "query-gateway",
+            "query-gateway:execute",
+            False,
+        ),
+        (
+            "api-gateway",
+            "dev-gateway-secret",
+            "analytics-orchestrator",
+            "analytics-orchestrator:events",
+            True,
+        ),
+        (
+            "api-gateway",
+            "dev-gateway-secret",
+            "analytics-orchestrator",
+            "analytics-orchestrator:execute",
+            False,
+        ),
+    ],
+)
+async def test_analytics_service_clients_get_only_their_scopes(
+    client: httpx.AsyncClient, client_id: str, secret: str, audience: str, scope: str, allowed: bool
+) -> None:
+    response = await client.post(
+        "/internal/v1/oauth/token",
+        data=_grant(client_id=client_id, client_secret=secret, audience=audience, scope=scope),
+    )
+    assert (response.status_code == 200) is allowed, response.text

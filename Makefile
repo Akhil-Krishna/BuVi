@@ -9,7 +9,7 @@ WEB := web/next-app
 .DEFAULT_GOAL := help
 .PHONY: help sync lint fmt typecheck test web-install web-lint web-typecheck web-test \
         web-build check up down migrate seed dev dev-gateway dev-metadata dev-query-gateway contracts contracts-check \
-        test-login test-data-sources test-query-gateway
+        dev-orchestrator dev-worker test-login test-data-sources test-query-gateway test-analytics-run
 
 help: ## List available targets
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) \
@@ -98,8 +98,17 @@ dev-query-gateway: ## Start query-gateway with reload on :8003
 	cd apps/query-gateway && uv run --package query-gateway \
 		uvicorn query_gateway.main:create_app --factory --reload --port 8003
 
-contracts: ## Export every service's OpenAPI document into contracts/openapi/
+dev-orchestrator: ## Start analytics-orchestrator with reload on :8004
+	cd apps/analytics-orchestrator && uv run --package analytics-orchestrator \
+		uvicorn analytics_orchestrator.main:create_app --factory --reload --port 8004
+
+dev-worker: ## Start worker-runtime (JetStream run consumer) on :8005
+	cd apps/worker-runtime && uv run --package worker-runtime \
+		uvicorn worker_runtime.main:create_app --factory --port 8005
+
+contracts: ## Export OpenAPI documents and platform-contracts JSON Schemas into contracts/
 	scripts/gen-openapi.sh
+	uv run python scripts/export_json_schemas.py
 
 contracts-check: ## Fail on OpenAPI drift or unversioned breaking changes
 	scripts/diff-contracts.sh
@@ -112,3 +121,6 @@ test-data-sources: ## Phase A3 scripted flow through api-gateway: add, test, syn
 
 test-query-gateway: ## Phase A4 scripted flow: valid SELECT capped + audited, unsafe SQL rejected
 	scripts/test-query-gateway.sh
+
+test-analytics-run: ## Phase A5 scripted flow: message -> SSE Section 32, kill/resume executor and worker, budget
+	scripts/test-analytics-run.sh

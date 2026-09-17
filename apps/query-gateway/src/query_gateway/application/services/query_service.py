@@ -90,6 +90,14 @@ class QueryCommand:
 
 
 @dataclass(frozen=True)
+class ValidatedQuery:
+    query_id: uuid.UUID
+    sql: str
+    tables: tuple[str, ...]
+    sql_hash: str
+
+
+@dataclass(frozen=True)
 class QueryOutcome:
     query_id: uuid.UUID
     result: QueryResult
@@ -215,11 +223,10 @@ class QueryService:
         except ValueError:
             raise DataSourceUnavailableError() from None
 
-    async def execute(
+    async def _prepare(
         self, principal: Principal, caller: str, command: QueryCommand
-    ) -> QueryOutcome:
+    ) -> tuple[DataSourcePolicy, QueryExecutor]:
         self._authorize(principal, caller, command.purpose)
-        limits = self._execution_limits(command)
         tenant_id = uuid.UUID(principal.tenant_id)
         policy = await self._policies.load(tenant_id, command.data_source_id)
         if policy.tenant_id != tenant_id:
@@ -229,6 +236,51 @@ class QueryService:
             raise EngineNotSupportedError()
         if policy.status != "active":
             raise DataSourceNotActiveError()
+        return policy, executor
+
+    async def validate(
+        self, principal: Principal, caller: str, command: QueryCommand
+    ) -> ValidatedQuery:
+        """Section 13 authorization and validation without execution; audited either way."""
+        policy, _executor = await self._prepare(principal, caller, command)
+        query_id = uuid.uuid4()
+        started = time.perf_counter()
+        validation = self._validator.validate(command.sql, policy, purpose=command.purpose)
+        if not validation.ok or validation.sql is None:
+            await self._record(
+                query_id=query_id,
+                principal=principal,
+                command=command,
+                validation=validation,
+                status="rejected",
+                started=started,
+                error_code=QueryValidationFailedError.code,
+            )
+            details: dict[str, Any] = {"query_id": str(query_id), "reason": validation.reason}
+            if validation.detail:
+                details["detail"] = validation.detail
+            raise QueryValidationFailedError(validation.message, **details)
+        await self._record(
+            query_id=query_id,
+            principal=principal,
+            command=command,
+            validation=validation,
+            status="validated",
+            started=started,
+        )
+        return ValidatedQuery(
+            query_id=query_id,
+            sql=validation.sql,
+            tables=validation.tables,
+            sql_hash=validation.sql_hash or "",
+        )
+
+    async def execute(
+        self, principal: Principal, caller: str, command: QueryCommand
+    ) -> QueryOutcome:
+        limits = self._execution_limits(command)
+        policy, executor = await self._prepare(principal, caller, command)
+        tenant_id = uuid.UUID(principal.tenant_id)
 
         query_id = uuid.uuid4()
         started = time.perf_counter()

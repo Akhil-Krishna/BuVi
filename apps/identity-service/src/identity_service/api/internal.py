@@ -4,6 +4,9 @@
 * `GET  /internal/v1/jwks.json`   -- public keys for verifying service tokens.
 * `POST /internal/v1/introspect`  -- resolve a session token or API key to a Principal;
   requires a service token with `identity-service:introspect`.
+* `POST /internal/v1/principals/resolve` -- a user's *current* principal (status, roles), for a
+  service acting on that user's behalf without a live session (Section 13, ADR 0006); requires
+  `identity-service:resolve-principal`. The result is never step-up capable.
 * `POST /internal/v1/audit-events` -- append an audit event on behalf of another service
   (e.g. metadata-service `connection.*`, Sections 7.3 and 22); requires
   `identity-service:audit` and an event type inside the client's registered namespace.
@@ -21,19 +24,28 @@ from pydantic import BaseModel, ConfigDict, Field, IPvAnyAddress, model_validato
 
 from identity_service.application.services.audit_service import AuditService
 from identity_service.application.services.service_token_service import ServiceTokenService
-from identity_service.core.config import SCOPE_AUDIT_WRITE, SCOPE_INTROSPECT
+from identity_service.core.config import (
+    SCOPE_AUDIT_WRITE,
+    SCOPE_INTROSPECT,
+    SCOPE_RESOLVE_PRINCIPAL,
+)
 from identity_service.dependencies import (
     authenticate_credentials,
     get_app_settings,
     get_service_token_issuer,
     get_session_factory,
 )
-from identity_service.domain.errors import AuditEventNotAllowedError, ValidationFailedError
+from identity_service.domain.errors import (
+    AuditEventNotAllowedError,
+    NotFoundError,
+    UserNotActiveError,
+    ValidationFailedError,
+)
 from identity_service.infrastructure.db.repositories.identity_repository import (
     IdentityRepository,
 )
 from identity_service.infrastructure.db.session import tenant_scope
-from platform_auth import ServiceIdentity, require_service_scope
+from platform_auth import Principal, ServiceIdentity, permissions_for_roles, require_service_scope
 
 router = APIRouter(prefix="/internal/v1", tags=["internal"])
 
@@ -61,6 +73,13 @@ class IntrospectRequest(BaseModel):
 
 class IntrospectResponse(BaseModel):
     principal: dict[str, Any]
+
+
+class ResolvePrincipalRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    tenant_id: uuid.UUID
+    user_id: uuid.UUID
 
 
 class AuditEventRequest(BaseModel):
@@ -178,3 +197,35 @@ async def record_audit_event(
         )
         await db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post("/principals/resolve", response_model=IntrospectResponse)
+async def resolve_principal_for_service(
+    request: Request,
+    payload: ResolvePrincipalRequest,
+    _service: Annotated[ServiceIdentity, Depends(require_service_scope(SCOPE_RESOLVE_PRINCIPAL))],
+) -> IntrospectResponse:
+    """The user's principal as it is *now* -- a queued run must not outlive a revoked role.
+
+    Resolved inside the given tenant (RLS-bound), so a user id from another tenant is `404`.
+    `auth_method` is `service_jwt` and MFA is never marked verified: delegated work can never
+    satisfy a Section 7.3 step-up check.
+    """
+    async with tenant_scope(get_session_factory(request), payload.tenant_id) as db:
+        repository = IdentityRepository(db)
+        user = await repository.get_user(payload.tenant_id, payload.user_id)
+        roles = await repository.get_user_role_keys(user.id) if user is not None else frozenset()
+        await db.commit()
+    if user is None:
+        raise NotFoundError()
+    if user.status != "active":
+        raise UserNotActiveError()
+    principal = Principal(
+        user_id=str(user.id),
+        tenant_id=str(user.tenant_id),
+        permissions=permissions_for_roles(roles),
+        auth_method="service_jwt",
+        mfa_verified=False,
+        roles=frozenset(roles),
+    )
+    return IntrospectResponse(principal=principal.to_dict())

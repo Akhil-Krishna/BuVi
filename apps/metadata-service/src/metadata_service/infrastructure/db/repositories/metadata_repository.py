@@ -112,6 +112,14 @@ class MetadataRepository:
             return rows[:limit], rows[limit - 1].id
         return rows, None
 
+    async def list_active_data_sources(self, tenant_id: uuid.UUID) -> list[DataSource]:
+        result = await self._session.execute(
+            select(DataSource)
+            .where(DataSource.tenant_id == tenant_id, DataSource.status == "active")
+            .order_by(DataSource.name, DataSource.id)
+        )
+        return list(result.scalars().all())
+
     async def set_status(
         self,
         data_source: DataSource,

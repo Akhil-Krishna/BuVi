@@ -11,6 +11,7 @@ dependencies = [
     "fastapi>=0.141.1",
     "httpx>=0.28.1",
     "platform-auth",
+    "platform-contracts",
     "platform-observability",
     "pydantic-settings>=2.15.0",
     "redis>=8.1.0",
@@ -26,4 +27,5 @@ build-backend = "uv_build"
 
 [tool.uv.sources]
 platform-auth = { workspace = true }
+platform-contracts = { workspace = true }
 platform-observability = { workspace = true }

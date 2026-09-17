@@ -80,3 +80,14 @@ def test_internal_query_policy_carries_a_pointer_and_no_credential() -> None:
     assert not policy & (SECRET_SHAPED - {"secret_ref"})
     for nested in ("QueryPolicyTable", "QueryPolicyColumn"):
         assert not set(schemas[nested]["properties"]) & SECRET_SHAPED
+
+
+def test_agent_context_carries_no_credential_pointer() -> None:
+    schemas = _generated()["components"]["schemas"]
+    for name in (
+        "AgentContextResponse",
+        "AgentContextTable",
+        "AgentContextColumn",
+        "ActiveDataSource",
+    ):
+        assert not set(schemas[name]["properties"]) & SECRET_SHAPED, name

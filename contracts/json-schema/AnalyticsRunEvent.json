@@ -1,0 +1,71 @@
+{
+  "additionalProperties": false,
+  "description": "Section 11. Serialized camelCase; SSE `id` is `seq`, SSE `event` is `<stage>.<status>`.",
+  "properties": {
+    "artifactId": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Artifactid"
+    },
+    "createdAt": {
+      "format": "date-time",
+      "title": "Createdat",
+      "type": "string"
+    },
+    "message": {
+      "maxLength": 300,
+      "title": "Message",
+      "type": "string"
+    },
+    "runId": {
+      "title": "Runid",
+      "type": "string"
+    },
+    "seq": {
+      "minimum": 1,
+      "title": "Seq",
+      "type": "integer"
+    },
+    "stage": {
+      "enum": [
+        "intent",
+        "schema",
+        "semantic",
+        "sql",
+        "validation",
+        "execution",
+        "visualization",
+        "artifact",
+        "run"
+      ],
+      "title": "Stage",
+      "type": "string"
+    },
+    "status": {
+      "enum": [
+        "started",
+        "completed",
+        "failed"
+      ],
+      "title": "Status",
+      "type": "string"
+    }
+  },
+  "required": [
+    "runId",
+    "seq",
+    "stage",
+    "status",
+    "message",
+    "createdAt"
+  ],
+  "title": "AnalyticsRunEvent",
+  "type": "object"
+}

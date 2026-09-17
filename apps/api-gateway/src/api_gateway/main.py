@@ -29,6 +29,7 @@ from api_gateway.domain.catalog import CATALOG
 from api_gateway.infrastructure.cache.rate_limiter import RateLimiter, RedisRateLimiter
 from api_gateway.infrastructure.http.identity_client import IdentityClient
 from api_gateway.infrastructure.http.proxy import UpstreamProxy
+from api_gateway.infrastructure.http.run_events_client import RunEventsClient
 from platform_auth import ServiceTokenClient
 from platform_observability import RequestIdMiddleware, install_error_handlers
 
@@ -74,16 +75,20 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         base_url=settings.backend_urls["identity-service"], http=http, tokens=tokens
     )
     app.state.proxy = UpstreamProxy(backends=settings.backend_urls, http=http, tokens=tokens)
-    redis: Redis | None = None
+    app.state.run_events = RunEventsClient(
+        base_url=settings.backend_urls["analytics-orchestrator"], http=http, tokens=tokens
+    )
+    redis = Redis.from_url(settings.redis_url, socket_timeout=1.0, socket_connect_timeout=1.0)
+    # Pub/sub reads block for up to a heartbeat: a separate client without a socket timeout.
+    app.state.redis = Redis.from_url(settings.redis_url, socket_connect_timeout=1.0)
     if app.state.rate_limiter is None:
-        redis = Redis.from_url(settings.redis_url, socket_timeout=1.0, socket_connect_timeout=1.0)
         app.state.rate_limiter = RedisRateLimiter(redis, fail_open=settings.rate_limit_fail_open)
     try:
         yield
     finally:
         await http.aclose()
-        if redis is not None:
-            await redis.aclose()
+        await redis.aclose()
+        await app.state.redis.aclose()
 
 
 def _normalise(path: str) -> str:

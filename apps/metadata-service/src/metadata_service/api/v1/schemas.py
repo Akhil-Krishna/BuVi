@@ -238,3 +238,46 @@ class QueryPolicyResponse(BaseModel):
     secret_ref: str
     last_sync_at: dt.datetime | None
     tables: list[QueryPolicyTable]
+
+
+# --- Internal: agent context for analytics-orchestrator (Sections 10.3, 12) -----------------
+
+
+class ActiveDataSource(BaseModel):
+    id: uuid.UUID
+    name: str
+    engine: str
+    status: str
+    last_sync_at: dt.datetime | None
+
+
+class ActiveDataSourceList(BaseModel):
+    items: list[ActiveDataSource]
+
+
+class AgentContextColumn(BaseModel):
+    column_name: str
+    data_type: str
+    #: The source's own comment: untrusted text, delimited as data in every prompt.
+    description: str | None
+
+
+class AgentContextTable(BaseModel):
+    schema_name: str
+    table_name: str
+    description: str | None
+    row_count_estimate: int | None
+    columns: list[AgentContextColumn]
+
+
+class AgentContextResponse(BaseModel):
+    """What an agent may see of a data source: agent-visible tables, non-PII columns, no pointer
+    to any credential."""
+
+    data_source_id: uuid.UUID
+    tenant_id: uuid.UUID
+    engine: str
+    status: str
+    allowed_schemas: list[str]
+    last_sync_at: dt.datetime | None
+    tables: list[AgentContextTable]

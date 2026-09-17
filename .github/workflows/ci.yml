@@ -163,7 +163,11 @@ jobs:
         run: |
           uv export --all-packages --format requirements-txt \
             --no-emit-workspace --no-hashes -o /tmp/requirements.txt
-          uvx pip-audit -r /tmp/requirements.txt
+          # ADR 0006: crewai 1.15 hard-pins chromadb~=1.1.0. These four advisories affect
+          # Chroma's own HTTP server, which this platform never runs. Revisit on every crewai bump.
+          uvx pip-audit -r /tmp/requirements.txt \
+            --ignore-vuln PYSEC-2026-311 --ignore-vuln PYSEC-2026-3813 \
+            --ignore-vuln PYSEC-2026-3814 --ignore-vuln PYSEC-2026-3815
       - uses: actions/setup-node@v5
         with:
           node-version: ${{ env.NODE_VERSION }}

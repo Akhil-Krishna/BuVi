@@ -217,6 +217,24 @@ class FakeServices:
                     "expires_in": 300,
                 },
             )
+        if path == "/internal/v1/principals/resolve":
+            body = json.loads(request.content)
+            for principal in self.principals.values():
+                if (principal["user_id"], principal["tenant_id"]) == (
+                    body["user_id"],
+                    body["tenant_id"],
+                ):
+                    if principal.get("inactive"):
+                        return httpx.Response(403, json={"error": {"code": "USER_NOT_ACTIVE"}})
+                    resolved = {k: v for k, v in principal.items() if k != "inactive"}
+                    resolved.update(
+                        auth_method="service_jwt",
+                        mfa_verified=False,
+                        mfa_verified_at=None,
+                        session_id=None,
+                    )
+                    return httpx.Response(200, json={"principal": resolved})
+            return httpx.Response(404, json={"error": {"code": "NOT_FOUND"}})
         if path == "/internal/v1/introspect":
             body = json.loads(request.content)
             credential = body.get("session_token") or body.get("api_key")

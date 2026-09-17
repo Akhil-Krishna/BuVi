@@ -17,14 +17,15 @@ is genuinely missing, stop and ask, don't guess.
 
 > Update this line yourself after every completed phase, then commit it.
 
-**Phase A4 (Query Gateway) is complete — `apps/query-gateway` exposes `POST /internal/v1/queries`
-(service JWT `query-gateway:execute` + re-authenticated user; purpose bound to caller and permission),
-validates SQL with the sqlglot allow-list in `domain/policies/sql_validator.py` (unsafe-SQL corpus 100%
-rejected), executes the regenerated SQL read-only with timeout and row/byte caps, stores TTL-bound
-result handles in MinIO, and writes an append-only `query_executions` row for every outcome. Policy comes
-from metadata-service's internal query-policy endpoint; egress rules live in `platform-egress`.
-Live flow: `make test-query-gateway`. Decisions and open gaps (per-connection grants): `docs/adr/0005-phase-a4-query-gateway.md`.
-Next up: Phase A5 (Analytics Orchestrator + first CrewAI Flow; includes Idempotency-Key). See Section 31 of the build spec.**
+**Phase A5 (Analytics Orchestrator + first CrewAI Flow) is complete — `apps/analytics-orchestrator` owns
+conversations, runs and the CrewAI `AnalyticsFlow` (Section 10 steps, persisted after every step, resumed
+from `completed_steps`, events emitted exactly once to `analytics.run_events` then Redis). `apps/worker-runtime`
+drives runs from JetStream `analytics.run.requested` with heartbeats and redelivery. LLM calls go through
+`ModelRouter` (run/tenant token budgets fail closed, fallback model, ≤2 repairs); SQL is validated and executed
+by query-gateway under delegated `on_behalf_of`; api-gateway streams SSE (`GET /api/v1/runs/{id}/events`).
+`Idempotency-Key` on messages. Live flow: `make test-analytics-run`. Decisions, the CrewAI/chromadb risk
+acceptance and open gaps: `docs/adr/0006-phase-a5-analytics-orchestrator.md`.
+Next up: Phase A6 (Visualization Service + Dashboard Service, API only). See Section 31 of the build spec.**
 
 ## Build order (do not violate)
 

@@ -589,6 +589,27 @@
         "title": "MfaVerifyResponse",
         "type": "object"
       },
+      "ResolvePrincipalRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "tenant_id": {
+            "format": "uuid",
+            "title": "Tenant Id",
+            "type": "string"
+          },
+          "user_id": {
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tenant_id",
+          "user_id"
+        ],
+        "title": "ResolvePrincipalRequest",
+        "type": "object"
+      },
       "RoleChangeRequest": {
         "properties": {
           "grant": {
@@ -1940,6 +1961,48 @@
           }
         },
         "summary": "Token",
+        "tags": [
+          "internal"
+        ]
+      }
+    },
+    "/internal/v1/principals/resolve": {
+      "post": {
+        "description": "The user's principal as it is *now* -- a queued run must not outlive a revoked role.\n\nResolved inside the given tenant (RLS-bound), so a user id from another tenant is `404`.\n`auth_method` is `service_jwt` and MFA is never marked verified: delegated work can never\nsatisfy a Section 7.3 step-up check.",
+        "operationId": "resolve_principal_for_service_internal_v1_principals_resolve_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResolvePrincipalRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntrospectResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Resolve Principal For Service",
         "tags": [
           "internal"
         ]

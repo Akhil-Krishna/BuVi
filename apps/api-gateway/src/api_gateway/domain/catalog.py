@@ -20,6 +20,7 @@ RateTier = Literal["auth", "public", "authenticated"]
 
 IDENTITY: Final = "identity-service"
 METADATA: Final = "metadata-service"
+ANALYTICS: Final = "analytics-orchestrator"
 
 
 @dataclass(frozen=True)
@@ -43,6 +44,8 @@ class RouteSpec:
     in_section_9: bool = True
     #: The decision record for a route beyond Section 9.
     decision: str = "ADR 0002 item 8"
+    #: Served by the gateway itself as Server-Sent Events rather than proxied (Section 11).
+    stream: bool = False
 
     @property
     def is_stub(self) -> bool:
@@ -60,6 +63,10 @@ def _identity(method: str, path: str, summary: str, **kwargs: object) -> RouteSp
 
 def _metadata(method: str, path: str, summary: str, **kwargs: object) -> RouteSpec:
     return RouteSpec(method, path, summary, METADATA, **kwargs)  # type: ignore[arg-type]
+
+
+def _analytics(method: str, path: str, summary: str, **kwargs: object) -> RouteSpec:
+    return RouteSpec(method, path, summary, ANALYTICS, **kwargs)  # type: ignore[arg-type]
 
 
 def _stub(
@@ -131,38 +138,21 @@ CATALOG: Final[tuple[RouteSpec, ...]] = (
     ),
     _identity("GET", "/me/api-keys", "List the caller's API keys", in_section_9=False),
     # --- Chat (Sections 10, 11) -------------------------------------------------------
-    _stub(
-        "POST",
-        "/conversations",
-        "Create a conversation",
-        "analytics-orchestrator",
-        "A5",
-        permission="chat:use",
-    ),
-    _stub(
+    _analytics("POST", "/conversations", "Create a conversation", permission="chat:use"),
+    _analytics(
         "POST",
         "/conversations/{id}/messages",
         "Send a message; returns run_id",
-        "analytics-orchestrator",
-        "A5",
         permission="chat:use",
     ),
-    _stub(
+    _analytics(
         "GET",
         "/runs/{id}/events",
         "Run progress (SSE)",
-        "analytics-orchestrator",
-        "A5",
         permission="chat:use",
+        stream=True,
     ),
-    _stub(
-        "POST",
-        "/runs/{id}/cancel",
-        "Best-effort cancel",
-        "analytics-orchestrator",
-        "A5",
-        permission="chat:use",
-    ),
+    _analytics("POST", "/runs/{id}/cancel", "Best-effort cancel", permission="chat:use"),
     # --- Artifacts, dashboards (Sections 16, 17) -----------------------------------------
     _stub(
         "GET",

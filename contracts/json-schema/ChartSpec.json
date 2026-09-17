@@ -1,0 +1,192 @@
+{
+  "$defs": {
+    "ChartEncodings": {
+      "additionalProperties": false,
+      "properties": {
+        "color": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Encoding"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "x": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Encoding"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "y": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Encoding"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "title": "ChartEncodings",
+      "type": "object"
+    },
+    "ChartOptions": {
+      "additionalProperties": false,
+      "description": "Section 17: title, legend, stacking, colorScheme, axis labels -- nothing else.",
+      "properties": {
+        "colorScheme": {
+          "anyOf": [
+            {
+              "enum": [
+                "default",
+                "categorical",
+                "sequential",
+                "diverging"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Colorscheme"
+        },
+        "legend": {
+          "default": true,
+          "title": "Legend",
+          "type": "boolean"
+        },
+        "stacking": {
+          "anyOf": [
+            {
+              "enum": [
+                "none",
+                "stacked",
+                "percent"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Stacking"
+        },
+        "title": {
+          "anyOf": [
+            {
+              "maxLength": 120,
+              "pattern": "^[^<>{}`\\x00-\\x1f]*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Title"
+        },
+        "xAxisLabel": {
+          "anyOf": [
+            {
+              "maxLength": 60,
+              "pattern": "^[^<>{}`\\x00-\\x1f]*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Xaxislabel"
+        },
+        "yAxisLabel": {
+          "anyOf": [
+            {
+              "maxLength": 60,
+              "pattern": "^[^<>{}`\\x00-\\x1f]*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Yaxislabel"
+        }
+      },
+      "title": "ChartOptions",
+      "type": "object"
+    },
+    "Encoding": {
+      "additionalProperties": false,
+      "properties": {
+        "field": {
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,62}$",
+          "title": "Field",
+          "type": "string"
+        },
+        "type": {
+          "enum": [
+            "temporal",
+            "quantitative",
+            "nominal",
+            "ordinal"
+          ],
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "field",
+        "type"
+      ],
+      "title": "Encoding",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "dataset": {
+      "const": "artifact-result",
+      "default": "artifact-result",
+      "title": "Dataset",
+      "type": "string"
+    },
+    "encoding": {
+      "$ref": "#/$defs/ChartEncodings"
+    },
+    "options": {
+      "$ref": "#/$defs/ChartOptions"
+    },
+    "type": {
+      "enum": [
+        "line",
+        "bar",
+        "area",
+        "scatter",
+        "pie",
+        "table"
+      ],
+      "title": "Type",
+      "type": "string"
+    }
+  },
+  "required": [
+    "type"
+  ],
+  "title": "ChartSpec",
+  "type": "object"
+}

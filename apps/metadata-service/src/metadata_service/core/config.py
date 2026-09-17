@@ -19,6 +19,8 @@ SCOPE_PROXY = "metadata-service:proxy"
 SCOPE_AUDIT_WRITE = "identity-service:audit"
 #: Scope query-gateway needs to load a data source's query policy (Section 13, ADR 0005).
 SCOPE_QUERY_POLICY = "metadata-service:query-policy"
+#: Scope analytics-orchestrator needs to read an agent context packet (Sections 10.3, 12).
+SCOPE_CONTEXT = "metadata-service:context"
 
 _LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
 

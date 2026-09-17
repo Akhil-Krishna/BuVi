@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from typing import Annotated
 
 from fastapi import Depends, Request
@@ -62,17 +63,14 @@ async def resolve_principal(request: Request) -> Principal:
 CurrentPrincipal = Annotated[Principal, Depends(resolve_principal)]
 
 
-async def get_repository(
-    request: Request, principal: CurrentPrincipal
-) -> AsyncIterator[QueryRepository]:
+@asynccontextmanager
+async def repository_for(request: Request, principal: Principal) -> AsyncIterator[QueryRepository]:
+    """A repository bound to `principal`'s tenant for RLS, however it was authenticated."""
     async with tenant_scope(
         request.app.state.session_factory, uuid.UUID(principal.tenant_id)
     ) as db:
         yield QueryRepository(db)
         await db.commit()
-
-
-ScopedRepo = Annotated[QueryRepository, Depends(get_repository, scope="function")]
 
 
 def build_query_service(request: Request, repository: QueryRepository) -> QueryService:

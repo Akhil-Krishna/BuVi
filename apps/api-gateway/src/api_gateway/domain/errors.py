@@ -29,6 +29,12 @@ class StepUpRequiredError(ApiError):
     message = "This operation requires re-verifying your identity."
 
 
+class NotFoundError(ApiError):
+    code = "NOT_FOUND"
+    status_code = 404
+    message = "Not found."
+
+
 class RateLimitedError(ApiError):
     code = "RATE_LIMITED"
     status_code = 429

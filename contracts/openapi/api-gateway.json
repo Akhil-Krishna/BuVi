@@ -424,6 +424,57 @@
         "title": "ConnectivityTestResponse",
         "type": "object"
       },
+      "ConversationCreateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "title": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          }
+        },
+        "title": "ConversationCreateRequest",
+        "type": "object"
+      },
+      "ConversationResponse": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "created_at"
+        ],
+        "title": "ConversationResponse",
+        "type": "object"
+      },
       "DataSourceCreateRequest": {
         "additionalProperties": false,
         "description": "Non-secret connection metadata. Credentials go to `POST .../secret`.",
@@ -734,6 +785,35 @@
         "title": "LogoutResponse",
         "type": "object"
       },
+      "MessageCreateRequest": {
+        "additionalProperties": false,
+        "description": "Section 9.1.",
+        "properties": {
+          "content": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Content",
+            "type": "string"
+          },
+          "data_source_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data Source Id"
+          }
+        },
+        "required": [
+          "content"
+        ],
+        "title": "MessageCreateRequest",
+        "type": "object"
+      },
       "MfaEnrollResponse": {
         "description": "Returned once. The URI embeds the shared secret; do not log it.",
         "properties": {
@@ -867,6 +947,56 @@
           "roles"
         ],
         "title": "RoleChangeResponse",
+        "type": "object"
+      },
+      "RunAcceptedResponse": {
+        "properties": {
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "conversation_id"
+        ],
+        "title": "RunAcceptedResponse",
+        "type": "object"
+      },
+      "RunStatusResponse": {
+        "properties": {
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "status"
+        ],
+        "title": "RunStatusResponse",
         "type": "object"
       },
       "SessionResponse": {
@@ -2829,11 +2959,23 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConversationCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
-          "200": {
+          "201": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationResponse"
+                }
               }
             },
             "description": "Successful Response"
@@ -2868,7 +3010,7 @@
             },
             "description": "Rate limited"
           },
-          "501": {
+          "502": {
             "content": {
               "application/json": {
                 "schema": {
@@ -2876,7 +3018,17 @@
                 }
               }
             },
-            "description": "Backing service not available yet"
+            "description": "Upstream unavailable"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Upstream timeout"
           }
         },
         "summary": "Create a conversation",
@@ -2884,7 +3036,6 @@
           "analytics-orchestrator"
         ],
         "x-auth": "session or API key, chat:use",
-        "x-available-in-phase": "A5",
         "x-backend": "analytics-orchestrator",
         "x-rate-tier": "authenticated"
       }
@@ -2910,11 +3061,23 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MessageCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
-          "200": {
+          "202": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/RunAcceptedResponse"
+                }
               }
             },
             "description": "Successful Response"
@@ -2949,7 +3112,7 @@
             },
             "description": "Rate limited"
           },
-          "501": {
+          "502": {
             "content": {
               "application/json": {
                 "schema": {
@@ -2957,7 +3120,17 @@
                 }
               }
             },
-            "description": "Backing service not available yet"
+            "description": "Upstream unavailable"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Upstream timeout"
           }
         },
         "summary": "Send a message; returns run_id",
@@ -2965,7 +3138,6 @@
           "analytics-orchestrator"
         ],
         "x-auth": "session or API key, chat:use",
-        "x-available-in-phase": "A5",
         "x-backend": "analytics-orchestrator",
         "x-rate-tier": "authenticated"
       }
@@ -4862,10 +5034,12 @@
           }
         ],
         "responses": {
-          "200": {
+          "202": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/RunStatusResponse"
+                }
               }
             },
             "description": "Successful Response"
@@ -4900,7 +5074,7 @@
             },
             "description": "Rate limited"
           },
-          "501": {
+          "502": {
             "content": {
               "application/json": {
                 "schema": {
@@ -4908,7 +5082,17 @@
                 }
               }
             },
-            "description": "Backing service not available yet"
+            "description": "Upstream unavailable"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Upstream timeout"
           }
         },
         "summary": "Best-effort cancel",
@@ -4916,7 +5100,6 @@
           "analytics-orchestrator"
         ],
         "x-auth": "session or API key, chat:use",
-        "x-available-in-phase": "A5",
         "x-backend": "analytics-orchestrator",
         "x-rate-tier": "authenticated"
       }
@@ -4939,9 +5122,14 @@
             "content": {
               "application/json": {
                 "schema": {}
+              },
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "AnalyticsRunEvent stream (Section 11)"
           },
           "401": {
             "content": {
@@ -4973,7 +5161,7 @@
             },
             "description": "Rate limited"
           },
-          "501": {
+          "502": {
             "content": {
               "application/json": {
                 "schema": {
@@ -4981,7 +5169,17 @@
                 }
               }
             },
-            "description": "Backing service not available yet"
+            "description": "Upstream unavailable"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Upstream timeout"
           }
         },
         "summary": "Run progress (SSE)",
@@ -4989,9 +5187,9 @@
           "analytics-orchestrator"
         ],
         "x-auth": "session or API key, chat:use",
-        "x-available-in-phase": "A5",
         "x-backend": "analytics-orchestrator",
-        "x-rate-tier": "authenticated"
+        "x-rate-tier": "authenticated",
+        "x-stream": "server-sent-events"
       }
     },
     "/api/v1/semantic/metrics": {

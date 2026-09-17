@@ -27,11 +27,16 @@ class Settings(BaseSettings):
         default_factory=lambda: {
             "identity-service": "http://localhost:8001",
             "metadata-service": "http://localhost:8002",
+            "analytics-orchestrator": "http://localhost:8004",
         }
     )
     upstream_connect_timeout_seconds: float = 3.0
     upstream_timeout_seconds: float = 30.0
     max_request_body_bytes: int = 1_048_576
+
+    # --- Run event streams (Section 11) -------------------------------------------------------
+    sse_heartbeat_seconds: float = 15.0
+    sse_max_stream_seconds: float = 900.0
 
     # --- Service auth (Section 6.3) --------------------------------------------
     service_token_url: str = "http://localhost:8001/internal/v1/oauth/token"  # noqa: S105 - URL

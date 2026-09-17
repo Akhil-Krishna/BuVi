@@ -19,12 +19,22 @@ SCOPE_INTROSPECT = "identity-service:introspect"
 SCOPE_PROXY = "identity-service:proxy"
 #: Append audit events on behalf of another service (Sections 7.3, 22; ADR 0004).
 SCOPE_AUDIT_WRITE = "identity-service:audit"
+#: Resolve a user's *current* principal for delegated work (Section 13, ADR 0006).
+SCOPE_RESOLVE_PRINCIPAL = "identity-service:resolve-principal"
 
 _DEV_GATEWAY_SECRET_SHA256 = hashlib.sha256(b"dev-gateway-secret").hexdigest()
 _DEV_METADATA_SECRET_SHA256 = hashlib.sha256(b"dev-metadata-secret").hexdigest()
 _DEV_QUERY_GATEWAY_SECRET_SHA256 = hashlib.sha256(b"dev-query-gateway-secret").hexdigest()
+_DEV_ORCHESTRATOR_SECRET_SHA256 = hashlib.sha256(b"dev-analytics-orchestrator-secret").hexdigest()
+_DEV_WORKER_SECRET_SHA256 = hashlib.sha256(b"dev-worker-runtime-secret").hexdigest()
 _DEV_SECRET_HASHES = frozenset(
-    {_DEV_GATEWAY_SECRET_SHA256, _DEV_METADATA_SECRET_SHA256, _DEV_QUERY_GATEWAY_SECRET_SHA256}
+    {
+        _DEV_GATEWAY_SECRET_SHA256,
+        _DEV_METADATA_SECRET_SHA256,
+        _DEV_QUERY_GATEWAY_SECRET_SHA256,
+        _DEV_ORCHESTRATOR_SECRET_SHA256,
+        _DEV_WORKER_SECRET_SHA256,
+    }
 )
 
 
@@ -49,6 +59,10 @@ def _dev_service_clients() -> dict[str, ServiceClient]:
                 "metadata-service": ["metadata-service:proxy"],
                 # Section 9 `/sql/execute` proxies here once a public SQL route exists.
                 "query-gateway": ["query-gateway:execute"],
+                "analytics-orchestrator": [
+                    "analytics-orchestrator:proxy",
+                    "analytics-orchestrator:events",
+                ],
             },
         ),
         "metadata-service": ServiceClient(
@@ -59,9 +73,21 @@ def _dev_service_clients() -> dict[str, ServiceClient]:
         "query-gateway": ServiceClient(
             secret_sha256=_DEV_QUERY_GATEWAY_SECRET_SHA256,
             audiences={
-                "identity-service": [SCOPE_INTROSPECT],
+                "identity-service": [SCOPE_INTROSPECT, SCOPE_RESOLVE_PRINCIPAL],
                 "metadata-service": ["metadata-service:query-policy"],
             },
+        ),
+        "analytics-orchestrator": ServiceClient(
+            secret_sha256=_DEV_ORCHESTRATOR_SECRET_SHA256,
+            audiences={
+                "identity-service": [SCOPE_INTROSPECT, SCOPE_RESOLVE_PRINCIPAL],
+                "metadata-service": ["metadata-service:context"],
+                "query-gateway": ["query-gateway:execute"],
+            },
+        ),
+        "worker-runtime": ServiceClient(
+            secret_sha256=_DEV_WORKER_SECRET_SHA256,
+            audiences={"analytics-orchestrator": ["analytics-orchestrator:execute"]},
         ),
     }
 

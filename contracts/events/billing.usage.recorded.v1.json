@@ -1,0 +1,82 @@
+{
+  "additionalProperties": false,
+  "description": "`billing.usage.recorded`: one metered quantity (Section 23).",
+  "properties": {
+    "metric": {
+      "enum": [
+        "llm_input_tokens",
+        "llm_output_tokens"
+      ],
+      "title": "Metric",
+      "type": "string"
+    },
+    "model": {
+      "maxLength": 128,
+      "title": "Model",
+      "type": "string"
+    },
+    "quantity": {
+      "minimum": 0,
+      "title": "Quantity",
+      "type": "integer"
+    },
+    "request_id": {
+      "anyOf": [
+        {
+          "maxLength": 128,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Request Id"
+    },
+    "run_id": {
+      "anyOf": [
+        {
+          "format": "uuid",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Run Id"
+    },
+    "schema_version": {
+      "default": "1.0",
+      "pattern": "^\\d+\\.\\d+$",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "stage": {
+      "anyOf": [
+        {
+          "maxLength": 64,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Stage"
+    },
+    "tenant_id": {
+      "format": "uuid",
+      "title": "Tenant Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "tenant_id",
+    "metric",
+    "quantity",
+    "model"
+  ],
+  "title": "BillingUsageRecorded",
+  "type": "object"
+}

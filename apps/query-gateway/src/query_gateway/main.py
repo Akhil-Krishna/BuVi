@@ -34,6 +34,7 @@ from query_gateway.infrastructure.cache.tenant_concurrency import TenantConcurre
 from query_gateway.infrastructure.connectors.base import QueryExecutor
 from query_gateway.infrastructure.connectors.postgres import PostgresQueryExecutor
 from query_gateway.infrastructure.db.session import create_engine, create_session_factory
+from query_gateway.infrastructure.http.identity_resolver import IdentityResolver
 from query_gateway.infrastructure.http.metadata_client import MetadataPolicyClient
 from query_gateway.infrastructure.storage.base import InMemoryResultStore, ResultStore
 from query_gateway.infrastructure.storage.minio_store import MinioResultStore
@@ -59,6 +60,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.identity = IntrospectionClient(
         base_url=settings.identity_url, http=http, tokens=tokens
     )
+    app.state.identity_resolver = IdentityResolver(identity=app.state.identity, http=http)
     app.state.policies = MetadataPolicyClient(
         base_url=settings.metadata_url,
         http=http,

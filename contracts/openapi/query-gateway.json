@@ -39,6 +39,28 @@
         "title": "HealthResponse",
         "type": "object"
       },
+      "OnBehalfOf": {
+        "additionalProperties": false,
+        "description": "The user a queued analytics run acts for; re-resolved from identity-service.",
+        "properties": {
+          "tenant_id": {
+            "format": "uuid",
+            "title": "Tenant Id",
+            "type": "string"
+          },
+          "user_id": {
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tenant_id",
+          "user_id"
+        ],
+        "title": "OnBehalfOf",
+        "type": "object"
+      },
       "QueryColumnResponse": {
         "properties": {
           "name": {
@@ -77,6 +99,16 @@
               }
             ],
             "title": "Max Rows"
+          },
+          "on_behalf_of": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OnBehalfOf"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "purpose": {
             "enum": [
@@ -218,6 +250,98 @@
         "title": "QueryResponse",
         "type": "object"
       },
+      "ValidateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "database_id": {
+            "format": "uuid",
+            "title": "Database Id",
+            "type": "string"
+          },
+          "on_behalf_of": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OnBehalfOf"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "purpose": {
+            "enum": [
+              "analytics_run",
+              "sql_editor",
+              "export"
+            ],
+            "title": "Purpose",
+            "type": "string"
+          },
+          "run_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Id"
+          },
+          "sql": {
+            "maxLength": 100000,
+            "minLength": 1,
+            "title": "Sql",
+            "type": "string"
+          }
+        },
+        "required": [
+          "database_id",
+          "sql",
+          "purpose"
+        ],
+        "title": "ValidateRequest",
+        "type": "object"
+      },
+      "ValidateResponse": {
+        "properties": {
+          "normalized_sql_sha256": {
+            "title": "Normalized Sql Sha256",
+            "type": "string"
+          },
+          "query_id": {
+            "format": "uuid",
+            "title": "Query Id",
+            "type": "string"
+          },
+          "sql": {
+            "title": "Sql",
+            "type": "string"
+          },
+          "tables": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Tables",
+            "type": "array"
+          },
+          "valid": {
+            "const": true,
+            "title": "Valid",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "query_id",
+          "valid",
+          "sql",
+          "tables",
+          "normalized_sql_sha256"
+        ],
+        "title": "ValidateResponse",
+        "type": "object"
+      },
       "ValidationError": {
         "properties": {
           "ctx": {
@@ -345,6 +469,48 @@
           }
         },
         "summary": "Run Query",
+        "tags": [
+          "internal"
+        ]
+      }
+    },
+    "/internal/v1/queries/validate": {
+      "post": {
+        "description": "Authorization and validation without execution; audited `validated` or `rejected`.",
+        "operationId": "validate_query_internal_v1_queries_validate_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ValidateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidateResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Validate Query",
         "tags": [
           "internal"
         ]

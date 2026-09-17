@@ -13,6 +13,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 SCOPE_EXECUTE = "query-gateway:execute"
 #: Scope this service needs to load a data source's query policy from metadata-service.
 SCOPE_QUERY_POLICY = "metadata-service:query-policy"
+#: Scope this service needs to resolve a delegated user (Section 13, ADR 0006).
+SCOPE_RESOLVE_PRINCIPAL = "identity-service:resolve-principal"
 
 _LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
 
@@ -52,6 +54,8 @@ class Settings(BaseSettings):
     session_cookie_name: str = "buvi_session"
     #: Which calling service may request which purpose (ADR 0005).
     purpose_callers: dict[str, list[str]] = Field(default_factory=_default_purpose_callers)
+    #: Services allowed to send `on_behalf_of` for purpose `analytics_run` (Section 13).
+    delegating_callers: list[str] = Field(default_factory=lambda: ["analytics-orchestrator"])
     policy_cache_ttl_seconds: float = Field(default=30.0, ge=0, le=600)
 
     # --- Secrets (Section 13.1) --------------------------------------------------------------
