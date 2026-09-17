@@ -1084,6 +1084,29 @@ All endpoints require a valid session or API key unless marked **public**. All l
 are paginated (`?cursor=`, `?limit=`, default 50, max 200). All mutating endpoints accept an
 optional `Idempotency-Key` header. All responses use the error envelope in Section 22.
 
+**Idempotency-Key (enforced once, at api-gateway):**
+- **Key format.** 1–255 printable ASCII characters. Records are scoped to tenant + principal + key
+  and kept for 24 h.
+- **Fingerprint.** Method, path, query and body bytes. The same key with a different request is
+  `409 IDEMPOTENCY_KEY_REUSED`, on any route.
+- **Authorization first.** Authentication, permission, step-up and rate limits run on every
+  request before any replay; a replay never bypasses them.
+- **Replay.** The first final response (2xx, or a deterministic 4xx) is replayed with
+  `Idempotent-Replayed: true`.
+- **Never recorded:** 5xx, 401, 403, 408, 409, 425 and 429. The client may retry those.
+- **Concurrency.** A concurrent request with the same key is
+  `409 IDEMPOTENCY_REQUEST_IN_PROGRESS` with `Retry-After`.
+- **Responses that must not be stored.** A one-time secret (API key, MFA enrollment, webhook
+  signing secret, share-link token), customer query rows (`/sql/execute`, MCP tool invocation),
+  a response that sets cookies, or an oversized body is recorded as completed *without* its body;
+  a retry is `409 IDEMPOTENT_REPLAY_UNAVAILABLE`.
+- **Routes that ignore the key:** public routes (no principal to scope it to), plus
+  `/auth/logout` and `/auth/mfa/verify` (session state).
+- **Store outage.** With a key present and the store unavailable the request is refused
+  (`503 IDEMPOTENCY_UNAVAILABLE`), never silently executed without the guarantee.
+- **Durability.** This is a retry guard, not durable exactly-once. Operations whose duplicates
+  are costly keep a durable dedupe in their owning service as well (e.g. run creation, Section 9.1).
+
 | Area | Method & path | Auth/permission | Notes |
 |---|---|---|---|
 | Auth | `GET /auth/login` **(public)** | — | redirects to IdP |
