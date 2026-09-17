@@ -972,6 +972,7 @@ CREATE TABLE dashboard.artifacts (
     conversation_id UUID,
     run_id UUID,
     title TEXT NOT NULL,
+    summary TEXT NOT NULL DEFAULT '',   -- user-safe one-liner returned by GET /artifacts/{id} (Section 9.1)
     semantic_query JSONB NOT NULL,
     source_refs JSONB NOT NULL DEFAULT '[]',
     validated_sql TEXT NOT NULL,
@@ -1106,10 +1107,13 @@ optional `Idempotency-Key` header. All responses use the error envelope in Secti
 | Chat | `GET /runs/{id}/events` (SSE) | `chat:use` + resource-tenant check | Section 11 |
 | Chat | `POST /runs/{id}/cancel` | `chat:use` + resource-tenant check | best-effort cancel |
 | Artifacts | `GET /artifacts/{id}` | `artifact:read` + resource-tenant check | Section 16 |
-| Dashboards | `GET/POST /dashboards` | `dashboard:read`/create implicit in role | — |
-| Dashboards | `POST /dashboards/{id}/tiles` | `dashboard:pin` + resource-tenant check | body `{artifact_id}` |
-| Dashboards | `PATCH /tiles/{id}` | `dashboard:pin` + resource-tenant check | layout/overrides |
-| Dashboards | `POST /dashboards/{id}/share-links` | `dashboard:share`, step-up | time-boxed token |
+| Artifacts | `GET /artifacts/{id}/data` | `artifact:read` + resource-tenant check | the artifact's stored result rows, read through query-gateway's result handle; `410 ARTIFACT_RESULT_EXPIRED` after the handle's TTL |
+| Dashboards | `GET /dashboards` | `dashboard:read` | the caller's own dashboards plus the tenant's `tenant`-visibility ones, paginated |
+| Dashboards | `POST /dashboards` | `dashboard:pin` | creates a `private` or `tenant` dashboard owned by the caller |
+| Dashboards | `GET /dashboards/{id}` | `dashboard:read` + resource-tenant check | dashboard with its tiles; a `private` dashboard of another user is `404` |
+| Dashboards | `POST /dashboards/{id}/tiles` | `dashboard:pin` + resource-tenant check | body `{artifact_id}`; dashboard owner only |
+| Dashboards | `PATCH /tiles/{id}` | `dashboard:pin` + resource-tenant check | layout/overrides; dashboard owner only; overrides limited to Section 17's `options` keys |
+| Dashboards | `POST /dashboards/{id}/share-links` | `dashboard:share`, step-up | time-boxed token (Phase A10) |
 | Data sources | `GET/POST /data-sources` | `data:manage` | create = pending until secret set |
 | Data sources | `POST /data-sources/{id}/secret` | `data:manage`, step-up | writes to Vault via metadata-service→secrets |
 | Data sources | `POST /data-sources/{id}/test` | `data:manage` | sanitized connectivity result only |
@@ -1129,7 +1133,7 @@ optional `Idempotency-Key` header. All responses use the error envelope in Secti
 | Audit | `GET /admin/audit` | `audit:read` | filter by actor/date/event_type |
 | Notifications | `GET /me/notifications` | session | — |
 | Webhooks | `POST /admin/webhooks` | `org_admin`, step-up | signing secret shown once |
-| Guest share | `GET /share/{token}` **(public, token-gated)** | signed link | read-only dashboard snapshot |
+| Guest share | `GET /share/{token}` **(public, token-gated)** | signed link | read-only dashboard snapshot (Phase A10) |
 
 ### 9.1 Representative request/response schemas
 
@@ -1344,6 +1348,11 @@ analytics-orchestrator (and only it, only for purpose `analytics_run`) may send
 `"on_behalf_of": {"tenant_id": ..., "user_id": ...}` with the `run_id`, and query-gateway
 re-resolves that user's *current* principal from identity-service -- roles and status are never
 taken from the caller.
+
+`POST /internal/v1/results/read` (dashboard-service only, scope `query-gateway:results`) returns
+the stored rows behind a result handle for `GET /artifacts/{id}/data`. query-gateway parses its
+own handle format, serves only `analytics_run` results of the caller-named tenant, and answers
+`410 RESULT_EXPIRED` once the handle's TTL has passed. It never re-executes SQL.
 
 **SQL allow-list (v1):** `SELECT` statements only, single statement, no semicolon-chained
 statements, no CTEs that call volatile/administrative functions, no file/network functions, no
@@ -2176,9 +2185,23 @@ mkdir -p apps web/next-app packages/python packages/ts infra/{docker,compose,kub
 ### Phase A6 — Visualization Service + Dashboard Service (API only)
 
 - Scaffold `apps/visualization-service` (stateless) implementing the ChartSpec JSON Schema
-  validator from Section 17 as a pure function + thin FastAPI wrapper.
+  validator from Section 17 as a pure function + thin FastAPI wrapper
+  (`POST /internal/v1/chart-specs/validate`). The validator moves here from `platform-contracts`,
+  which keeps only the `ChartSpec` DTO and its exported JSON Schema. analytics-orchestrator's
+  `build_chart_spec` repair loop and `validate_chart_spec` step call it; dashboard-service calls it
+  again before storing an artifact and before accepting tile `overrides`.
 - Scaffold `apps/dashboard-service`; implement DDL from Section 8.6 (`artifacts`, `dashboards`,
-  `tiles`).
+  `tiles`, `share_links` table only) with RLS (Section 19). dashboard-service becomes the canonical
+  artifact store (Section 8.9): the Flow's `persist_artifact` step writes the artifact through
+  dashboard-service's internal API with an id derived from the run, so a resumed run never creates
+  a second artifact; the copy in `runs.flow_state` from Phase A5 is removed.
+- Public routes: `GET /artifacts/{id}`, `GET /artifacts/{id}/data`, `GET/POST /dashboards`,
+  `GET /dashboards/{id}`, `POST /dashboards/{id}/tiles`, `PATCH /tiles/{id}` (Section 9).
+  Pinning publishes `dashboard.tile.pinned` (Section 18.1).
+- Not in A6: share links and `GET /share/{token}` need tenant sharing policy and the step-up
+  middleware (Phase A10); artifact refresh (re-executing `validated_sql` once the result handle
+  has expired) and artifact versioning from follow-up instructions (Section 16) need a phase
+  assignment before Phase C1.
 - **DoD:** Section 32's "first vertical slice" journey (Steps A–D) is provable **entirely over
   HTTP** — `pytest`/Postman drives message → SSE events → `GET /artifacts/{id}` → `POST
   /dashboards/{id}/tiles` — and returns the correct payloads at every step, for a `client`-role
@@ -2224,6 +2247,9 @@ mkdir -p apps web/next-app packages/python packages/ts infra/{docker,compose,kub
 
 - Implement every `(admin)`-area endpoint from Section 9 (`/admin/users`, `/admin/roles`,
   `/admin/audit`, `/admin/webhooks`, connection approval, MCP approval).
+- Implement dashboard share links (`POST /dashboards/{id}/share-links`, step-up, tenant sharing
+  policy for `dashboard:share`) and the token-gated `GET /share/{token}` snapshot, on the
+  `dashboard.share_links` table created in Phase A6.
 - Implement step-up authorization middleware (Section 7.3) and apply it to every sensitive
   operation listed there, including now-unblocking MCP write-tool invocation from Phase A9.
 - Implement WebAuthn enrollment endpoints; make WebAuthn mandatory for `platform_super_admin`
