@@ -20,9 +20,9 @@ import asyncio
 import datetime as dt
 import logging
 import uuid
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Any, Protocol
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -34,6 +34,7 @@ from analytics_orchestrator.application.services.ports import (
     DelegatedUserDeniedError,
     DependencyUnavailableError,
     MetadataContext,
+    OutputT,
     QueryCall,
     QueryDeniedError,
     QueryExecutionError,
@@ -254,7 +255,7 @@ class RunExecutor:
             state.data_source_id = str(sources[0].id)
 
     async def _classify_intent(self, state: AnalyticsRunState) -> None:
-        request = await self._router.generate(
+        request = await self._generate(
             state,
             stage="intent",
             system=prompts.INTENT,
@@ -293,7 +294,7 @@ class RunExecutor:
     async def _build_query_plan(self, state: AnalyticsRunState) -> None:
         assert state.schema_context is not None and state.request is not None
         tables = state.schema_context.tables
-        state.plan = await self._router.generate(
+        state.plan = await self._generate(
             state,
             stage="sql",
             system=prompts.PLAN,
@@ -316,7 +317,7 @@ class RunExecutor:
         if problems:
             payload["previous_sql"] = state.generated_sql
             payload["previous_problems"] = problems
-        generated = await self._router.generate(
+        generated = await self._generate(
             state, stage="sql", system=prompts.SQL, payload=payload, output_type=GeneratedSql
         )
         state.generated_sql = generated.sql
@@ -397,7 +398,7 @@ class RunExecutor:
 
     async def _build_chart_spec(self, state: AnalyticsRunState) -> None:
         assert state.execution is not None and state.request is not None
-        state.chart_spec = await self._router.generate(
+        state.chart_spec = await self._generate(
             state,
             stage="visualization",
             system=prompts.CHART,
@@ -505,6 +506,42 @@ class RunExecutor:
             await db.commit()
         if run is None or run.status == "cancelled":
             raise RunFailedError(FailureCode.CANCELLED)
+
+    async def _generate(
+        self,
+        state: AnalyticsRunState,
+        *,
+        stage: str,
+        system: str,
+        payload: Mapping[str, Any],
+        output_type: type[OutputT],
+        check: Callable[[OutputT], list[str]] | None = None,
+        exhausted: FailureCode = FailureCode.OUTPUT_INVALID,
+    ) -> OutputT:
+        return await self._router.generate(
+            state,
+            stage=stage,
+            system=system,
+            payload=payload,
+            output_type=output_type,
+            check=check,
+            exhausted=exhausted,
+            on_charged=self._persist_usage,
+        )
+
+    async def _persist_usage(self, state: AnalyticsRunState) -> None:
+        """Record run token usage as soon as a call is charged, without persisting the unfinished
+        step's partial outputs: a resumed run keeps paying from where it was, never from zero."""
+        tenant = uuid.UUID(state.tenant_id)
+        async with tenant_scope(self._sessions, tenant) as db:
+            repository = AnalyticsRepository(db)
+            run = await repository.get_run(tenant, uuid.UUID(state.id), for_update=True)
+            if run is None:
+                raise NotFoundError()
+            saved = dict(run.flow_state)
+            saved["usage"] = state.usage.model_dump(mode="json")
+            await repository.save_flow_state(run, saved, current_stage=run.current_stage)
+            await db.commit()
 
     async def _persist(self, state: AnalyticsRunState, step: str) -> None:
         tenant = uuid.UUID(state.tenant_id)

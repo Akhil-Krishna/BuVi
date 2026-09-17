@@ -159,12 +159,27 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - uses: astral-sh/setup-uv@v7
       - run: uv python install ${{ env.PYTHON_VERSION }}
+      - name: Accepted-advisory expiry (ADR 0006)
+        # The chromadb advisory ignores below were reviewed for exactly these locked versions.
+        # They expire on the next crewai or chromadb version bump: this step fails until ADR 0006
+        # is re-reviewed and REVIEWED_* updated (or the ignores removed) in the same change.
+        env:
+          REVIEWED_CREWAI: "1.15.22"
+          REVIEWED_CHROMADB: "1.1.1"
+        run: |
+          locked() { awk -v pkg="$1" '$0 == "name = \"" pkg "\"" {getline; gsub(/version = |"/, ""); print; exit}' uv.lock; }
+          crewai="$(locked crewai)"; chromadb="$(locked chromadb)"
+          if [ "$crewai" != "$REVIEWED_CREWAI" ] || [ "$chromadb" != "$REVIEWED_CHROMADB" ]; then
+            echo "::error::crewai $crewai / chromadb $chromadb differ from the versions reviewed in ADR 0006 ($REVIEWED_CREWAI / $REVIEWED_CHROMADB). Re-review the PYSEC-2026-311/-3813/-3814/-3815 ignores."
+            exit 1
+          fi
       - name: Python dependency audit
         run: |
           uv export --all-packages --format requirements-txt \
             --no-emit-workspace --no-hashes -o /tmp/requirements.txt
-          # ADR 0006: crewai 1.15 hard-pins chromadb~=1.1.0. These four advisories affect
-          # Chroma's own HTTP server, which this platform never runs. Revisit on every crewai bump.
+          # ADR 0006: crewai 1.15.22 hard-pins chromadb~=1.1.0. These four advisories affect
+          # Chroma's own HTTP server, which this platform never runs. They expire with the
+          # reviewed versions checked in the step above.
           uvx pip-audit -r /tmp/requirements.txt \
             --ignore-vuln PYSEC-2026-311 --ignore-vuln PYSEC-2026-3813 \
             --ignore-vuln PYSEC-2026-3814 --ignore-vuln PYSEC-2026-3815

@@ -40,6 +40,13 @@
    - **After a call:** it charges actual usage to the run, the ledger and `billing.usage.recorded`, then re-checks the run cap.
    - **Invalid output:** repaired at most `max_repair_attempts` times, and so is SQL rejected by the validator.
 
+   **Token accounting across a crash and resume never resets:**
+   - **Run usage** (`flow_state.usage`) is saved to the run row immediately after every charge, before the step finishes (`on_charged`). On resume it is loaded from the row, so the run cap keeps counting from where the run stopped.
+   - **The interrupted call is charged again.** A model call whose step had not finished before the crash is repeated on resume and paid for twice, which matches real spend.
+   - **The tenant's daily ledger** (Redis) and the **billing events** are charged per call and are not touched by resume.
+   - **The run deadline** is saved when the run first starts, so `RUN_TIMEOUT` does not restart either.
+   - `test_token_accounting_survives_a_crash_between_charge_and_step_persist` covers this. Before this fix, usage was saved only with the finished step, so a crash between a paid call and the step being saved dropped that call from the run's usage.
+
    Prompts carry user text, catalog and results as tagged JSON data blocks, never as instructions. Result rows are never sent to a model; only the result schema is.
 
 5. **Providers.**
@@ -62,12 +69,20 @@
    - The advisories affect Chroma's HTTP server, which is never started here, and no Chroma client or memory feature is used.
    - `test_a_full_run_opens_no_outbound_connection_and_no_chroma_client` proves that a full run constructs no Chroma client and opens no outbound connection.
    - CrewAI telemetry, tracing and the version check are forced off in the package `__init__` and the Dockerfile.
-   - Revisit on every crewai bump.
+   - **Expiry:** the four ignores are valid only for the locked versions reviewed here, **crewai 1.15.22 / chromadb 1.1.1**. The CI step "Accepted-advisory expiry (ADR 0006)" fails as soon as either locked version changes. The dependency bump that changes them must re-review the advisories and, in the same change, either update this ADR and the `REVIEWED_*` versions or remove ignores that no longer apply.
 
 ## Gaps — not implemented, need a decision
 
-- **The Anthropic provider is not verified against the live API.** No API key is available in dev or CI. It is covered only by typed unit tests of the router, and the live flow uses `scripted`.
-- **`resolve_semantics` and `analyze_result` (§10) are deferred.** There is no semantic layer until its phase, and analysis would send result rows to a model, which needs a data-exposure decision.
+- **The Anthropic provider is not verified against the live API — required before Phase C1 starts** (spec, Phase C1 entry requirement). No API key is available in dev or CI. It is covered only by typed unit tests of the router, and the live flow uses `scripted`. Before C1, run a full A5 DoD run with a real key covering:
+  - primary and fallback models;
+  - structured output parsing;
+  - refusal and `max_tokens` handling;
+  - actual token usage matching the ledger.
+
+  Record the result in an ADR.
+- **`resolve_semantics` and `analyze_result` (§10) are assigned to Phase A7** (Semantic Service), together.
+  - `resolve_semantics` needs the semantic layer.
+  - `analyze_result` is the first stage that would show query results to a model, so A7 must record in an ADR, before implementing it, what result data the model may see.
 - **`billing.usage.recorded` is published to JetStream `BILLING` but nothing consumes it** until the billing phase. The Redis ledger is the enforcement source.
 - **The artifact lives in `runs.flow_state` and ChartSpec in `platform-contracts`** until A6 creates visualization and dashboard services.
 - **One data source per run.** A tenant with several active sources must pass `data_source_id` (`DATA_SOURCE_SELECTION_REQUIRED`).

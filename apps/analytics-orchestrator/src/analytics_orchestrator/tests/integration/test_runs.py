@@ -5,6 +5,7 @@ crash mid-run resumes from the last persisted step; the token budget fails a run
 from __future__ import annotations
 
 import asyncio
+import datetime as dt
 import json
 import socket
 import uuid
@@ -196,6 +197,43 @@ async def test_crash_mid_run_resumes_from_the_last_persisted_step(
     assert await run_events(platform_db, run_id) == SECTION_32
 
 
+async def test_token_accounting_survives_a_crash_between_charge_and_step_persist(
+    harness: Harness, platform_db: Any, redis_url: str, tenant: uuid.UUID
+) -> None:
+    """A model call charged just before a crash stays on the run's budget; resume adds, never resets."""
+    who = harness.services.add_user(tenant, {"client"})
+    harness.services.add_data_source(tenant)
+    run_id = await harness.start_run(who)
+    record = harness.queue.record
+
+    async def crash_on_first_plan_charge(event: Any) -> None:
+        await record(event)
+        if event.stage == "sql" and event.metric == "llm_output_tokens":
+            raise SimulatedCrashError()
+
+    harness.queue.record = crash_on_first_plan_charge  # type: ignore[method-assign]
+    with pytest.raises(SimulatedCrashError):
+        await harness.app.state.executor.execute(tenant, uuid.UUID(run_id))
+    harness.queue.record = record  # type: ignore[method-assign]
+
+    crashed = (await run_row(platform_db, run_id))["flow_state"]
+    assert "build_query_plan" not in crashed["completed_steps"]
+    assert crashed["usage"]["calls"] == 2  # intent + the plan call charged before the crash
+    deadline = crashed["deadline"]
+
+    resumed = await harness.execute(who, run_id)
+    assert resumed.json()["status"] == "completed"
+    final = (await run_row(platform_db, run_id))["flow_state"]
+    assert final["usage"]["calls"] == 5  # the interrupted plan call is paid again, not forgotten
+    assert final["deadline"] == deadline  # the run timeout does not restart either
+    billed = sum(e.quantity for e in harness.queue.usage if e.run_id == uuid.UUID(run_id))
+    assert final["usage"]["input_tokens"] + final["usage"]["output_tokens"] == billed
+    ledger = aioredis.Redis.from_url(redis_url)
+    key = f"llm:tokens:{tenant}:{dt.datetime.now(dt.UTC):%Y%m%d}"
+    assert int(await ledger.get(key)) == billed
+    await ledger.aclose()
+
+
 async def test_run_budget_exceeded_before_any_call(
     postgres: PostgresInfo,
     redis_url: str,
@@ -270,8 +308,6 @@ async def test_tenant_daily_budget_is_enforced(
     issuer: ServiceTokenIssuer,
     tenant: uuid.UUID,
 ) -> None:
-    import datetime as dt
-
     ledger = aioredis.Redis.from_url(redis_url)
     await ledger.set(f"llm:tokens:{tenant}:{dt.datetime.now(dt.UTC):%Y%m%d}", 1_999_000)
     await ledger.aclose()

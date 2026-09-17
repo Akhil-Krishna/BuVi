@@ -27,6 +27,11 @@ by query-gateway under delegated `on_behalf_of`; api-gateway streams SSE (`GET /
 acceptance and open gaps: `docs/adr/0006-phase-a5-analytics-orchestrator.md`.
 Next up: Phase A6 (Visualization Service + Dashboard Service, API only). See Section 31 of the build spec.**
 
+**Carried forward (do not drop):**
+- **Phase A7:** wire both deferred Flow steps, `resolve_semantics` and `analyze_result`. Decide in an ADR what result data `analyze_result` may show the model before building it.
+- **Before Phase C1 starts (required):** test the `anthropic` model provider against the real API with a real key, and record the result in an ADR (spec Phase C1 entry requirement; ADR 0006).
+- **Any crewai/chromadb version bump:** re-review the chromadb advisory ignores. CI's "Accepted-advisory expiry (ADR 0006)" step fails until you do.
+
 ## Build order (do not violate)
 
 This project is built **backend + CrewAI first, frontend second** (Section 31.0):

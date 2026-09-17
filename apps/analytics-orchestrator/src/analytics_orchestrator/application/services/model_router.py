@@ -10,7 +10,7 @@ back to the configured fallback model once -- never a silent downgrade for cost.
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable, Mapping
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from typing import Any
 
@@ -71,10 +71,16 @@ class ModelRouter:
         output_type: type[OutputT],
         check: Callable[[OutputT], list[str]] | None = None,
         exhausted: FailureCode = FailureCode.OUTPUT_INVALID,
+        on_charged: Callable[[AnalyticsRunState], Awaitable[None]] | None = None,
     ) -> OutputT:
+        """`on_charged` runs after every charge, before anything else can fail, so the caller can
+        persist run usage: a crash between a paid call and its step's persistence must not
+        drop it."""
         attempt_payload = dict(payload)
         for attempt in range(self._limits.max_repairs + 1):
-            output = await self._call(state, stage, system, attempt_payload, output_type)
+            output = await self._call(
+                state, stage, system, attempt_payload, output_type, on_charged
+            )
             problems = (
                 ["output did not match the required schema"]
                 if output is None
@@ -93,6 +99,7 @@ class ModelRouter:
         system: str,
         payload: Mapping[str, Any],
         output_type: type[OutputT],
+        on_charged: Callable[[AnalyticsRunState], Awaitable[None]] | None = None,
     ) -> OutputT | None:
         user = render_user(payload)
         max_tokens = self._limits.max_tokens_per_call
@@ -120,12 +127,12 @@ class ModelRouter:
                 )
             except ProviderOutputInvalidError as error:
                 await self._charge(
-                    state, stage, route.model, error.input_tokens, error.output_tokens
+                    state, stage, route.model, error.input_tokens, error.output_tokens, on_charged
                 )
                 return None
             except ProviderRefusedError as error:
                 await self._charge(
-                    state, stage, route.model, error.input_tokens, error.output_tokens
+                    state, stage, route.model, error.input_tokens, error.output_tokens, on_charged
                 )
                 refused = True
                 continue
@@ -136,7 +143,12 @@ class ModelRouter:
                 )
                 continue
             await self._charge(
-                state, stage, response.model, response.input_tokens, response.output_tokens
+                state,
+                stage,
+                response.model,
+                response.input_tokens,
+                response.output_tokens,
+                on_charged,
             )
             return response.output
         raise RunFailedError(
@@ -150,10 +162,13 @@ class ModelRouter:
         model: str,
         input_tokens: int,
         output_tokens: int,
+        on_charged: Callable[[AnalyticsRunState], Awaitable[None]] | None = None,
     ) -> None:
         state.usage.input_tokens += input_tokens
         state.usage.output_tokens += output_tokens
         state.usage.calls += 1
+        if on_charged is not None:
+            await on_charged(state)
         try:
             await self._ledger.charge(state.tenant_id, input_tokens + output_tokens)
         except Exception:
