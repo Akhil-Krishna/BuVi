@@ -134,6 +134,20 @@ class SecretStoreUnavailableError(DomainError):
     message = "The secret store is unavailable. Retry later."
 
 
+class ResultExpiredError(DomainError):
+    """The result handle's TTL has passed; the rows are gone (Section 13). Never re-executed."""
+
+    code = "RESULT_EXPIRED"
+    status_code = 410
+    message = "This result has expired."
+
+
+class ResultReaderNotAllowedError(DomainError):
+    code = "RESULT_READER_NOT_ALLOWED"
+    status_code = 403
+    message = "This caller may not read stored results."
+
+
 class ResultStoreUnavailableError(DomainError):
     code = "RESULT_STORE_UNAVAILABLE"
     status_code = 503

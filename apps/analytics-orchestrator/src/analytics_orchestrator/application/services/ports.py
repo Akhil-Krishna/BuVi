@@ -158,6 +158,51 @@ class QueryGateway(Protocol):
     ) -> ExecutionSummary: ...
 
 
+# --- Visualization and artifacts (Phase A6) ------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class ChartCheck:
+    valid: bool
+    chart_spec: dict[str, Any] | None
+    problems: list[str]
+
+
+class ChartValidator(Protocol):
+    """visualization-service: the only ChartSpec validator (Section 17)."""
+
+    async def check(
+        self, chart_spec: dict[str, Any], result_schema: list[dict[str, Any]]
+    ) -> ChartCheck: ...
+
+
+@dataclass(frozen=True)
+class ArtifactDraft:
+    artifact_id: uuid.UUID
+    tenant_id: uuid.UUID
+    conversation_id: uuid.UUID
+    run_id: uuid.UUID
+    title: str
+    summary: str
+    semantic_query: dict[str, Any]
+    source_refs: list[dict[str, Any]]
+    validated_sql: str
+    query_result_ref: str
+    result_schema: list[dict[str, Any]]
+    chart_spec: dict[str, Any]
+    created_by: uuid.UUID
+
+
+class ArtifactRejectedError(Exception):
+    """dashboard-service refused the artifact (invalid chart spec or an id conflict)."""
+
+
+class ArtifactStore(Protocol):
+    """dashboard-service: the canonical artifact store (Section 8.9). Idempotent on the id."""
+
+    async def store(self, draft: ArtifactDraft) -> None: ...
+
+
 # --- Events and queue -------------------------------------------------------------------------
 
 

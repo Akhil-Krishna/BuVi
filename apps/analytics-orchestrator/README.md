@@ -14,7 +14,7 @@ user-safe stage events.
 | Internal API | `POST /internal/v1/runs/{id}/execute` (worker-runtime, `analytics-orchestrator:execute`) · `GET /internal/v1/runs/{id}/events` (api-gateway SSE replay, `analytics-orchestrator:events`) |
 | Contract | `contracts/openapi/analytics-orchestrator.json`; events `contracts/events/*.v1.json`; `contracts/json-schema/{AnalyticsRunEvent,ChartSpec}.json` |
 | Health | `/health/live`; `/health/ready` (Postgres, Redis, NATS required) |
-| Dependencies | Postgres, Redis (event fan-out, token ledger), NATS JetStream (`ANALYTICS`, `BILLING`), identity-service, metadata-service (agent context), query-gateway (validate + execute), model provider |
+| Dependencies | Postgres, Redis (event fan-out, token ledger), NATS JetStream (`ANALYTICS`, `BILLING`), identity-service, metadata-service (agent context), query-gateway (validate + execute), visualization-service (ChartSpec validation), dashboard-service (artifact store), model provider |
 | Decisions | [ADR 0006](../../docs/adr/0006-phase-a5-analytics-orchestrator.md) |
 | Runbook | [`docs/runbooks/analytics-orchestrator.md`](../../docs/runbooks/analytics-orchestrator.md) |
 

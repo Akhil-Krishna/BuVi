@@ -9,6 +9,7 @@ back to the configured fallback model once -- never a silent downgrade for cost.
 
 from __future__ import annotations
 
+import inspect
 import logging
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
@@ -69,7 +70,7 @@ class ModelRouter:
         system: str,
         payload: Mapping[str, Any],
         output_type: type[OutputT],
-        check: Callable[[OutputT], list[str]] | None = None,
+        check: Callable[[OutputT], list[str] | Awaitable[list[str]]] | None = None,
         exhausted: FailureCode = FailureCode.OUTPUT_INVALID,
         on_charged: Callable[[AnalyticsRunState], Awaitable[None]] | None = None,
     ) -> OutputT:
@@ -81,11 +82,10 @@ class ModelRouter:
             output = await self._call(
                 state, stage, system, attempt_payload, output_type, on_charged
             )
-            problems = (
-                ["output did not match the required schema"]
-                if output is None
-                else (check(output) if check else [])
-            )
+            problems: list[str] = ["output did not match the required schema"]
+            if output is not None:
+                checked = check(output) if check else []
+                problems = await checked if inspect.isawaitable(checked) else checked
             if output is not None and not problems:
                 return output
             if attempt < self._limits.max_repairs:

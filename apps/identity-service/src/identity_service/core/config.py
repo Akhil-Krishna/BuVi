@@ -27,6 +27,7 @@ _DEV_METADATA_SECRET_SHA256 = hashlib.sha256(b"dev-metadata-secret").hexdigest()
 _DEV_QUERY_GATEWAY_SECRET_SHA256 = hashlib.sha256(b"dev-query-gateway-secret").hexdigest()
 _DEV_ORCHESTRATOR_SECRET_SHA256 = hashlib.sha256(b"dev-analytics-orchestrator-secret").hexdigest()
 _DEV_WORKER_SECRET_SHA256 = hashlib.sha256(b"dev-worker-runtime-secret").hexdigest()
+_DEV_DASHBOARD_SECRET_SHA256 = hashlib.sha256(b"dev-dashboard-service-secret").hexdigest()
 _DEV_SECRET_HASHES = frozenset(
     {
         _DEV_GATEWAY_SECRET_SHA256,
@@ -34,6 +35,7 @@ _DEV_SECRET_HASHES = frozenset(
         _DEV_QUERY_GATEWAY_SECRET_SHA256,
         _DEV_ORCHESTRATOR_SECRET_SHA256,
         _DEV_WORKER_SECRET_SHA256,
+        _DEV_DASHBOARD_SECRET_SHA256,
     }
 )
 
@@ -63,6 +65,7 @@ def _dev_service_clients() -> dict[str, ServiceClient]:
                     "analytics-orchestrator:proxy",
                     "analytics-orchestrator:events",
                 ],
+                "dashboard-service": ["dashboard-service:proxy"],
             },
         ),
         "metadata-service": ServiceClient(
@@ -83,11 +86,21 @@ def _dev_service_clients() -> dict[str, ServiceClient]:
                 "identity-service": [SCOPE_INTROSPECT, SCOPE_RESOLVE_PRINCIPAL],
                 "metadata-service": ["metadata-service:context"],
                 "query-gateway": ["query-gateway:execute"],
+                "visualization-service": ["visualization-service:validate"],
+                "dashboard-service": ["dashboard-service:artifacts"],
             },
         ),
         "worker-runtime": ServiceClient(
             secret_sha256=_DEV_WORKER_SECRET_SHA256,
             audiences={"analytics-orchestrator": ["analytics-orchestrator:execute"]},
+        ),
+        "dashboard-service": ServiceClient(
+            secret_sha256=_DEV_DASHBOARD_SECRET_SHA256,
+            audiences={
+                "identity-service": [SCOPE_INTROSPECT],
+                "visualization-service": ["visualization-service:validate"],
+                "query-gateway": ["query-gateway:results"],
+            },
         ),
     }
 

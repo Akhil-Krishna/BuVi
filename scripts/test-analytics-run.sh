@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Phase A5 DoD scripted flow. Needs `make up`. Starts identity, metadata, query-gateway and
-# api-gateway with captured logs; scripts/test_analytics_run.py owns analytics-orchestrator and
-# worker-runtime so it can kill and restart them mid-run.
+# Phase A5 DoD scripted flow. Needs `make up`. Starts identity, metadata, query-gateway,
+# api-gateway, visualization-service and dashboard-service with captured logs;
+# scripts/test_analytics_run.py owns analytics-orchestrator and worker-runtime so it can kill
+# and restart them mid-run.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PGCONTAINER="${PGCONTAINER:-buvi-dev-postgres-1}"
@@ -19,7 +20,7 @@ UPDATE identity.users SET mfa_enabled = false WHERE email = 'admin@demo.example.
 DELETE FROM metadata.data_sources WHERE name LIKE 'sample-sales-db%';
 SQL
 
-for port in 8000 8001 8002 8003 8004 8005; do
+for port in 8000 8001 8002 8003 8004 8005 8006 8007; do
   if curl -sf "http://localhost:${port}/health/live" >/dev/null 2>&1; then
     echo "error: :${port} is already serving; stop it so this flow can capture logs." >&2; exit 1
   fi
@@ -51,6 +52,10 @@ start_service query-gateway 8003 QUERY_GATEWAY_LOG_LEVEL=DEBUG \
   uv run --package query-gateway uvicorn query_gateway.main:create_app --factory --port 8003
 start_service api-gateway 8000 GATEWAY_LOG_LEVEL=DEBUG \
   uv run --package api-gateway uvicorn api_gateway.main:create_app --factory --port 8000
+start_service visualization-service 8006 VISUALIZATION_LOG_LEVEL=DEBUG \
+  uv run --package visualization-service uvicorn visualization_service.main:create_app --factory --port 8006
+start_service dashboard-service 8007 DASHBOARD_REQUIRE_GATEWAY_TOKEN=true DASHBOARD_LOG_LEVEL=DEBUG \
+  uv run --package dashboard-service uvicorn dashboard_service.main:create_app --factory --port 8007
 
 echo "Service logs: $LOGDIR"
 cd "$ROOT"

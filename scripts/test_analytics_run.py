@@ -162,32 +162,8 @@ def wait_for(predicate, seconds: float = 120) -> bool:  # type: ignore[no-untype
     return False
 
 
-def main() -> int:
-    LOG_DIR.mkdir(parents=True, exist_ok=True)
-    orchestrator = Service(
-        "analytics-orchestrator",
-        "analytics_orchestrator",
-        8004,
-        {"ANALYTICS_LOG_LEVEL": "DEBUG", "ANALYTICS_SCRIPTED_LATENCY_SECONDS": LATENCY},
-    )
-    worker = Service(
-        "worker-runtime",
-        "worker_runtime",
-        8005,
-        {
-            "WORKER_LOG_LEVEL": "DEBUG",
-            "WORKER_ACK_WAIT_SECONDS": "20",
-            "WORKER_RETRY_BASE_SECONDS": "2",
-        },
-    )
-    try:
-        return _flow(orchestrator, worker)
-    finally:
-        worker.kill()
-        orchestrator.kill()
-
-
-def _flow(orchestrator: Service, worker: Service) -> int:
+def admin_with_sample_sales() -> tuple[str, str]:
+    """Admin session with step-up, and sample-sales-db created, credentialed and synced."""
     print("setup: admin login, data source sample-sales-db via api-gateway -> metadata-service")
     admin, _ = login(USERS["org_admin"][0])
     enroll = api("POST", "/api/v1/auth/mfa/enroll", admin)
@@ -223,6 +199,36 @@ def _flow(orchestrator: Service, worker: Service) -> int:
     )
     sync = api("POST", f"/api/v1/data-sources/{source_id}/sync", admin).json()
     check("data source synced and active", sync.get("status") == "active", str(sync))
+    return admin, source_id
+
+
+def main() -> int:
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
+    orchestrator = Service(
+        "analytics-orchestrator",
+        "analytics_orchestrator",
+        8004,
+        {"ANALYTICS_LOG_LEVEL": "DEBUG", "ANALYTICS_SCRIPTED_LATENCY_SECONDS": LATENCY},
+    )
+    worker = Service(
+        "worker-runtime",
+        "worker_runtime",
+        8005,
+        {
+            "WORKER_LOG_LEVEL": "DEBUG",
+            "WORKER_ACK_WAIT_SECONDS": "20",
+            "WORKER_RETRY_BASE_SECONDS": "2",
+        },
+    )
+    try:
+        return _flow(orchestrator, worker)
+    finally:
+        worker.kill()
+        orchestrator.kill()
+
+
+def _flow(orchestrator: Service, worker: Service) -> int:
+    admin, _source_id = admin_with_sample_sales()
 
     orchestrator.start()
     worker.start()

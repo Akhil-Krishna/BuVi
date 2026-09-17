@@ -179,6 +179,11 @@ class FakeServices:
     validate_rejections: list[dict[str, Any]] = field(default_factory=list)
     query_calls: list[dict[str, Any]] = field(default_factory=list)
     metadata_down: bool = False
+    chart_checks: list[dict[str, Any]] = field(default_factory=list)
+    chart_rejections: list[list[str]] = field(default_factory=list)
+    artifacts: dict[str, dict[str, Any]] = field(default_factory=dict)
+    artifact_posts: int = 0
+    dashboard_down: bool = False
 
     def add_user(self, tenant_id: uuid.UUID, roles: set[str]) -> Caller:
         token = f"sess-{uuid.uuid4().hex}"
@@ -266,6 +271,55 @@ class FakeServices:
                     "last_sync_at": None,
                     "tables": CONTEXT_TABLES,
                 },
+            )
+        if path == "/internal/v1/chart-specs/validate":
+            assert request.headers["x-service-authorization"] == (
+                "Bearer svc:visualization-service:visualization-service:validate"
+            )
+            body = json.loads(request.content)
+            self.chart_checks.append(body)
+            if self.chart_rejections:
+                return httpx.Response(
+                    200,
+                    json={
+                        "valid": False,
+                        "chart_spec": None,
+                        "problems": self.chart_rejections.pop(0),
+                    },
+                )
+            fields = {f["field"] for f in body["result_schema"]}
+            encodings = [e for e in body["chart_spec"].get("encoding", {}).values() if e]
+            unknown = [e["field"] for e in encodings if e["field"] not in fields]
+            if unknown:
+                return httpx.Response(
+                    200,
+                    json={
+                        "valid": False,
+                        "chart_spec": None,
+                        "problems": ["encoding.x.field: not in result_schema"],
+                    },
+                )
+            return httpx.Response(
+                200, json={"valid": True, "chart_spec": body["chart_spec"], "problems": []}
+            )
+        if path == "/internal/v1/artifacts":
+            assert request.headers["x-service-authorization"] == (
+                "Bearer svc:dashboard-service:dashboard-service:artifacts"
+            )
+            self.artifact_posts += 1
+            if self.dashboard_down:
+                return httpx.Response(503)
+            body = json.loads(request.content)
+            existing = self.artifacts.get(body["artifact_id"])
+            if existing is not None:
+                if existing["run_id"] != body["run_id"]:
+                    return httpx.Response(409, json={"error": {"code": "ARTIFACT_CONFLICT"}})
+                return httpx.Response(
+                    200, json={"artifact_id": body["artifact_id"], "version": 1, "created": False}
+                )
+            self.artifacts[body["artifact_id"]] = body
+            return httpx.Response(
+                201, json={"artifact_id": body["artifact_id"], "version": 1, "created": True}
             )
         if path in ("/internal/v1/queries/validate", "/internal/v1/queries"):
             body = json.loads(request.content)

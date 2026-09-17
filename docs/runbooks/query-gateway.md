@@ -27,6 +27,7 @@ any `secret_ref mismatch` log line
 - **Audit query:** `SELECT created_at, requested_by, purpose, status, error_code, validation_result->>'reason'
   FROM query_gateway.query_executions WHERE tenant_id = '<id>' ORDER BY created_at DESC LIMIT 100;`
   (`buvi_migrator`; the request role cannot update or delete rows).
+- **Result reads for artifacts:** `POST /internal/v1/results/read` (dashboard-service only) serves succeeded `analytics_run` results until `created_at + RESULT_TTL_DAYS`, then `410 RESULT_EXPIRED`. It never re-executes.
 - **Result retention:** objects expire via the `query-result-ttl` bucket lifecycle rule (whole days).
   To purge a result early: delete `tenants/<tenant>/queries/<query_id>.json` from the bucket.
 - **Read-only principal:** each data source's credential must be a SELECT-only role. The gateway also

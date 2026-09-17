@@ -1,14 +1,14 @@
 """`ChartSpec` -- the only channel from an agent to the renderer (Section 17).
 
 Strict by construction: every model forbids unknown keys (a smuggled key is rejected, not
-silently dropped), text fields refuse markup characters, and `validate_chart_spec` checks every
-encoding against the artifact's own result schema. Phase A6's visualization-service validates
-the JSON Schema generated from these models.
+silently dropped), accepts exactly one spelling per key (the wire alias), does no type coercion,
+and text fields refuse markup characters. This module is the DTO and its exported JSON Schema
+only; checking a spec against an artifact's result schema is visualization-service's validator
+(Section 17, Phase A6).
 """
 
 from __future__ import annotations
 
-from collections.abc import Sequence
 from typing import Final, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -20,7 +20,16 @@ _FIELD_PATTERN: Final = r"^[A-Za-z_][A-Za-z0-9_]{0,62}$"
 #: Plain text only: no markup, template, or control characters.
 _TEXT_PATTERN: Final = r"^[^<>{}`\x00-\x1f]*$"
 
-_STRICT = ConfigDict(extra="forbid", frozen=True, populate_by_name=True)
+#: One spelling per key in both directions: parse and dump by alias only, so a persisted spec
+#: round-trips and the wire never sees `color_scheme` next to `colorScheme`.
+_STRICT = ConfigDict(
+    extra="forbid",
+    frozen=True,
+    strict=True,
+    validate_by_name=False,
+    validate_by_alias=True,
+    serialize_by_alias=True,
+)
 
 
 class ResultField(BaseModel):
@@ -71,44 +80,3 @@ class ChartSpec(BaseModel):
 
     def to_wire(self) -> dict[str, object]:
         return self.model_dump(mode="json", by_alias=True)
-
-
-class ChartSpecError(ValueError):
-    """The spec is well-formed but incompatible with the result. `problems` are safe to log."""
-
-    def __init__(self, problems: list[str]) -> None:
-        super().__init__("; ".join(problems))
-        self.problems = problems
-
-
-_NEEDS_XY: Final = frozenset({"line", "bar", "area", "scatter", "pie"})
-_QUANTITATIVE_Y: Final = frozenset({"line", "bar", "area", "pie"})
-
-
-def validate_chart_spec(spec: ChartSpec, result_schema: Sequence[ResultField]) -> None:
-    """Raise `ChartSpecError` unless every encoding fits the result schema and the chart type."""
-    fields = {f.field: f.type for f in result_schema}
-    problems: list[str] = []
-    for channel in ("x", "y", "color"):
-        encoding: Encoding | None = getattr(spec.encoding, channel)
-        if encoding is None:
-            continue
-        actual = fields.get(encoding.field)
-        if actual is None:
-            problems.append(f"{channel}: unknown field {encoding.field}")
-        elif actual != encoding.type and not (
-            encoding.type in ("nominal", "ordinal") and actual != "quantitative"
-        ):
-            problems.append(f"{channel}: {encoding.field} is {actual}, not {encoding.type}")
-    if spec.type in _NEEDS_XY and (spec.encoding.x is None or spec.encoding.y is None):
-        problems.append(f"{spec.type} requires x and y encodings")
-    if (
-        spec.type in _QUANTITATIVE_Y
-        and spec.encoding.y is not None
-        and spec.encoding.y.type != "quantitative"
-    ):
-        problems.append(f"{spec.type} requires a quantitative y")
-    if spec.encoding.color is not None and spec.encoding.color.type == "quantitative":
-        problems.append("color must be nominal, ordinal or temporal")
-    if problems:
-        raise ChartSpecError(problems)

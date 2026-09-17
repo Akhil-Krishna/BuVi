@@ -250,6 +250,75 @@
         "title": "QueryResponse",
         "type": "object"
       },
+      "ResultReadRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "result_handle": {
+            "maxLength": 512,
+            "minLength": 1,
+            "title": "Result Handle",
+            "type": "string"
+          },
+          "tenant_id": {
+            "format": "uuid",
+            "title": "Tenant Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tenant_id",
+          "result_handle"
+        ],
+        "title": "ResultReadRequest",
+        "type": "object"
+      },
+      "ResultReadResponse": {
+        "properties": {
+          "columns": {
+            "items": {
+              "$ref": "#/components/schemas/QueryColumnResponse"
+            },
+            "title": "Columns",
+            "type": "array"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "query_id": {
+            "format": "uuid",
+            "title": "Query Id",
+            "type": "string"
+          },
+          "row_count": {
+            "title": "Row Count",
+            "type": "integer"
+          },
+          "rows": {
+            "items": {
+              "items": {},
+              "type": "array"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "truncated": {
+            "title": "Truncated",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "query_id",
+          "columns",
+          "rows",
+          "row_count",
+          "truncated",
+          "expires_at"
+        ],
+        "title": "ResultReadResponse",
+        "type": "object"
+      },
       "ValidateRequest": {
         "additionalProperties": false,
         "properties": {
@@ -511,6 +580,47 @@
           }
         },
         "summary": "Validate Query",
+        "tags": [
+          "internal"
+        ]
+      }
+    },
+    "/internal/v1/results/read": {
+      "post": {
+        "operationId": "read_result_internal_v1_results_read_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResultReadRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultReadResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Result",
         "tags": [
           "internal"
         ]

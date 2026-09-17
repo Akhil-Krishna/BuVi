@@ -2,14 +2,14 @@
 
 Persisted after every step, so a restarted executor resumes at the first step not in
 `completed_steps` and never re-emits an event in `emitted_events`. It holds references and
-shapes, never result rows: the executed result lives behind query-gateway's TTL-bound handle.
+shapes, never result rows: the executed result lives behind query-gateway's TTL-bound handle,
+and the artifact itself in dashboard-service (Phase A6).
 """
 
 from __future__ import annotations
 
 import datetime as dt
 import uuid
-from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -59,32 +59,6 @@ class ExecutionSummary(BaseModel):
     result_expires_at: dt.datetime
 
 
-class SourceRef(BaseModel):
-    data_source_id: str
-    tables: list[str]
-
-
-class ArtifactRecord(BaseModel):
-    """Section 16's AnalyticsArtifact. Canonical store moves to dashboard-service in Phase A6."""
-
-    artifact_id: str
-    tenant_id: str
-    conversation_id: str
-    run_id: str
-    title: str
-    summary: str
-    validated_sql: str
-    query_id: str
-    query_result_ref: str
-    result_schema: list[ResultField]
-    chart_spec: dict[str, Any]
-    source_refs: list[SourceRef]
-    refresh_policy: dict[str, str] = Field(default_factory=lambda: {"mode": "manual"})
-    created_by: str
-    version: int = 1
-    created_at: dt.datetime
-
-
 class AnalyticsRunState(BaseModel):
     #: CrewAI Flow state id: the run id.
     id: str
@@ -105,7 +79,8 @@ class AnalyticsRunState(BaseModel):
     validated_tables: list[str] = Field(default_factory=list)
     execution: ExecutionSummary | None = None
     chart_spec: ChartSpec | None = None
-    artifact: ArtifactRecord | None = None
+    #: The artifact stored in dashboard-service (Section 8.9); derived from the run id.
+    artifact_id: str | None = None
 
     @classmethod
     def initial(

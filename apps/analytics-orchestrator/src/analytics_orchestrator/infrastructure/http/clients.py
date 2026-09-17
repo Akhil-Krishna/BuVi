@@ -1,5 +1,6 @@
 """Service clients the Flow uses: identity-service (delegated principal), metadata-service (agent
-context), query-gateway (validate/execute on behalf of the user). Each call carries this service's
+context), query-gateway (validate/execute on behalf of the user), visualization-service (ChartSpec
+validation) and dashboard-service (artifact store). Each call carries this service's
 own scoped token and the request id; each failure maps onto a typed port exception."""
 
 from __future__ import annotations
@@ -11,6 +12,9 @@ import httpx
 
 from analytics_orchestrator.application.services.ports import (
     ActiveSource,
+    ArtifactDraft,
+    ArtifactRejectedError,
+    ChartCheck,
     ContextSnapshot,
     DataSourceUnknownError,
     DelegatedUserDeniedError,
@@ -24,6 +28,8 @@ from analytics_orchestrator.application.services.ports import (
     ValidatedSql,
 )
 from analytics_orchestrator.core.config import (
+    SCOPE_ARTIFACTS_WRITE,
+    SCOPE_CHART_VALIDATE,
     SCOPE_CONTEXT,
     SCOPE_QUERY_EXECUTE,
     SCOPE_RESOLVE_PRINCIPAL,
@@ -235,3 +241,59 @@ class QueryGatewayClient(_ServiceClient):
             result_handle=str(body["result_handle"]),
             result_expires_at=body["result_expires_at"],
         )
+
+
+class VisualizationClient(_ServiceClient):
+    audience = "visualization-service"
+
+    async def check(
+        self, chart_spec: dict[str, Any], result_schema: list[dict[str, Any]]
+    ) -> ChartCheck:
+        response = await self._request(
+            "POST",
+            "/internal/v1/chart-specs/validate",
+            SCOPE_CHART_VALIDATE,
+            json={"chart_spec": chart_spec, "result_schema": result_schema},
+        )
+        if response.status_code != 200:
+            raise DependencyUnavailableError()
+        try:
+            body = response.json()
+            return ChartCheck(
+                valid=bool(body["valid"]),
+                chart_spec=body.get("chart_spec"),
+                problems=[str(p) for p in body.get("problems", [])][:20],
+            )
+        except (KeyError, TypeError, ValueError):
+            raise DependencyUnavailableError() from None
+
+
+class DashboardClient(_ServiceClient):
+    audience = "dashboard-service"
+
+    async def store(self, draft: ArtifactDraft) -> None:
+        response = await self._request(
+            "POST",
+            "/internal/v1/artifacts",
+            SCOPE_ARTIFACTS_WRITE,
+            json={
+                "artifact_id": str(draft.artifact_id),
+                "tenant_id": str(draft.tenant_id),
+                "conversation_id": str(draft.conversation_id),
+                "run_id": str(draft.run_id),
+                "title": draft.title,
+                "summary": draft.summary,
+                "semantic_query": draft.semantic_query,
+                "source_refs": draft.source_refs,
+                "validated_sql": draft.validated_sql,
+                "query_result_ref": draft.query_result_ref,
+                "result_schema": draft.result_schema,
+                "chart_spec": draft.chart_spec,
+                "created_by": str(draft.created_by),
+            },
+        )
+        if response.status_code in (200, 201):
+            return
+        if response.status_code in (409, 422):
+            raise ArtifactRejectedError()
+        raise DependencyUnavailableError()

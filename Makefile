@@ -9,7 +9,8 @@ WEB := web/next-app
 .DEFAULT_GOAL := help
 .PHONY: help sync lint fmt typecheck test web-install web-lint web-typecheck web-test \
         web-build check up down migrate seed dev dev-gateway dev-metadata dev-query-gateway contracts contracts-check \
-        dev-orchestrator dev-worker test-login test-data-sources test-query-gateway test-analytics-run
+        dev-orchestrator dev-worker dev-visualization dev-dashboard test-login test-data-sources \
+        test-query-gateway test-analytics-run test-dashboards
 
 help: ## List available targets
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) \
@@ -106,6 +107,14 @@ dev-worker: ## Start worker-runtime (JetStream run consumer) on :8005
 	cd apps/worker-runtime && uv run --package worker-runtime \
 		uvicorn worker_runtime.main:create_app --factory --port 8005
 
+dev-visualization: ## Start visualization-service with reload on :8006
+	cd apps/visualization-service && uv run --package visualization-service \
+		uvicorn visualization_service.main:create_app --factory --reload --port 8006
+
+dev-dashboard: ## Start dashboard-service with reload on :8007
+	cd apps/dashboard-service && uv run --package dashboard-service \
+		uvicorn dashboard_service.main:create_app --factory --reload --port 8007
+
 contracts: ## Export OpenAPI documents and platform-contracts JSON Schemas into contracts/
 	scripts/gen-openapi.sh
 	uv run python scripts/export_json_schemas.py
@@ -124,3 +133,6 @@ test-query-gateway: ## Phase A4 scripted flow: valid SELECT capped + audited, un
 
 test-analytics-run: ## Phase A5 scripted flow: message -> SSE Section 32, kill/resume executor and worker, budget
 	scripts/test-analytics-run.sh
+
+test-dashboards: ## Phase A6 scripted flow: Section 32 Steps A-D over HTTP as a client-role user
+	scripts/test-dashboards.sh

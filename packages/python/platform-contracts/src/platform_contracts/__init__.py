@@ -1,7 +1,7 @@
 """Shared, versioned wire contracts (Sections 11, 17, 18.1).
 
-Contract: `ChartSpec`, `ResultField`, `ChartSpecError`, `validate_chart_spec`, `AnalyticsRunEvent`,
-`RunRequested`, `BillingUsageRecorded`, `SchemaVersionError`. Nothing here imports a service.
+Contract: `ChartSpec` and its parts, `ResultField`, `AnalyticsRunEvent`, `RunRequested`,
+`BillingUsageRecorded`, `DashboardTilePinned`, `SchemaVersionError`. Nothing here imports a service.
 """
 
 from platform_contracts.analytics import (
@@ -15,11 +15,12 @@ from platform_contracts.chart_spec import (
     ChartEncodings,
     ChartOptions,
     ChartSpec,
-    ChartSpecError,
+    ChartType,
     Encoding,
+    FieldType,
     ResultField,
-    validate_chart_spec,
 )
+from platform_contracts.dashboard import DashboardTilePinned
 
 __all__ = [
     "RUN_STAGES",
@@ -28,10 +29,11 @@ __all__ = [
     "ChartEncodings",
     "ChartOptions",
     "ChartSpec",
-    "ChartSpecError",
+    "ChartType",
+    "DashboardTilePinned",
     "Encoding",
+    "FieldType",
     "ResultField",
     "RunRequested",
     "SchemaVersionError",
-    "validate_chart_spec",
 ]

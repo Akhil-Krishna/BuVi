@@ -28,6 +28,7 @@ class Settings(BaseSettings):
             "identity-service": "http://localhost:8001",
             "metadata-service": "http://localhost:8002",
             "analytics-orchestrator": "http://localhost:8004",
+            "dashboard-service": "http://localhost:8007",
         }
     )
     upstream_connect_timeout_seconds: float = 3.0

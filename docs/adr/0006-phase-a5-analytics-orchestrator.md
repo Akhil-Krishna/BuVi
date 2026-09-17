@@ -84,6 +84,6 @@
   - `resolve_semantics` needs the semantic layer.
   - `analyze_result` is the first stage that would show query results to a model, so A7 must record in an ADR, before implementing it, what result data the model may see.
 - **`billing.usage.recorded` is published to JetStream `BILLING` but nothing consumes it** until the billing phase. The Redis ledger is the enforcement source.
-- **The artifact lives in `runs.flow_state` and ChartSpec in `platform-contracts`** until A6 creates visualization and dashboard services.
+- ~~**The artifact lives in `runs.flow_state` and ChartSpec in `platform-contracts`** until A6 creates visualization and dashboard services.~~ Resolved in Phase A6 ([ADR 0007](0007-phase-a6-visualization-dashboard.md)): artifacts live in dashboard-service, and the validator in visualization-service.
 - **One data source per run.** A tenant with several active sources must pass `data_source_id` (`DATA_SOURCE_SELECTION_REQUIRED`).
 - **Cancellation is cooperative.** It takes effect at the next step boundary. A model or query call already in flight finishes, is charged, and is then discarded.

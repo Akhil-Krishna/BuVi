@@ -1,0 +1,31 @@
+[project]
+name = "visualization-service"
+version = "0.1.0"
+description = "ChartSpec validation and render-safety rules (Section 17)"
+readme = "README.md"
+authors = [
+    { name = "Akhil Krishna", email = "akhilmavannoor@gmail.com" }
+]
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "fastapi>=0.141.1",
+    "httpx>=0.28.1",
+    "platform-auth",
+    "platform-contracts",
+    "platform-observability",
+    "pydantic-settings>=2.15.0",
+    "pydantic>=2.12.5",
+    "uvicorn>=0.52.4",
+]
+
+[project.scripts]
+visualization-service = "visualization_service.main:run"
+
+[build-system]
+requires = ["uv_build>=0.12.13,<0.13.0"]
+build-backend = "uv_build"
+
+[tool.uv.sources]
+platform-auth = { workspace = true }
+platform-contracts = { workspace = true }
+platform-observability = { workspace = true }

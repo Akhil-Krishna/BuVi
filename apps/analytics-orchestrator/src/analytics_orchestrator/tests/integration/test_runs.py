@@ -15,6 +15,7 @@ import pytest
 import redis.asyncio as aioredis
 
 from analytics_orchestrator.application.services.ports import ProviderResponse
+from analytics_orchestrator.application.services.run_executor import ARTIFACT_NAMESPACE
 from analytics_orchestrator.domain.value_objects.agent_outputs import AnalyticsRequest
 from analytics_orchestrator.domain.value_objects.run_state import AnalyticsRunState
 from analytics_orchestrator.infrastructure.llm.scripted_provider import ScriptedProvider
@@ -111,17 +112,21 @@ async def test_full_run_emits_the_section_32_sequence_and_an_artifact(
         and row["completed_at"]
         and row["current_stage"] == "publish_events"
     )
-    assert state.artifact is not None and live[13]["artifactId"] == state.artifact.artifact_id
-    assert state.artifact.chart_spec["type"] == "line"
-    assert state.artifact.chart_spec["encoding"]["x"] == {"field": "month", "type": "temporal"}
-    assert state.artifact.chart_spec["encoding"]["y"] == {
-        "field": "revenue",
-        "type": "quantitative",
-    }
+    assert state.artifact_id is not None and live[13]["artifactId"] == state.artifact_id
+    assert state.artifact_id == str(uuid.uuid5(ARTIFACT_NAMESPACE, run_id))
+    stored = harness.services.artifacts[state.artifact_id]
+    assert (stored["tenant_id"], stored["run_id"]) == (str(tenant), run_id)
+    assert stored["created_by"] == str(who.user_id)
+    assert stored["chart_spec"]["type"] == "line"
+    assert stored["chart_spec"]["encoding"]["x"] == {"field": "month", "type": "temporal"}
+    assert stored["chart_spec"]["encoding"]["y"] == {"field": "revenue", "type": "quantitative"}
     assert (
-        "DATE '2026-04-01'" in state.artifact.validated_sql
-        and "sales.orders" in state.artifact.validated_sql
+        "DATE '2026-04-01'" in stored["validated_sql"] and "sales.orders" in stored["validated_sql"]
     )
+    assert stored["source_refs"][0]["tables"] == ["sales.orders"]
+    assert stored["semantic_query"]["tables"] == ["sales.orders"]
+    assert len(harness.services.chart_checks) == 2  # build_chart_spec check + validate_chart_spec
+    assert "artifact" not in row["flow_state"]
     assert state.usage.calls == 4 and state.usage.total > 0
 
     validate, execute = harness.services.query_calls
@@ -454,6 +459,66 @@ async def test_enqueue_failure_fails_the_run_visibly(
 
 
 @pytest.mark.security
+async def test_chart_spec_rejected_by_visualization_is_repaired_then_fails(
+    harness: Harness, platform_db: Any, tenant: uuid.UUID
+) -> None:
+    """Section 17: visualization-service's rejection drives the bounded repair loop."""
+    who = harness.services.add_user(tenant, {"client"})
+    harness.services.add_data_source(tenant)
+    run_id = await harness.start_run(who)
+    harness.services.chart_rejections = [["html: extra_forbidden"]] * 3
+    result = (await harness.execute(who, run_id)).json()
+    assert result["status"] == "failed" and result["error_code"] == "CHART_INVALID"
+    assert harness.provider.calls.count("ChartSpec") == 3
+    assert harness.provider.users[-1].count("html: extra_forbidden") == 1
+    assert harness.services.artifact_posts == 0
+    assert (await run_events(platform_db, run_id))[-2:] == ["visualization.failed", "run.failed"]
+
+
+async def test_crash_after_the_artifact_is_stored_does_not_duplicate_it(
+    harness: Harness, platform_db: Any, tenant: uuid.UUID
+) -> None:
+    """A resumed `persist_artifact` re-sends the same derived id; one artifact, one message."""
+    who = harness.services.add_user(tenant, {"client"})
+    harness.services.add_data_source(tenant)
+    run_id = await harness.start_run(who)
+
+    async def crash_after_artifact(step: str, _state: AnalyticsRunState) -> None:
+        if step == "persist_artifact":
+            raise SimulatedCrashError()
+
+    harness.hook["after_step"] = crash_after_artifact
+    with pytest.raises(SimulatedCrashError):
+        await harness.app.state.executor.execute(tenant, uuid.UUID(run_id))
+    del harness.hook["after_step"]
+    # Replay the step as if the crash hit before it was persisted.
+    await platform_db.execute(
+        "UPDATE analytics.runs SET flow_state = jsonb_set(flow_state, '{completed_steps}', "
+        "(flow_state->'completed_steps') - 'persist_artifact') WHERE id = $1",
+        uuid.UUID(run_id),
+    )
+    assert (await harness.execute(who, run_id)).json()["status"] == "completed"
+    assert harness.services.artifact_posts == 2 and len(harness.services.artifacts) == 1
+    messages = await platform_db.fetchval(
+        "SELECT count(*) FROM analytics.messages WHERE run_id = $1 AND role = 'assistant'",
+        uuid.UUID(run_id),
+    )
+    assert messages == 1
+    assert await run_events(platform_db, run_id) == SECTION_32
+
+
+async def test_artifact_store_outage_fails_the_run_visibly(
+    harness: Harness, platform_db: Any, tenant: uuid.UUID
+) -> None:
+    who = harness.services.add_user(tenant, {"client"})
+    harness.services.add_data_source(tenant)
+    run_id = await harness.start_run(who)
+    harness.services.dashboard_down = True
+    result = (await harness.execute(who, run_id)).json()
+    assert result["status"] == "failed" and result["error_code"] == "UPSTREAM_UNAVAILABLE"
+    assert (await run_events(platform_db, run_id))[-2:] == ["artifact.failed", "run.failed"]
+
+
 async def test_a_full_run_opens_no_outbound_connection_and_no_chroma_client(
     harness: Harness, tenant: uuid.UUID, monkeypatch: pytest.MonkeyPatch
 ) -> None:

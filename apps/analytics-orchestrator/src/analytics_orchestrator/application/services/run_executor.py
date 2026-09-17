@@ -29,6 +29,10 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from analytics_orchestrator.application.services import prompts
 from analytics_orchestrator.application.services.model_router import ModelRouter
 from analytics_orchestrator.application.services.ports import (
+    ArtifactDraft,
+    ArtifactRejectedError,
+    ArtifactStore,
+    ChartValidator,
     DataSourceUnknownError,
     DelegatedIdentity,
     DelegatedUserDeniedError,
@@ -68,9 +72,7 @@ from analytics_orchestrator.domain.value_objects.failures import (
 )
 from analytics_orchestrator.domain.value_objects.run_state import (
     AnalyticsRunState,
-    ArtifactRecord,
     SchemaContext,
-    SourceRef,
 )
 from analytics_orchestrator.infrastructure.db.models import Message
 from analytics_orchestrator.infrastructure.db.repositories.analytics_repository import (
@@ -78,7 +80,10 @@ from analytics_orchestrator.infrastructure.db.repositories.analytics_repository 
 )
 from analytics_orchestrator.infrastructure.db.session import tenant_scope
 from platform_auth.permissions import PERM_CHAT_USE
-from platform_contracts import AnalyticsRunEvent, ChartSpec, ChartSpecError, validate_chart_spec
+from platform_contracts import AnalyticsRunEvent, ChartSpec
+
+#: Artifact ids are derived from the run id, so a resumed run addresses the same artifact.
+ARTIFACT_NAMESPACE = uuid.UUID("6f1f7c1e-3b0a-4d6e-9a0c-2f5d8e4b7a10")
 
 logger = logging.getLogger(__name__)
 
@@ -125,6 +130,8 @@ class RunExecutor:
         identity: DelegatedIdentity,
         metadata: MetadataContext,
         queries: QueryGateway,
+        charts: ChartValidator,
+        artifacts: ArtifactStore,
         events: RunEventPublisher,
         limits: FlowLimits,
         after_step: AfterStep | None = None,
@@ -136,6 +143,8 @@ class RunExecutor:
         self._identity = identity
         self._metadata = metadata
         self._queries = queries
+        self._charts = charts
+        self._artifacts = artifacts
         self._events = events
         self._limits = limits
         self._after_step = after_step
@@ -225,11 +234,7 @@ class RunExecutor:
         state.completed_steps.append(step)
         await self._persist(state, step)
         if events.stage and events.completed and step != "publish_events":
-            artifact_id = (
-                state.artifact.artifact_id
-                if step == "persist_artifact" and state.artifact
-                else None
-            )
+            artifact_id = state.artifact_id if step == "persist_artifact" else None
             await self._emit(
                 state, events.stage, "completed", events.completed, artifact_id=artifact_id
             )
@@ -388,13 +393,17 @@ class RunExecutor:
         except DependencyUnavailableError:
             raise RunFailedError(FailureCode.UPSTREAM_UNAVAILABLE) from None
 
-    def _chart_problems(self, state: AnalyticsRunState, spec: ChartSpec) -> list[str]:
+    async def _chart_problems(self, state: AnalyticsRunState, spec: ChartSpec) -> list[str]:
+        """visualization-service is the one validator (Section 17); an outage fails the run."""
         assert state.execution is not None
         try:
-            validate_chart_spec(spec, state.execution.result_schema)
-        except ChartSpecError as error:
-            return error.problems
-        return []
+            check = await self._charts.check(
+                spec.to_wire(),
+                [field.model_dump(mode="json") for field in state.execution.result_schema],
+            )
+        except DependencyUnavailableError:
+            raise RunFailedError(FailureCode.UPSTREAM_UNAVAILABLE) from None
+        return [] if check.valid else (check.problems or ["chart specification rejected"])
 
     async def _build_chart_spec(self, state: AnalyticsRunState) -> None:
         assert state.execution is not None and state.request is not None
@@ -418,14 +427,17 @@ class RunExecutor:
 
     async def _validate_chart_spec(self, state: AnalyticsRunState) -> None:
         """Section 17, deterministic: the stored spec is re-validated, never trusted from memory."""
-        if state.chart_spec is None or self._chart_problems(state, state.chart_spec):
+        if state.chart_spec is None or await self._chart_problems(state, state.chart_spec):
             raise RunFailedError(FailureCode.CHART_INVALID)
 
     async def _persist_artifact(self, state: AnalyticsRunState) -> None:
+        """Store the artifact in dashboard-service (Section 8.9) under an id derived from the run,
+        then the assistant message -- both idempotent, so a resumed step never duplicates them."""
         assert (
             state.execution
             and state.chart_spec
             and state.request
+            and state.plan
             and state.validated_sql
             and state.data_source_id
         )
@@ -433,35 +445,47 @@ class RunExecutor:
         summary = f"{state.request.title} — {rows} row{'s' if rows != 1 else ''}" + (
             " (truncated)" if state.execution.truncated else ""
         )
-        state.artifact = ArtifactRecord(
-            artifact_id=str(uuid.uuid4()),
-            tenant_id=state.tenant_id,
-            conversation_id=state.conversation_id,
-            run_id=state.id,
-            title=state.request.title,
-            summary=summary,
-            validated_sql=state.validated_sql,
-            query_id=state.execution.query_id,
-            query_result_ref=state.execution.result_handle,
-            result_schema=state.execution.result_schema,
-            chart_spec=state.chart_spec.to_wire(),
-            source_refs=[
-                SourceRef(data_source_id=state.data_source_id, tables=state.validated_tables)
-            ],
-            created_by=state.requested_by,
-            created_at=utcnow(),
-        )
-        tenant = uuid.UUID(state.tenant_id)
-        async with tenant_scope(self._sessions, tenant) as db:
-            await AnalyticsRepository(db).add_message(
-                Message(
-                    tenant_id=tenant,
+        artifact_id = uuid.uuid5(ARTIFACT_NAMESPACE, state.id)
+        try:
+            await self._artifacts.store(
+                ArtifactDraft(
+                    artifact_id=artifact_id,
+                    tenant_id=uuid.UUID(state.tenant_id),
                     conversation_id=uuid.UUID(state.conversation_id),
-                    role="assistant",
-                    content=summary,
                     run_id=uuid.UUID(state.id),
+                    title=state.request.title,
+                    summary=summary,
+                    semantic_query=state.plan.model_dump(mode="json"),
+                    source_refs=[
+                        {"data_source_id": state.data_source_id, "tables": state.validated_tables}
+                    ],
+                    validated_sql=state.validated_sql,
+                    query_result_ref=state.execution.result_handle,
+                    result_schema=[
+                        field.model_dump(mode="json") for field in state.execution.result_schema
+                    ],
+                    chart_spec=state.chart_spec.to_wire(),
+                    created_by=uuid.UUID(state.requested_by),
                 )
             )
+        except ArtifactRejectedError:
+            raise RunFailedError(FailureCode.CHART_INVALID) from None
+        except DependencyUnavailableError:
+            raise RunFailedError(FailureCode.UPSTREAM_UNAVAILABLE) from None
+        state.artifact_id = str(artifact_id)
+        tenant = uuid.UUID(state.tenant_id)
+        async with tenant_scope(self._sessions, tenant) as db:
+            repository = AnalyticsRepository(db)
+            if not await repository.has_assistant_message(tenant, uuid.UUID(state.id)):
+                await repository.add_message(
+                    Message(
+                        tenant_id=tenant,
+                        conversation_id=uuid.UUID(state.conversation_id),
+                        role="assistant",
+                        content=summary,
+                        run_id=uuid.UUID(state.id),
+                    )
+                )
             await db.commit()
 
     async def _publish_events(self, state: AnalyticsRunState) -> None:
@@ -515,7 +539,7 @@ class RunExecutor:
         system: str,
         payload: Mapping[str, Any],
         output_type: type[OutputT],
-        check: Callable[[OutputT], list[str]] | None = None,
+        check: Callable[[OutputT], list[str] | Awaitable[list[str]]] | None = None,
         exhausted: FailureCode = FailureCode.OUTPUT_INVALID,
     ) -> OutputT:
         return await self._router.generate(

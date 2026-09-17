@@ -138,6 +138,149 @@
         "title": "ApiKeyResponse",
         "type": "object"
       },
+      "ArtifactDataResponse": {
+        "properties": {
+          "artifact_id": {
+            "format": "uuid",
+            "title": "Artifact Id",
+            "type": "string"
+          },
+          "columns": {
+            "items": {
+              "$ref": "#/components/schemas/ResultColumnResponse"
+            },
+            "title": "Columns",
+            "type": "array"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "row_count": {
+            "title": "Row Count",
+            "type": "integer"
+          },
+          "rows": {
+            "items": {
+              "items": {},
+              "type": "array"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "truncated": {
+            "title": "Truncated",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "artifact_id",
+          "columns",
+          "rows",
+          "row_count",
+          "truncated",
+          "expires_at"
+        ],
+        "title": "ArtifactDataResponse",
+        "type": "object"
+      },
+      "ArtifactResponse": {
+        "description": "Section 9.1 `GET /artifacts/{id}`.",
+        "properties": {
+          "artifact_id": {
+            "format": "uuid",
+            "title": "Artifact Id",
+            "type": "string"
+          },
+          "can_pin": {
+            "title": "Can Pin",
+            "type": "boolean"
+          },
+          "chart_spec": {
+            "additionalProperties": true,
+            "title": "Chart Spec",
+            "type": "object"
+          },
+          "conversation_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conversation Id"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "refresh_policy": {
+            "additionalProperties": true,
+            "title": "Refresh Policy",
+            "type": "object"
+          },
+          "result_schema": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Result Schema",
+            "type": "array"
+          },
+          "run_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Id"
+          },
+          "source_refs": {
+            "items": {
+              "$ref": "#/components/schemas/SourceRefResponse"
+            },
+            "title": "Source Refs",
+            "type": "array"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "artifact_id",
+          "title",
+          "summary",
+          "chart_spec",
+          "result_schema",
+          "source_refs",
+          "refresh_policy",
+          "version",
+          "can_pin",
+          "conversation_id",
+          "run_id",
+          "created_at"
+        ],
+        "title": "ArtifactResponse",
+        "type": "object"
+      },
       "AuditEventListResponse": {
         "properties": {
           "items": {
@@ -473,6 +616,162 @@
           "created_at"
         ],
         "title": "ConversationResponse",
+        "type": "object"
+      },
+      "DashboardCreateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "maxLength": 120,
+            "minLength": 1,
+            "pattern": "^[^<>{}`\\x00-\\x1f]*$",
+            "title": "Name",
+            "type": "string"
+          },
+          "visibility": {
+            "default": "private",
+            "enum": [
+              "private",
+              "tenant"
+            ],
+            "title": "Visibility",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "DashboardCreateRequest",
+        "type": "object"
+      },
+      "DashboardDetailResponse": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "is_owner": {
+            "title": "Is Owner",
+            "type": "boolean"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "owner_id": {
+            "format": "uuid",
+            "title": "Owner Id",
+            "type": "string"
+          },
+          "tiles": {
+            "items": {
+              "$ref": "#/components/schemas/TileResponse"
+            },
+            "title": "Tiles",
+            "type": "array"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "visibility": {
+            "title": "Visibility",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "visibility",
+          "owner_id",
+          "is_owner",
+          "created_at",
+          "updated_at",
+          "tiles"
+        ],
+        "title": "DashboardDetailResponse",
+        "type": "object"
+      },
+      "DashboardListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/DashboardResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "DashboardListResponse",
+        "type": "object"
+      },
+      "DashboardResponse": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "is_owner": {
+            "title": "Is Owner",
+            "type": "boolean"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "owner_id": {
+            "format": "uuid",
+            "title": "Owner Id",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "visibility": {
+            "title": "Visibility",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "visibility",
+          "owner_id",
+          "is_owner",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "DashboardResponse",
         "type": "object"
       },
       "DataSourceCreateRequest": {
@@ -880,6 +1179,22 @@
         "title": "MfaVerifyResponse",
         "type": "object"
       },
+      "PinRequest": {
+        "additionalProperties": false,
+        "description": "Section 9: body `{artifact_id}`.",
+        "properties": {
+          "artifact_id": {
+            "format": "uuid",
+            "title": "Artifact Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "artifact_id"
+        ],
+        "title": "PinRequest",
+        "type": "object"
+      },
       "RelationshipResponse": {
         "properties": {
           "from_column": {
@@ -905,6 +1220,24 @@
           "to_column"
         ],
         "title": "RelationshipResponse",
+        "type": "object"
+      },
+      "ResultColumnResponse": {
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "type"
+        ],
+        "title": "ResultColumnResponse",
         "type": "object"
       },
       "RoleChangeRequest": {
@@ -1104,6 +1437,28 @@
           "sessions_revoked"
         ],
         "title": "SessionsRevokedResponse",
+        "type": "object"
+      },
+      "SourceRefResponse": {
+        "properties": {
+          "data_source_id": {
+            "format": "uuid",
+            "title": "Data Source Id",
+            "type": "string"
+          },
+          "tables": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Tables",
+            "type": "array"
+          }
+        },
+        "required": [
+          "data_source_id",
+          "tables"
+        ],
+        "title": "SourceRefResponse",
         "type": "object"
       },
       "SyncResponse": {
@@ -1345,6 +1700,112 @@
           "column_count"
         ],
         "title": "TableSummaryResponse",
+        "type": "object"
+      },
+      "TilePosition": {
+        "additionalProperties": false,
+        "properties": {
+          "h": {
+            "title": "H",
+            "type": "integer"
+          },
+          "w": {
+            "title": "W",
+            "type": "integer"
+          },
+          "x": {
+            "title": "X",
+            "type": "integer"
+          },
+          "y": {
+            "title": "Y",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "x",
+          "y",
+          "w",
+          "h"
+        ],
+        "title": "TilePosition",
+        "type": "object"
+      },
+      "TileResponse": {
+        "description": "Section 16 `DashboardTile`.",
+        "properties": {
+          "artifact_id": {
+            "format": "uuid",
+            "title": "Artifact Id",
+            "type": "string"
+          },
+          "chart_spec_version": {
+            "title": "Chart Spec Version",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "dashboard_id": {
+            "format": "uuid",
+            "title": "Dashboard Id",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "overrides": {
+            "additionalProperties": true,
+            "title": "Overrides",
+            "type": "object"
+          },
+          "position": {
+            "$ref": "#/components/schemas/TilePosition"
+          }
+        },
+        "required": [
+          "id",
+          "dashboard_id",
+          "artifact_id",
+          "chart_spec_version",
+          "position",
+          "overrides",
+          "created_at"
+        ],
+        "title": "TileResponse",
+        "type": "object"
+      },
+      "TileUpdateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "overrides": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Overrides"
+          },
+          "position": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TilePosition"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "title": "TileUpdateRequest",
         "type": "object"
       },
       "UserListResponse": {
@@ -2312,7 +2773,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/ArtifactResponse"
+                }
               }
             },
             "description": "Successful Response"
@@ -2347,7 +2810,7 @@
             },
             "description": "Rate limited"
           },
-          "501": {
+          "502": {
             "content": {
               "application/json": {
                 "schema": {
@@ -2355,7 +2818,17 @@
                 }
               }
             },
-            "description": "Backing service not available yet"
+            "description": "Upstream unavailable"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Upstream timeout"
           }
         },
         "summary": "Read an artifact",
@@ -2363,7 +2836,90 @@
           "dashboard-service"
         ],
         "x-auth": "session or API key, artifact:read",
-        "x-available-in-phase": "A6",
+        "x-backend": "dashboard-service",
+        "x-rate-tier": "authenticated"
+      }
+    },
+    "/api/v1/artifacts/{id}/data": {
+      "get": {
+        "operationId": "get_artifacts_id_data",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArtifactDataResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Rate limited"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Upstream unavailable"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Upstream timeout"
+          }
+        },
+        "summary": "The artifact's stored result rows",
+        "tags": [
+          "dashboard-service"
+        ],
+        "x-auth": "session or API key, artifact:read",
         "x-backend": "dashboard-service",
         "x-rate-tier": "authenticated"
       }
@@ -3150,7 +3706,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/DashboardListResponse"
+                }
               }
             },
             "description": "Successful Response"
@@ -3185,7 +3743,7 @@
             },
             "description": "Rate limited"
           },
-          "501": {
+          "502": {
             "content": {
               "application/json": {
                 "schema": {
@@ -3193,7 +3751,17 @@
                 }
               }
             },
-            "description": "Backing service not available yet"
+            "description": "Upstream unavailable"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Upstream timeout"
           }
         },
         "summary": "List dashboards",
@@ -3201,7 +3769,6 @@
           "dashboard-service"
         ],
         "x-auth": "session or API key, dashboard:read",
-        "x-available-in-phase": "A6",
         "x-backend": "dashboard-service",
         "x-rate-tier": "authenticated"
       },
@@ -3217,11 +3784,23 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DashboardCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
-          "200": {
+          "201": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/DashboardResponse"
+                }
               }
             },
             "description": "Successful Response"
@@ -3256,7 +3835,7 @@
             },
             "description": "Rate limited"
           },
-          "501": {
+          "502": {
             "content": {
               "application/json": {
                 "schema": {
@@ -3264,7 +3843,17 @@
                 }
               }
             },
-            "description": "Backing service not available yet"
+            "description": "Upstream unavailable"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Upstream timeout"
           }
         },
         "summary": "Create a dashboard",
@@ -3272,7 +3861,90 @@
           "dashboard-service"
         ],
         "x-auth": "session or API key, dashboard:pin",
-        "x-available-in-phase": "A6",
+        "x-backend": "dashboard-service",
+        "x-rate-tier": "authenticated"
+      }
+    },
+    "/api/v1/dashboards/{id}": {
+      "get": {
+        "operationId": "get_dashboards_id",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DashboardDetailResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Rate limited"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Upstream unavailable"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Upstream timeout"
+          }
+        },
+        "summary": "A dashboard with its tiles",
+        "tags": [
+          "dashboard-service"
+        ],
+        "x-auth": "session or API key, dashboard:read",
         "x-backend": "dashboard-service",
         "x-rate-tier": "authenticated"
       }
@@ -3353,7 +4025,7 @@
           "dashboard-service"
         ],
         "x-auth": "session or API key, dashboard:share, step-up",
-        "x-available-in-phase": "A6",
+        "x-available-in-phase": "A10",
         "x-backend": "dashboard-service",
         "x-rate-tier": "authenticated"
       }
@@ -3379,11 +4051,23 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PinRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
-          "200": {
+          "201": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/TileResponse"
+                }
               }
             },
             "description": "Successful Response"
@@ -3418,7 +4102,7 @@
             },
             "description": "Rate limited"
           },
-          "501": {
+          "502": {
             "content": {
               "application/json": {
                 "schema": {
@@ -3426,7 +4110,17 @@
                 }
               }
             },
-            "description": "Backing service not available yet"
+            "description": "Upstream unavailable"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Upstream timeout"
           }
         },
         "summary": "Pin an artifact as a tile",
@@ -3434,7 +4128,6 @@
           "dashboard-service"
         ],
         "x-auth": "session or API key, dashboard:pin",
-        "x-available-in-phase": "A6",
         "x-backend": "dashboard-service",
         "x-rate-tier": "authenticated"
       }
@@ -5375,7 +6068,7 @@
           "dashboard-service"
         ],
         "x-auth": "public",
-        "x-available-in-phase": "A6",
+        "x-available-in-phase": "A10",
         "x-backend": "dashboard-service",
         "x-rate-tier": "public"
       }
@@ -5611,11 +6304,23 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TileUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/TileResponse"
+                }
               }
             },
             "description": "Successful Response"
@@ -5650,7 +6355,7 @@
             },
             "description": "Rate limited"
           },
-          "501": {
+          "502": {
             "content": {
               "application/json": {
                 "schema": {
@@ -5658,7 +6363,17 @@
                 }
               }
             },
-            "description": "Backing service not available yet"
+            "description": "Upstream unavailable"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Upstream timeout"
           }
         },
         "summary": "Update tile layout/overrides",
@@ -5666,7 +6381,6 @@
           "dashboard-service"
         ],
         "x-auth": "session or API key, dashboard:pin",
-        "x-available-in-phase": "A6",
         "x-backend": "dashboard-service",
         "x-rate-tier": "authenticated"
       }

@@ -1,4 +1,4 @@
-"""ChartSpec strictness (Section 17), run-event wire shape (Section 11), event versioning (18.1),
+"""ChartSpec DTO strictness (Section 17), run-event wire shape (Section 11), event versioning (18.1),
 and drift between these models and the committed JSON Schemas."""
 
 from __future__ import annotations
@@ -16,21 +16,14 @@ from pydantic import ValidationError
 from platform_contracts import (
     AnalyticsRunEvent,
     ChartSpec,
-    ChartSpecError,
-    ResultField,
+    DashboardTilePinned,
     RunRequested,
     SchemaVersionError,
-    validate_chart_spec,
 )
 
 pytestmark = pytest.mark.unit
 
 REPO = Path(__file__).resolve().parents[4]
-RESULT = [
-    ResultField(field="month", type="temporal"),
-    ResultField(field="revenue", type="quantitative"),
-    ResultField(field="region", type="nominal"),
-]
 LINE = {
     "type": "line",
     "dataset": "artifact-result",
@@ -44,7 +37,6 @@ LINE = {
 
 def test_section_17_example_is_valid() -> None:
     spec = ChartSpec.model_validate(LINE)
-    validate_chart_spec(spec, RESULT)
     assert spec.options.title == "Monthly Revenue"
     assert spec.to_wire()["dataset"] == "artifact-result"
 
@@ -67,50 +59,24 @@ def test_unknown_keys_and_markup_are_rejected(mutation: dict[str, object]) -> No
         ChartSpec.model_validate({**LINE, **mutation})
 
 
-@pytest.mark.parametrize(
-    ("encoding", "chart_type"),
-    [
-        (
-            {
-                "x": {"field": "month", "type": "temporal"},
-                "y": {"field": "profit", "type": "quantitative"},
-            },
-            "line",
-        ),
-        (
-            {
-                "x": {"field": "month", "type": "temporal"},
-                "y": {"field": "region", "type": "nominal"},
-            },
-            "bar",
-        ),
-        (
-            {
-                "x": {"field": "revenue", "type": "temporal"},
-                "y": {"field": "revenue", "type": "quantitative"},
-            },
-            "line",
-        ),
-        ({"x": {"field": "month", "type": "temporal"}}, "line"),
-        (
-            {
-                "x": {"field": "region", "type": "nominal"},
-                "y": {"field": "revenue", "type": "quantitative"},
-                "color": {"field": "revenue", "type": "quantitative"},
-            },
-            "bar",
-        ),
-    ],
-)
-def test_encodings_must_fit_the_result_schema(encoding: dict[str, object], chart_type: str) -> None:
-    spec = ChartSpec.model_validate({"type": chart_type, "encoding": encoding})
-    with pytest.raises(ChartSpecError) as info:
-        validate_chart_spec(spec, RESULT)
-    assert info.value.problems
+def test_one_spelling_per_key_and_no_coercion() -> None:
+    with pytest.raises(ValidationError):
+        ChartSpec.model_validate({**LINE, "options": {"color_scheme": "default"}})
+    with pytest.raises(ValidationError):
+        ChartSpec.model_validate({**LINE, "options": {"legend": "true"}})
+    spec = ChartSpec.model_validate({**LINE, "options": {"colorScheme": "categorical"}})
+    assert spec.options.color_scheme == "categorical"
+    assert "colorScheme" in json.dumps(spec.to_wire())
 
 
-def test_table_needs_no_encoding() -> None:
-    validate_chart_spec(ChartSpec.model_validate({"type": "table"}), RESULT)
+def test_tile_pinned_event_is_versioned() -> None:
+    body = {
+        k: str(uuid.uuid4())
+        for k in ("tenant_id", "dashboard_id", "tile_id", "artifact_id", "user_id")
+    }
+    assert DashboardTilePinned.parse_event(body).schema_version == "1.0"
+    with pytest.raises(SchemaVersionError):
+        DashboardTilePinned.parse_event({**body, "schema_version": "2.0"})
 
 
 def test_run_event_wire_shape_matches_section_11() -> None:
@@ -166,3 +132,9 @@ def test_committed_json_schemas_match_the_models() -> None:
         path = REPO / relative
         assert path.is_file(), f"{relative} missing: run `make contracts`"
         assert json.loads(path.read_text()) == schema, f"{relative} drift: run `make contracts`"
+
+
+def test_spec_round_trips_through_a_default_dump() -> None:
+    """Persisted run state uses `model_dump()`; it must validate back unchanged."""
+    spec = ChartSpec.model_validate({**LINE, "options": {"colorScheme": "categorical"}})
+    assert ChartSpec.model_validate(spec.model_dump(mode="json")) == spec

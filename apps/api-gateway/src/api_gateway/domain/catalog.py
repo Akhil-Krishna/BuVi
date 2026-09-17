@@ -21,6 +21,7 @@ RateTier = Literal["auth", "public", "authenticated"]
 IDENTITY: Final = "identity-service"
 METADATA: Final = "metadata-service"
 ANALYTICS: Final = "analytics-orchestrator"
+DASHBOARD: Final = "dashboard-service"
 
 
 @dataclass(frozen=True)
@@ -67,6 +68,10 @@ def _metadata(method: str, path: str, summary: str, **kwargs: object) -> RouteSp
 
 def _analytics(method: str, path: str, summary: str, **kwargs: object) -> RouteSpec:
     return RouteSpec(method, path, summary, ANALYTICS, **kwargs)  # type: ignore[arg-type]
+
+
+def _dashboard(method: str, path: str, summary: str, **kwargs: object) -> RouteSpec:
+    return RouteSpec(method, path, summary, DASHBOARD, **kwargs)  # type: ignore[arg-type]
 
 
 def _stub(
@@ -154,52 +159,28 @@ CATALOG: Final[tuple[RouteSpec, ...]] = (
     ),
     _analytics("POST", "/runs/{id}/cancel", "Best-effort cancel", permission="chat:use"),
     # --- Artifacts, dashboards (Sections 16, 17) -----------------------------------------
-    _stub(
+    _dashboard("GET", "/artifacts/{id}", "Read an artifact", permission="artifact:read"),
+    _dashboard(
         "GET",
-        "/artifacts/{id}",
-        "Read an artifact",
-        "dashboard-service",
-        "A6",
+        "/artifacts/{id}/data",
+        "The artifact's stored result rows",
         permission="artifact:read",
     ),
-    _stub(
-        "GET",
-        "/dashboards",
-        "List dashboards",
-        "dashboard-service",
-        "A6",
-        permission="dashboard:read",
+    _dashboard("GET", "/dashboards", "List dashboards", permission="dashboard:read"),
+    _dashboard("POST", "/dashboards", "Create a dashboard", permission="dashboard:pin"),
+    _dashboard(
+        "GET", "/dashboards/{id}", "A dashboard with its tiles", permission="dashboard:read"
     ),
-    _stub(
-        "POST",
-        "/dashboards",
-        "Create a dashboard",
-        "dashboard-service",
-        "A6",
-        permission="dashboard:pin",
+    _dashboard(
+        "POST", "/dashboards/{id}/tiles", "Pin an artifact as a tile", permission="dashboard:pin"
     ),
-    _stub(
-        "POST",
-        "/dashboards/{id}/tiles",
-        "Pin an artifact as a tile",
-        "dashboard-service",
-        "A6",
-        permission="dashboard:pin",
-    ),
-    _stub(
-        "PATCH",
-        "/tiles/{id}",
-        "Update tile layout/overrides",
-        "dashboard-service",
-        "A6",
-        permission="dashboard:pin",
-    ),
+    _dashboard("PATCH", "/tiles/{id}", "Update tile layout/overrides", permission="dashboard:pin"),
     _stub(
         "POST",
         "/dashboards/{id}/share-links",
         "Create a time-boxed share link",
         "dashboard-service",
-        "A6",
+        "A10",
         permission="dashboard:share",
         step_up=True,
     ),
@@ -330,7 +311,7 @@ CATALOG: Final[tuple[RouteSpec, ...]] = (
         "/share/{token}",
         "Read-only dashboard snapshot",
         "dashboard-service",
-        "A6",
+        "A10",
         public=True,
         rate_tier="public",
     ),

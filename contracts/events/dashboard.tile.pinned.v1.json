@@ -1,0 +1,59 @@
+{
+  "additionalProperties": false,
+  "description": "`dashboard.tile.pinned`: dashboard-service -> notification-service (Phase A11).",
+  "properties": {
+    "artifact_id": {
+      "format": "uuid",
+      "title": "Artifact Id",
+      "type": "string"
+    },
+    "dashboard_id": {
+      "format": "uuid",
+      "title": "Dashboard Id",
+      "type": "string"
+    },
+    "request_id": {
+      "anyOf": [
+        {
+          "maxLength": 128,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Request Id"
+    },
+    "schema_version": {
+      "default": "1.0",
+      "pattern": "^\\d+\\.\\d+$",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "tenant_id": {
+      "format": "uuid",
+      "title": "Tenant Id",
+      "type": "string"
+    },
+    "tile_id": {
+      "format": "uuid",
+      "title": "Tile Id",
+      "type": "string"
+    },
+    "user_id": {
+      "format": "uuid",
+      "title": "User Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "tenant_id",
+    "dashboard_id",
+    "tile_id",
+    "artifact_id",
+    "user_id"
+  ],
+  "title": "DashboardTilePinned",
+  "type": "object"
+}

@@ -52,6 +52,18 @@ class AnalyticsRepository:
         await self._session.flush()
         return message
 
+    async def has_assistant_message(self, tenant_id: uuid.UUID, run_id: uuid.UUID) -> bool:
+        result = await self._session.execute(
+            select(Message.id)
+            .where(
+                Message.tenant_id == tenant_id,
+                Message.run_id == run_id,
+                Message.role == "assistant",
+            )
+            .limit(1)
+        )
+        return result.scalar_one_or_none() is not None
+
     async def get_user_message_for_run(
         self, tenant_id: uuid.UUID, run_id: uuid.UUID
     ) -> Message | None:

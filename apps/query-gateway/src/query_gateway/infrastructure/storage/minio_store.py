@@ -12,6 +12,7 @@ import uuid
 import urllib3
 from minio import Minio
 from minio.commonconfig import ENABLED, Filter
+from minio.error import S3Error
 from minio.lifecycleconfig import Expiration, LifecycleConfig, Rule
 
 from query_gateway.infrastructure.storage.base import ResultStoreError, StoredResult, result_key
@@ -94,6 +95,28 @@ class MinioResultStore:
             handle=f"s3://{self._bucket}/{key}",
             expires_at=dt.datetime.now(dt.UTC) + dt.timedelta(days=self._ttl_days),
         )
+
+    def _read(self, key: str) -> bytes | None:
+        try:
+            response = self._client.get_object(self._bucket, key)
+        except S3Error as exc:
+            if exc.code in ("NoSuchKey", "NoSuchBucket"):
+                return None
+            raise
+        try:
+            return response.read()
+        finally:
+            response.close()
+            response.release_conn()
+
+    async def get(self, *, tenant_id: uuid.UUID, query_id: uuid.UUID) -> bytes | None:
+        try:
+            return await asyncio.to_thread(self._read, result_key(tenant_id, query_id))
+        except Exception as exc:
+            logger.warning(
+                "result store read failed", extra={"context": {"error_type": type(exc).__name__}}
+            )
+            raise ResultStoreError() from None
 
     async def ping(self) -> bool:
         try:

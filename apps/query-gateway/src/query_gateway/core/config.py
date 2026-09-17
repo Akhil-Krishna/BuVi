@@ -11,6 +11,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 #: Section 6.3 / 13: the scope a caller needs on `POST /internal/v1/queries`.
 SCOPE_EXECUTE = "query-gateway:execute"
+#: Read a stored `analytics_run` result behind its handle (dashboard-service, Section 13).
+SCOPE_RESULTS = "query-gateway:results"
 #: Scope this service needs to load a data source's query policy from metadata-service.
 SCOPE_QUERY_POLICY = "metadata-service:query-policy"
 #: Scope this service needs to resolve a delegated user (Section 13, ADR 0006).
@@ -56,6 +58,8 @@ class Settings(BaseSettings):
     purpose_callers: dict[str, list[str]] = Field(default_factory=_default_purpose_callers)
     #: Services allowed to send `on_behalf_of` for purpose `analytics_run` (Section 13).
     delegating_callers: list[str] = Field(default_factory=lambda: ["analytics-orchestrator"])
+    #: Services allowed to read stored results through `POST /internal/v1/results/read`.
+    result_readers: list[str] = Field(default_factory=lambda: ["dashboard-service"])
     policy_cache_ttl_seconds: float = Field(default=30.0, ge=0, le=600)
 
     # --- Secrets (Section 13.1) --------------------------------------------------------------

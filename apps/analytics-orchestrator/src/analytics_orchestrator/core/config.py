@@ -15,6 +15,8 @@ SCOPE_EVENTS = "analytics-orchestrator:events"
 SCOPE_CONTEXT = "metadata-service:context"
 SCOPE_QUERY_EXECUTE = "query-gateway:execute"
 SCOPE_RESOLVE_PRINCIPAL = "identity-service:resolve-principal"
+SCOPE_CHART_VALIDATE = "visualization-service:validate"
+SCOPE_ARTIFACTS_WRITE = "dashboard-service:artifacts"
 
 RUN_REQUESTED_SUBJECT = "analytics.run.requested"
 BILLING_USAGE_SUBJECT = "billing.usage.recorded"
@@ -44,6 +46,8 @@ class Settings(BaseSettings):
     identity_url: str = "http://localhost:8001"
     metadata_url: str = "http://localhost:8002"
     query_gateway_url: str = "http://localhost:8003"
+    visualization_url: str = "http://localhost:8006"
+    dashboard_url: str = "http://localhost:8007"
     service_token_issuer: str = "identity-service"  # noqa: S105 - issuer name
     service_client_id: str = "analytics-orchestrator"
     service_client_secret: SecretStr = SecretStr("dev-analytics-orchestrator-secret")

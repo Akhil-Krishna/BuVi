@@ -11,7 +11,13 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from platform_contracts import AnalyticsRunEvent, BillingUsageRecorded, ChartSpec, RunRequested
+from platform_contracts import (
+    AnalyticsRunEvent,
+    BillingUsageRecorded,
+    ChartSpec,
+    DashboardTilePinned,
+    RunRequested,
+)
 
 
 def schemas() -> dict[str, dict[str, Any]]:
@@ -22,6 +28,7 @@ def schemas() -> dict[str, dict[str, Any]]:
         ),
         "contracts/events/analytics.run.requested.v1.json": RunRequested.model_json_schema(),
         "contracts/events/billing.usage.recorded.v1.json": BillingUsageRecorded.model_json_schema(),
+        "contracts/events/dashboard.tile.pinned.v1.json": DashboardTilePinned.model_json_schema(),
     }
 
 

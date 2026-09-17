@@ -6,6 +6,10 @@ Service-to-service only. Two credentials are required and neither substitutes fo
 * the end user: a forwarded session or API key re-authenticated here -- or, for
   analytics-orchestrator's queued runs only, `on_behalf_of`, re-resolved from identity-service.
   Permissions are never taken from a header or a body field.
+
+`POST /internal/v1/results/read` returns the stored rows behind an `analytics_run` result handle
+for dashboard-service (`query-gateway:results`); the user was authorized there (`artifact:read`
+plus the artifact's tenant), so no user credential is sent here.
 """
 
 from __future__ import annotations
@@ -19,19 +23,27 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from platform_auth import Principal, ServiceIdentity, request_credentials, require_service_scope
 from query_gateway.application.services.query_service import QueryCommand
-from query_gateway.core.config import SCOPE_EXECUTE
+from query_gateway.application.services.result_reader import ResultReader
+from query_gateway.core.config import SCOPE_EXECUTE, SCOPE_RESULTS
 from query_gateway.dependencies import (
     build_query_service,
     get_app_settings,
     repository_for,
     resolve_principal,
 )
-from query_gateway.domain.errors import DelegationNotAllowedError, ValidationFailedError
+from query_gateway.domain.errors import (
+    DelegationNotAllowedError,
+    ResultReaderNotAllowedError,
+    ValidationFailedError,
+)
 from query_gateway.domain.value_objects.policy import Purpose
+from query_gateway.infrastructure.db.repositories.query_repository import QueryRepository
+from query_gateway.infrastructure.db.session import tenant_scope
 
 router = APIRouter(prefix="/internal/v1", tags=["internal"])
 
 ExecuteScope = Annotated[ServiceIdentity, Depends(require_service_scope(SCOPE_EXECUTE))]
+ResultsScope = Annotated[ServiceIdentity, Depends(require_service_scope(SCOPE_RESULTS))]
 PurposeName = Literal["analytics_run", "sql_editor", "export"]
 
 
@@ -164,4 +176,44 @@ async def run_query(
         tables=list(outcome.tables),
         result_handle=outcome.stored.handle,
         result_expires_at=outcome.stored.expires_at,
+    )
+
+
+class ResultReadRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    tenant_id: uuid.UUID
+    result_handle: Annotated[str, Field(min_length=1, max_length=512)]
+
+
+class ResultReadResponse(BaseModel):
+    query_id: uuid.UUID
+    columns: list[QueryColumnResponse]
+    rows: list[list[Any]]
+    row_count: int
+    truncated: bool
+    expires_at: dt.datetime
+
+
+@router.post("/results/read", response_model=ResultReadResponse)
+async def read_result(
+    request: Request, payload: ResultReadRequest, service: ResultsScope
+) -> ResultReadResponse:
+    settings = get_app_settings(request)
+    if service.subject not in settings.result_readers:
+        raise ResultReaderNotAllowedError()
+    async with tenant_scope(request.app.state.session_factory, payload.tenant_id) as db:
+        stored = await ResultReader(
+            repository=QueryRepository(db),
+            results=request.app.state.results,
+            ttl_days=settings.result_ttl_days,
+        ).read(payload.tenant_id, payload.result_handle)
+        await db.commit()
+    return ResultReadResponse(
+        query_id=stored.query_id,
+        columns=[QueryColumnResponse(**c) for c in stored.columns],
+        rows=stored.rows,
+        row_count=len(stored.rows),
+        truncated=stored.truncated,
+        expires_at=stored.expires_at,
     )

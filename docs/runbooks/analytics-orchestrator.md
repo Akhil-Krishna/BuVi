@@ -10,7 +10,7 @@
 
 - `GET /health/live`: the process is up.
 - `GET /health/ready`: returns `503` when Postgres, Redis (events and token ledger) or the NATS run queue is unavailable.
-- identity-service, metadata-service, query-gateway and the model provider are not readiness dependencies. A run that needs one of them while it is down fails with a typed code.
+- identity-service, metadata-service, query-gateway, visualization-service, dashboard-service and the model provider are not readiness dependencies. A run that needs one of them while it is down fails with a typed code.
 
 ## How a run moves
 
@@ -45,7 +45,7 @@
   FROM analytics.run_events WHERE run_id = '<run>' ORDER BY seq;
   ```
 - **Never** delete or update `analytics.run_events` (append-only; `UPDATE`/`DELETE` are revoked). SSE replay depends on it.
-- **CrewAI:** telemetry, tracing and the version check are forced off (package `__init__`, Dockerfile). Any egress from this service other than identity, metadata, query-gateway, Redis, NATS, Postgres and the model provider is a defect. See ADR 0006 on the chromadb risk acceptance.
+- **CrewAI:** telemetry, tracing and the version check are forced off (package `__init__`, Dockerfile). Any egress from this service other than identity, metadata, query-gateway, visualization, dashboard, Redis, NATS, Postgres and the model provider is a defect. See ADR 0006 on the chromadb risk acceptance.
 
 ## Deploy / rollback
 

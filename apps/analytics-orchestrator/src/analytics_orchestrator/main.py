@@ -40,9 +40,11 @@ from analytics_orchestrator.infrastructure.flow.analytics_flow import (
     silence_crewai_console,
 )
 from analytics_orchestrator.infrastructure.http.clients import (
+    DashboardClient,
     IdentityClient,
     MetadataClient,
     QueryGatewayClient,
+    VisualizationClient,
 )
 from analytics_orchestrator.infrastructure.llm.scripted_provider import ScriptedProvider
 from analytics_orchestrator.infrastructure.messaging.nats_queue import JetStreamPublisher
@@ -139,6 +141,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         identity=IdentityClient(base_url=settings.identity_url, http=http, tokens=tokens),
         metadata=MetadataClient(base_url=settings.metadata_url, http=http, tokens=tokens),
         queries=QueryGatewayClient(base_url=settings.query_gateway_url, http=http, tokens=tokens),
+        charts=VisualizationClient(base_url=settings.visualization_url, http=http, tokens=tokens),
+        artifacts=DashboardClient(base_url=settings.dashboard_url, http=http, tokens=tokens),
         events=app.state.events,
         limits=FlowLimits(
             stage_timeout_seconds=settings.stage_timeout_seconds,
