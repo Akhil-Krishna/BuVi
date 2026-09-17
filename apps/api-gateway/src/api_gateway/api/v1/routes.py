@@ -10,6 +10,7 @@ from typing import Any
 from fastapi import APIRouter, Request, Response
 from fastapi.responses import StreamingResponse
 
+from api_gateway.application.services import idempotency
 from api_gateway.application.services.request_pipeline import authorize, read_body
 from api_gateway.application.services.run_event_stream import RunEventStream, parse_last_event_id
 from api_gateway.domain.catalog import CATALOG, RouteSpec
@@ -39,16 +40,26 @@ def openapi_extra(route: RouteSpec) -> dict[str, Any]:
         {"name": name, "in": "path", "required": True, "schema": {"type": "string"}}
         for name in _PATH_PARAM.findall(route.path)
     ]
-    if route.method in ("POST", "PATCH", "PUT", "DELETE"):
+    if route.idempotency_mode != "ignore":
         parameters.append(
             {
                 "name": "Idempotency-Key",
                 "in": "header",
                 "required": False,
-                "schema": {"type": "string"},
+                "description": (
+                    "Section 9: retries with the same key replay the first final response"
+                    if route.idempotency_mode == "replay"
+                    else "Section 9: a completed request is not re-run; its response is not stored"
+                ),
+                "schema": {"type": "string", "minLength": 1, "maxLength": 255},
             }
         )
     responses: dict[str, Any] = {"429": {"description": "Rate limited", "content": _ERROR_REF}}
+    if route.idempotency_mode != "ignore":
+        responses["409"] = {
+            "description": "Idempotency-Key reused, in progress, or replay unavailable",
+            "content": _ERROR_REF,
+        }
     if not route.public:
         responses["401"] = {"description": "Authentication required", "content": _ERROR_REF}
         responses["403"] = {"description": "Forbidden", "content": _ERROR_REF}
@@ -125,14 +136,34 @@ def _endpoint(route: RouteSpec) -> Callable[[Request], Awaitable[Response]]:
             raise NotImplementedYetError(
                 backend=route.backend, available_in_phase=route.available_in_phase
             )
-        body = await read_body(request, state.settings.max_request_body_bytes)
-        response: Response = await state.proxy.forward(
+        settings = state.settings
+        body = await read_body(request, settings.max_request_body_bytes)
+        guard = await idempotency.begin(
             request,
-            backend=route.backend,
-            scope=f"{route.backend}:proxy",
-            client_ip=authorized.client_ip,
-            request_id=request.state.request_id,
-            body=body,
+            route,
+            authorized.principal,
+            body,
+            store=state.idempotency,
+            lock_seconds=settings.upstream_timeout_seconds + 30,
+        )
+        if guard.replay is not None:
+            return guard.replay
+        try:
+            response: Response = await state.proxy.forward(
+                request,
+                backend=route.backend,
+                scope=f"{route.backend}:proxy",
+                client_ip=authorized.client_ip,
+                request_id=request.state.request_id,
+                body=body,
+            )
+        except BaseException:
+            await guard.abandon()
+            raise
+        await guard.finish(
+            response,
+            ttl_ms=settings.idempotency_ttl_seconds * 1000,
+            max_body_bytes=settings.idempotency_max_body_bytes,
         )
         return response
 

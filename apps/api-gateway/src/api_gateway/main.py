@@ -26,6 +26,7 @@ from api_gateway.api.v1.routes import build_router
 from api_gateway.core.config import Settings, get_settings
 from api_gateway.core.logging import configure_logging
 from api_gateway.domain.catalog import CATALOG
+from api_gateway.infrastructure.cache.idempotency_store import RedisIdempotencyStore
 from api_gateway.infrastructure.cache.rate_limiter import RateLimiter, RedisRateLimiter
 from api_gateway.infrastructure.http.identity_client import IdentityClient
 from api_gateway.infrastructure.http.proxy import UpstreamProxy
@@ -83,6 +84,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.redis = Redis.from_url(settings.redis_url, socket_connect_timeout=1.0)
     if app.state.rate_limiter is None:
         app.state.rate_limiter = RedisRateLimiter(redis, fail_open=settings.rate_limit_fail_open)
+    app.state.idempotency = RedisIdempotencyStore(redis)
     try:
         yield
     finally:

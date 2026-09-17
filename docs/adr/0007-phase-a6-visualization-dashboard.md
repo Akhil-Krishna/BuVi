@@ -56,5 +56,5 @@
 
 - **Artifact refresh.** Once the result handle expires (24 h by default), a pinned tile's data returns `410`. Re-executing `validated_sql` needs a phase assignment before C1 (spec, Phase A6).
 - **Artifact versioning.** "Make this a stacked bar chart" should create a new version (§16), but §8.6 has no lineage column linking versions. It needs a DDL decision when follow-up instructions are built.
-- **`Idempotency-Key` on dashboard and tile creation.** §9 says every mutating endpoint accepts it, but only messages implement it (ADR 0006). A retried pin creates a second tile.
+- ~~**`Idempotency-Key` on dashboard and tile creation.**~~ Resolved for every §9 mutating route at api-gateway ([ADR 0008](0008-idempotency-key-at-api-gateway.md)).
 - **`dashboard.tile.pinned` has no consumer** until notification-service (Phase A11), and a failed publish is not retried.

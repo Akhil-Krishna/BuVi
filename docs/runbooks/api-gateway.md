@@ -30,6 +30,13 @@
 - **Contracts:** `make contracts-check` (CI `contracts` job) fails on drift and on breaking changes
   without a major version bump.
 
+## Idempotency-Key (ADR 0008)
+
+- Records are Redis keys `idem:{tenant}:{principal}:{sha256}`. They are pending for at most the upstream timeout plus 30 s, then completed for `GATEWAY_IDEMPOTENCY_TTL_SECONDS` (24 h).
+- **A burst of `503 IDEMPOTENCY_UNAVAILABLE`:** Redis is unreachable. Keyed writes are refused by design; restore Redis.
+- **A client stuck on `409 IDEMPOTENCY_REQUEST_IN_PROGRESS`:** its first request is still running upstream, or a gateway replica died mid-request. The lock expires on its own; do not delete records to "unstick" it.
+- **Clearing one caller's records** (for example after a data repair): `redis-cli --scan --pattern 'idem:<tenant>:<user>:*' | xargs redis-cli del`.
+
 ## Deploy / rollback
 
 Stateless: roll the deployment; roll back by redeploying the previous image. No migrations.

@@ -35,6 +35,11 @@ class Settings(BaseSettings):
     upstream_timeout_seconds: float = 30.0
     max_request_body_bytes: int = 1_048_576
 
+    # --- Idempotency-Key (Section 9) ----------------------------------------------------------
+    idempotency_ttl_seconds: int = Field(default=86_400, ge=60, le=7 * 86_400)
+    #: Larger response bodies are recorded as completed without the body (replay unavailable).
+    idempotency_max_body_bytes: int = Field(default=262_144, ge=1_024)
+
     # --- Run event streams (Section 11) -------------------------------------------------------
     sse_heartbeat_seconds: float = 15.0
     sse_max_stream_seconds: float = 900.0

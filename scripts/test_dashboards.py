@@ -163,6 +163,31 @@ def main() -> int:
     )
     check("dashboard.tile.pinned published", stream_messages("DASHBOARD") == pinned_before + 1)
 
+    print("Idempotency-Key at api-gateway (Section 9)")
+    keyed = {"Idempotency-Key": f"a6-{run_id}"}
+
+    def keyed_count() -> int:
+        items = api("GET", "/api/v1/dashboards", client, params={"limit": 200}).json()["items"]
+        return sum(d["name"] == "Keyed" for d in items)
+
+    before = keyed_count()
+    first = api("POST", "/api/v1/dashboards", client, json={"name": "Keyed"}, headers=keyed)
+    retry = api("POST", "/api/v1/dashboards", client, json={"name": "Keyed"}, headers=keyed)
+    check(
+        "retry replays the same dashboard, marked replayed",
+        first.status_code == retry.status_code == 201
+        and first.json()["id"] == retry.json()["id"]
+        and retry.headers.get("idempotent-replayed") == "true",
+        retry.text,
+    )
+    reused = api("POST", "/api/v1/dashboards", client, json={"name": "Other"}, headers=keyed)
+    check(
+        "same key, different body: 409 IDEMPOTENCY_KEY_REUSED",
+        reused.status_code == 409 and reused.json()["error"]["code"] == "IDEMPOTENCY_KEY_REUSED",
+        reused.text,
+    )
+    check("exactly one dashboard created for the key", keyed_count() == before + 1)
+
     print("strict ChartSpec and authorization, end to end")
     rejected = api(
         "PATCH",

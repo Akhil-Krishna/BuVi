@@ -2157,10 +2157,13 @@
         "operationId": "post_admin_invitations",
         "parameters": [
           {
+            "description": "Section 9: retries with the same key replay the first final response",
             "in": "header",
             "name": "Idempotency-Key",
             "required": false,
             "schema": {
+              "maxLength": 255,
+              "minLength": 1,
               "type": "string"
             }
           }
@@ -2205,6 +2208,16 @@
               }
             },
             "description": "Forbidden"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Idempotency-Key reused, in progress, or replay unavailable"
           },
           "429": {
             "content": {
@@ -2334,10 +2347,13 @@
             }
           },
           {
+            "description": "Section 9: retries with the same key replay the first final response",
             "in": "header",
             "name": "Idempotency-Key",
             "required": false,
             "schema": {
+              "maxLength": 255,
+              "minLength": 1,
               "type": "string"
             }
           }
@@ -2365,6 +2381,16 @@
               }
             },
             "description": "Forbidden"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Idempotency-Key reused, in progress, or replay unavailable"
           },
           "429": {
             "content": {
@@ -2502,10 +2528,13 @@
             }
           },
           {
+            "description": "Section 9: retries with the same key replay the first final response",
             "in": "header",
             "name": "Idempotency-Key",
             "required": false,
             "schema": {
+              "maxLength": 255,
+              "minLength": 1,
               "type": "string"
             }
           }
@@ -2550,6 +2579,16 @@
               }
             },
             "description": "Forbidden"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Idempotency-Key reused, in progress, or replay unavailable"
           },
           "429": {
             "content": {
@@ -2604,10 +2643,13 @@
             }
           },
           {
+            "description": "Section 9: retries with the same key replay the first final response",
             "in": "header",
             "name": "Idempotency-Key",
             "required": false,
             "schema": {
+              "maxLength": 255,
+              "minLength": 1,
               "type": "string"
             }
           }
@@ -2642,6 +2684,16 @@
               }
             },
             "description": "Forbidden"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Idempotency-Key reused, in progress, or replay unavailable"
           },
           "429": {
             "content": {
@@ -2688,10 +2740,13 @@
         "operationId": "post_admin_webhooks",
         "parameters": [
           {
+            "description": "Section 9: a completed request is not re-run; its response is not stored",
             "in": "header",
             "name": "Idempotency-Key",
             "required": false,
             "schema": {
+              "maxLength": 255,
+              "minLength": 1,
               "type": "string"
             }
           }
@@ -2724,6 +2779,16 @@
               }
             },
             "description": "Forbidden"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Idempotency-Key reused, in progress, or replay unavailable"
           },
           "429": {
             "content": {
@@ -3033,16 +3098,7 @@
     "/api/v1/auth/logout": {
       "post": {
         "operationId": "post_auth_logout",
-        "parameters": [
-          {
-            "in": "header",
-            "name": "Idempotency-Key",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
+        "parameters": [],
         "responses": {
           "200": {
             "content": {
@@ -3119,10 +3175,13 @@
         "operationId": "post_auth_mfa_enroll",
         "parameters": [
           {
+            "description": "Section 9: a completed request is not re-run; its response is not stored",
             "in": "header",
             "name": "Idempotency-Key",
             "required": false,
             "schema": {
+              "maxLength": 255,
+              "minLength": 1,
               "type": "string"
             }
           }
@@ -3157,6 +3216,16 @@
               }
             },
             "description": "Forbidden"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Idempotency-Key reused, in progress, or replay unavailable"
           },
           "429": {
             "content": {
@@ -3201,16 +3270,7 @@
     "/api/v1/auth/mfa/verify": {
       "post": {
         "operationId": "post_auth_mfa_verify",
-        "parameters": [
-          {
-            "in": "header",
-            "name": "Idempotency-Key",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
+        "parameters": [],
         "requestBody": {
           "content": {
             "application/json": {
@@ -3372,10 +3432,13 @@
         "operationId": "post_billing_subscription",
         "parameters": [
           {
+            "description": "Section 9: retries with the same key replay the first final response",
             "in": "header",
             "name": "Idempotency-Key",
             "required": false,
             "schema": {
+              "maxLength": 255,
+              "minLength": 1,
               "type": "string"
             }
           }
@@ -3408,6 +3471,16 @@
               }
             },
             "description": "Forbidden"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Idempotency-Key reused, in progress, or replay unavailable"
           },
           "429": {
             "content": {
@@ -3507,10 +3580,13 @@
         "operationId": "post_conversations",
         "parameters": [
           {
+            "description": "Section 9: retries with the same key replay the first final response",
             "in": "header",
             "name": "Idempotency-Key",
             "required": false,
             "schema": {
+              "maxLength": 255,
+              "minLength": 1,
               "type": "string"
             }
           }
@@ -3555,6 +3631,16 @@
               }
             },
             "description": "Forbidden"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Idempotency-Key reused, in progress, or replay unavailable"
           },
           "429": {
             "content": {
@@ -3609,10 +3695,13 @@
             }
           },
           {
+            "description": "Section 9: retries with the same key replay the first final response",
             "in": "header",
             "name": "Idempotency-Key",
             "required": false,
             "schema": {
+              "maxLength": 255,
+              "minLength": 1,
               "type": "string"
             }
           }
@@ -3657,6 +3746,16 @@
               }
             },
             "description": "Forbidden"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Idempotency-Key reused, in progress, or replay unavailable"
           },
           "429": {
             "content": {
@@ -3776,10 +3875,13 @@
         "operationId": "post_dashboards",
         "parameters": [
           {
+            "description": "Section 9: retries with the same key replay the first final response",
             "in": "header",
             "name": "Idempotency-Key",
             "required": false,
             "schema": {
+              "maxLength": 255,
+              "minLength": 1,
               "type": "string"
             }
           }
@@ -3824,6 +3926,16 @@
               }
             },
             "description": "Forbidden"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Idempotency-Key reused, in progress, or replay unavailable"
           },
           "429": {
             "content": {
@@ -3962,10 +4074,13 @@
             }
           },
           {
+            "description": "Section 9: a completed request is not re-run; its response is not stored",
             "in": "header",
             "name": "Idempotency-Key",
             "required": false,
             "schema": {
+              "maxLength": 255,
+              "minLength": 1,
               "type": "string"
             }
           }
@@ -3998,6 +4113,16 @@
               }
             },
             "description": "Forbidden"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Idempotency-Key reused, in progress, or replay unavailable"
           },
           "429": {
             "content": {
@@ -4043,10 +4168,13 @@
             }
           },
           {
+            "description": "Section 9: retries with the same key replay the first final response",
             "in": "header",
             "name": "Idempotency-Key",
             "required": false,
             "schema": {
+              "maxLength": 255,
+              "minLength": 1,
               "type": "string"
             }
           }
@@ -4091,6 +4219,16 @@
               }
             },
             "description": "Forbidden"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Idempotency-Key reused, in progress, or replay unavailable"
           },
           "429": {
             "content": {
@@ -4210,10 +4348,13 @@
         "operationId": "post_data_sources",
         "parameters": [
           {
+            "description": "Section 9: retries with the same key replay the first final response",
             "in": "header",
             "name": "Idempotency-Key",
             "required": false,
             "schema": {
+              "maxLength": 255,
+              "minLength": 1,
               "type": "string"
             }
           }
@@ -4258,6 +4399,16 @@
               }
             },
             "description": "Forbidden"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Idempotency-Key reused, in progress, or replay unavailable"
           },
           "429": {
             "content": {
@@ -4396,10 +4547,13 @@
             }
           },
           {
+            "description": "Section 9: retries with the same key replay the first final response",
             "in": "header",
             "name": "Idempotency-Key",
             "required": false,
             "schema": {
+              "maxLength": 255,
+              "minLength": 1,
               "type": "string"
             }
           }
@@ -4444,6 +4598,16 @@
               }
             },
             "description": "Forbidden"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Idempotency-Key reused, in progress, or replay unavailable"
           },
           "429": {
             "content": {
@@ -4498,10 +4662,13 @@
             }
           },
           {
+            "description": "Section 9: retries with the same key replay the first final response",
             "in": "header",
             "name": "Idempotency-Key",
             "required": false,
             "schema": {
+              "maxLength": 255,
+              "minLength": 1,
               "type": "string"
             }
           }
@@ -4536,6 +4703,16 @@
               }
             },
             "description": "Forbidden"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Idempotency-Key reused, in progress, or replay unavailable"
           },
           "429": {
             "content": {
@@ -4766,10 +4943,13 @@
             }
           },
           {
+            "description": "Section 9: retries with the same key replay the first final response",
             "in": "header",
             "name": "Idempotency-Key",
             "required": false,
             "schema": {
+              "maxLength": 255,
+              "minLength": 1,
               "type": "string"
             }
           }
@@ -4804,6 +4984,16 @@
               }
             },
             "description": "Forbidden"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Idempotency-Key reused, in progress, or replay unavailable"
           },
           "429": {
             "content": {
@@ -4853,14 +5043,6 @@
             "in": "path",
             "name": "token",
             "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "Idempotency-Key",
-            "required": false,
             "schema": {
               "type": "string"
             }
@@ -4990,10 +5172,13 @@
         "operationId": "post_mcp_servers",
         "parameters": [
           {
+            "description": "Section 9: retries with the same key replay the first final response",
             "in": "header",
             "name": "Idempotency-Key",
             "required": false,
             "schema": {
+              "maxLength": 255,
+              "minLength": 1,
               "type": "string"
             }
           }
@@ -5026,6 +5211,16 @@
               }
             },
             "description": "Forbidden"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Idempotency-Key reused, in progress, or replay unavailable"
           },
           "429": {
             "content": {
@@ -5071,10 +5266,13 @@
             }
           },
           {
+            "description": "Section 9: retries with the same key replay the first final response",
             "in": "header",
             "name": "Idempotency-Key",
             "required": false,
             "schema": {
+              "maxLength": 255,
+              "minLength": 1,
               "type": "string"
             }
           }
@@ -5107,6 +5305,16 @@
               }
             },
             "description": "Forbidden"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Idempotency-Key reused, in progress, or replay unavailable"
           },
           "429": {
             "content": {
@@ -5160,10 +5368,13 @@
             }
           },
           {
+            "description": "Section 9: a completed request is not re-run; its response is not stored",
             "in": "header",
             "name": "Idempotency-Key",
             "required": false,
             "schema": {
+              "maxLength": 255,
+              "minLength": 1,
               "type": "string"
             }
           }
@@ -5196,6 +5407,16 @@
               }
             },
             "description": "Forbidden"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Idempotency-Key reused, in progress, or replay unavailable"
           },
           "429": {
             "content": {
@@ -5307,10 +5528,13 @@
         "operationId": "post_me_api_keys",
         "parameters": [
           {
+            "description": "Section 9: a completed request is not re-run; its response is not stored",
             "in": "header",
             "name": "Idempotency-Key",
             "required": false,
             "schema": {
+              "maxLength": 255,
+              "minLength": 1,
               "type": "string"
             }
           }
@@ -5355,6 +5579,16 @@
               }
             },
             "description": "Forbidden"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Idempotency-Key reused, in progress, or replay unavailable"
           },
           "429": {
             "content": {
@@ -5409,10 +5643,13 @@
             }
           },
           {
+            "description": "Section 9: retries with the same key replay the first final response",
             "in": "header",
             "name": "Idempotency-Key",
             "required": false,
             "schema": {
+              "maxLength": 255,
+              "minLength": 1,
               "type": "string"
             }
           }
@@ -5440,6 +5677,16 @@
               }
             },
             "description": "Forbidden"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Idempotency-Key reused, in progress, or replay unavailable"
           },
           "429": {
             "content": {
@@ -5633,10 +5880,13 @@
             }
           },
           {
+            "description": "Section 9: retries with the same key replay the first final response",
             "in": "header",
             "name": "Idempotency-Key",
             "required": false,
             "schema": {
+              "maxLength": 255,
+              "minLength": 1,
               "type": "string"
             }
           }
@@ -5664,6 +5914,16 @@
               }
             },
             "description": "Forbidden"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Idempotency-Key reused, in progress, or replay unavailable"
           },
           "429": {
             "content": {
@@ -5718,10 +5978,13 @@
             }
           },
           {
+            "description": "Section 9: retries with the same key replay the first final response",
             "in": "header",
             "name": "Idempotency-Key",
             "required": false,
             "schema": {
+              "maxLength": 255,
+              "minLength": 1,
               "type": "string"
             }
           }
@@ -5756,6 +6019,16 @@
               }
             },
             "description": "Forbidden"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Idempotency-Key reused, in progress, or replay unavailable"
           },
           "429": {
             "content": {
@@ -5952,10 +6225,13 @@
         "operationId": "post_semantic_metrics",
         "parameters": [
           {
+            "description": "Section 9: retries with the same key replay the first final response",
             "in": "header",
             "name": "Idempotency-Key",
             "required": false,
             "schema": {
+              "maxLength": 255,
+              "minLength": 1,
               "type": "string"
             }
           }
@@ -5988,6 +6264,16 @@
               }
             },
             "description": "Forbidden"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Idempotency-Key reused, in progress, or replay unavailable"
           },
           "429": {
             "content": {
@@ -6078,10 +6364,13 @@
         "operationId": "post_sql_execute",
         "parameters": [
           {
+            "description": "Section 9: a completed request is not re-run; its response is not stored",
             "in": "header",
             "name": "Idempotency-Key",
             "required": false,
             "schema": {
+              "maxLength": 255,
+              "minLength": 1,
               "type": "string"
             }
           }
@@ -6114,6 +6403,16 @@
               }
             },
             "description": "Forbidden"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Idempotency-Key reused, in progress, or replay unavailable"
           },
           "429": {
             "content": {
@@ -6215,10 +6514,13 @@
         "operationId": "post_sql_validate",
         "parameters": [
           {
+            "description": "Section 9: retries with the same key replay the first final response",
             "in": "header",
             "name": "Idempotency-Key",
             "required": false,
             "schema": {
+              "maxLength": 255,
+              "minLength": 1,
               "type": "string"
             }
           }
@@ -6251,6 +6553,16 @@
               }
             },
             "description": "Forbidden"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Idempotency-Key reused, in progress, or replay unavailable"
           },
           "429": {
             "content": {
@@ -6296,10 +6608,13 @@
             }
           },
           {
+            "description": "Section 9: retries with the same key replay the first final response",
             "in": "header",
             "name": "Idempotency-Key",
             "required": false,
             "schema": {
+              "maxLength": 255,
+              "minLength": 1,
               "type": "string"
             }
           }
@@ -6344,6 +6659,16 @@
               }
             },
             "description": "Forbidden"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Idempotency-Key reused, in progress, or replay unavailable"
           },
           "429": {
             "content": {

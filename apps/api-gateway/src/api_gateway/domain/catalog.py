@@ -17,6 +17,10 @@ from dataclasses import dataclass, field
 from typing import Final, Literal
 
 RateTier = Literal["auth", "public", "authenticated"]
+#: Section 9 Idempotency-Key handling: replay the stored response; record completion without
+#: storing the body (one-time secrets, customer rows); or ignore the key.
+IdempotencyMode = Literal["replay", "no_store", "ignore"]
+MUTATING_METHODS: Final = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 
 IDENTITY: Final = "identity-service"
 METADATA: Final = "metadata-service"
@@ -47,6 +51,14 @@ class RouteSpec:
     decision: str = "ADR 0002 item 8"
     #: Served by the gateway itself as Server-Sent Events rather than proxied (Section 11).
     stream: bool = False
+    idempotency: IdempotencyMode = "replay"
+
+    @property
+    def idempotency_mode(self) -> IdempotencyMode:
+        """Reads never need a key; a public route has no principal to scope one to."""
+        if self.method not in MUTATING_METHODS or self.public:
+            return "ignore"
+        return self.idempotency
 
     @property
     def is_stub(self) -> bool:
@@ -84,10 +96,10 @@ CATALOG: Final[tuple[RouteSpec, ...]] = (
     # --- Auth (Sections 6.1, 6.6) --------------------------------------------------
     _identity("GET", "/auth/login", "Redirect to the IdP", public=True, rate_tier="auth"),
     _identity("GET", "/auth/callback", "OIDC callback", public=True, rate_tier="auth"),
-    _identity("POST", "/auth/logout", "Revoke the session and IdP token"),
+    _identity("POST", "/auth/logout", "Revoke the session and IdP token", idempotency="ignore"),
     _identity("GET", "/auth/session", "Current principal, roles, tenant"),
-    _identity("POST", "/auth/mfa/enroll", "Start TOTP/WebAuthn enrollment"),
-    _identity("POST", "/auth/mfa/verify", "Complete MFA", rate_tier="auth"),
+    _identity("POST", "/auth/mfa/enroll", "Start TOTP/WebAuthn enrollment", idempotency="no_store"),
+    _identity("POST", "/auth/mfa/verify", "Complete MFA", rate_tier="auth", idempotency="ignore"),
     # --- Users, invitations, sessions, API keys (Sections 6.7-6.9) -------------------
     _identity("GET", "/admin/users", "Tenant-scoped user list", permission="user:manage"),
     _identity(
@@ -127,7 +139,9 @@ CATALOG: Final[tuple[RouteSpec, ...]] = (
         permission="user:manage",
         step_up=True,
     ),
-    _identity("POST", "/me/api-keys", "Create an API key (secret shown once)"),
+    _identity(
+        "POST", "/me/api-keys", "Create an API key (secret shown once)", idempotency="no_store"
+    ),
     _identity("DELETE", "/me/api-keys/{id}", "Revoke an API key"),
     _identity("GET", "/admin/audit", "Tenant audit events", permission="audit:read"),
     # identity-service routes beyond Section 9 (ADR 0002 item 8).
@@ -183,6 +197,7 @@ CATALOG: Final[tuple[RouteSpec, ...]] = (
         "A10",
         permission="dashboard:share",
         step_up=True,
+        idempotency="no_store",
     ),
     # --- Data sources (Sections 8.2, 13.1) --------------------------------------------------
     _metadata("GET", "/data-sources", "List data sources", permission="data:manage"),
@@ -229,6 +244,7 @@ CATALOG: Final[tuple[RouteSpec, ...]] = (
         "query-gateway",
         "A4",
         permission="sql:execute",
+        idempotency="no_store",
     ),
     _stub(
         "GET",
@@ -258,7 +274,12 @@ CATALOG: Final[tuple[RouteSpec, ...]] = (
         step_up=True,
     ),
     _stub(
-        "POST", "/mcp/servers/{id}/tools/{tool}/invoke", "Invoke an MCP tool", "mcp-gateway", "A9"
+        "POST",
+        "/mcp/servers/{id}/tools/{tool}/invoke",
+        "Invoke an MCP tool",
+        "mcp-gateway",
+        "A9",
+        idempotency="no_store",
     ),
     # --- Semantic (Section 12) --------------------------------------------------------------------
     _stub(
@@ -305,6 +326,7 @@ CATALOG: Final[tuple[RouteSpec, ...]] = (
         "A11",
         role="org_admin",
         step_up=True,
+        idempotency="no_store",
     ),
     _stub(
         "GET",

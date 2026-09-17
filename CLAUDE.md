@@ -23,7 +23,7 @@ called by the Flow's chart steps and by dashboard-service. `apps/dashboard-servi
 (Section 8.9; the Flow writes idempotently under an id derived from the run) and serves `GET /artifacts/{id}`,
 `GET /artifacts/{id}/data` (rows via query-gateway `POST /internal/v1/results/read`, `410` after the TTL), dashboards
 and tiles (owner-only changes, overrides limited to Section 17 options), publishing `dashboard.tile.pinned`.
-Live flow: `make test-dashboards` (Section 32 Steps A-D as a client user). Decisions and gaps:
+`Idempotency-Key` is enforced for every Section 9 mutating route at api-gateway (Redis; ADR 0008). Live flow: `make test-dashboards` (Section 32 Steps A-D as a client user). Decisions and gaps:
 `docs/adr/0007-phase-a6-visualization-dashboard.md` (A5: `docs/adr/0006-phase-a5-analytics-orchestrator.md`).
 Next up: Phase A7 (Semantic Service). See Section 31 of the build spec.**
 

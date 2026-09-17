@@ -54,7 +54,7 @@
    - `scripted` is a deterministic offline provider for development, tests and the live DoD flow.
    - `assert_production_safe` refuses `scripted` in staging and prod.
 
-6. **Idempotency-Key (§9.1)** applies to `POST /conversations/{id}/messages` only. The same key with the same conversation, user, content and data source replays the original `202` (`Idempotent-Replayed: true`). The same key with a different body returns `409 IDEMPOTENCY_KEY_REUSED`. It is enforced by the unique constraint `runs (tenant_id, idempotency_key)`.
+6. **Idempotency-Key (§9.1)** applies to `POST /conversations/{id}/messages` only. The same key with the same conversation, user, content and data source replays the original `202` (`Idempotent-Replayed: true`). The same key with a different body returns `409 IDEMPOTENCY_KEY_REUSED`. It is enforced by the unique constraint `runs (tenant_id, idempotency_key)`. Since ADR 0008, api-gateway also guards every §9 mutating route; this constraint remains the durable layer for run creation.
 
 7. **SSE in api-gateway.** `GET /api/v1/runs/{id}/events` works like this:
    - It subscribes to Redis first, then replays from the orchestrator's internal events route.

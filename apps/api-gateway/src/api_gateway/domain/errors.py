@@ -47,6 +47,36 @@ class PayloadTooLargeError(ApiError):
     message = "The request body is too large."
 
 
+class IdempotencyKeyInvalidError(ApiError):
+    code = "VALIDATION_FAILED"
+    status_code = 422
+    message = "The Idempotency-Key header must be 1-255 printable ASCII characters."
+
+
+class IdempotencyKeyReusedError(ApiError):
+    code = "IDEMPOTENCY_KEY_REUSED"
+    status_code = 409
+    message = "This Idempotency-Key was already used for a different request."
+
+
+class IdempotencyInProgressError(ApiError):
+    code = "IDEMPOTENCY_REQUEST_IN_PROGRESS"
+    status_code = 409
+    message = "A request with this Idempotency-Key is still being processed."
+
+
+class IdempotentReplayUnavailableError(ApiError):
+    code = "IDEMPOTENT_REPLAY_UNAVAILABLE"
+    status_code = 409
+    message = "This request already completed; its response cannot be shown again."
+
+
+class IdempotencyUnavailableError(ApiError):
+    code = "IDEMPOTENCY_UNAVAILABLE"
+    status_code = 503
+    message = "Idempotent requests cannot be processed right now. Retry later."
+
+
 class NotImplementedYetError(ApiError):
     code = "NOT_IMPLEMENTED"
     status_code = 501

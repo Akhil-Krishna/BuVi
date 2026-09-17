@@ -55,6 +55,9 @@ class FakeUpstreams:
     token_requests: list[dict[str, str]] = field(default_factory=list)
     introspections: list[dict[str, Any]] = field(default_factory=list)
     proxied: list[httpx.Request] = field(default_factory=list)
+    #: Per-path status override and cookie switch for idempotency tests.
+    status_for: dict[str, int] = field(default_factory=dict)
+    set_cookies: bool = True
 
     def __post_init__(self) -> None:
         all_perms = frozenset(ALL_PERMISSIONS)
@@ -130,15 +133,18 @@ class FakeUpstreams:
                     ("set-cookie", "buvi_oidc_txn=abc; HttpOnly; Secure"),
                 ],
             )
+        headers = [("x-request-id", "upstream-echo"), ("connection", "keep-alive")]
+        if self.set_cookies:
+            headers += [("set-cookie", "first=1; HttpOnly"), ("set-cookie", "second=2; HttpOnly")]
         return httpx.Response(
-            201 if request.method == "POST" else 200,
-            headers=[
-                ("set-cookie", "first=1; HttpOnly"),
-                ("set-cookie", "second=2; HttpOnly"),
-                ("x-request-id", "upstream-echo"),
-                ("connection", "keep-alive"),
-            ],
-            json={"method": request.method, "path": path, "query": request.url.query.decode()},
+            self.status_for.get(path, 201 if request.method == "POST" else 200),
+            headers=headers,
+            json={
+                "method": request.method,
+                "path": path,
+                "query": request.url.query.decode(),
+                "call": len(self.proxied),
+            },
         )
 
 
