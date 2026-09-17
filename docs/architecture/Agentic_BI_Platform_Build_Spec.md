@@ -2144,7 +2144,7 @@ mkdir -p apps web/next-app packages/python packages/ts infra/{docker,compose,kub
   generate_sql → validate_sql → authorize_query → execute_query → build_chart_spec →
   validate_chart_spec → persist_artifact → publish_events`. Skip `resolve_semantics` for this phase
   (Section 30 step 8 adds it later) — hardcode "use tenant-visible tables directly." `analyze_result`
-  is also deferred.
+  is also deferred; both are wired in Phase A7.
 - The Flow executes inside analytics-orchestrator (Sections 3, 10, 30.1). `retrieve_schema` reads an
   agent context packet from metadata-service (agent-visible tables, non-PII columns, never
   `secret_ref`; Sections 10.3, 12). `validate_sql` calls query-gateway's
@@ -2191,6 +2191,10 @@ mkdir -p apps web/next-app packages/python packages/ts infra/{docker,compose,kub
 - Scaffold per Section 4.1; implement DDL from Section 8.3.
 - Wire `resolve_semantics` into the Flow (now the agent maps business terms to approved
   metrics/dimensions before SQL generation, Section 12).
+- Wire `analyze_result` into the Flow (after `execute_query`, bounded and typed per Section 10.3).
+  Before implementing it, decide and record in an ADR what result data the model may see (result
+  schema, aggregates, or capped rows), since this is the first stage that exposes query results
+  to a model.
 - **DoD:** a defined "Revenue" metric is used by the chat flow instead of the agent guessing an
   aggregation expression; groundedness eval (Section 25) shows metric usage tracked per run;
   `GET/POST /semantic/metrics` is fully testable over HTTP. (The metric-management UI is Phase B4.)
@@ -2327,6 +2331,11 @@ mkdir -p apps web/next-app packages/python packages/ts infra/{docker,compose,kub
 
 ### Phase C1 — Production hardening pass
 
+- **Entry requirement (before C1 starts):** the `anthropic` model provider in analytics-orchestrator
+  has been exercised against the real Anthropic API with a real key — a full run for the Phase A5
+  DoD message, primary and fallback models, structured output parsing, refusal and `max_tokens`
+  handling, and actual token usage matching the budget ledger — with the result recorded in an ADR.
+  Until then it is tested only through the offline scripted provider (ADR 0006).
 - Run every item in Section 24's checklist as an explicit test or manual review sign-off recorded
   in `docs/runbooks/security-review-<date>.md`.
 - Complete Section 28 (Terraform environments, DR drill), Section 22.1 (SLO dashboards/alerts),
