@@ -70,6 +70,10 @@ class AnalyticsFlow(Flow[AnalyticsFlowState]):
         await self._step("retrieve_schema")
 
     @listen(retrieve_schema)
+    async def resolve_semantics(self) -> None:
+        await self._step("resolve_semantics")
+
+    @listen(resolve_semantics)
     async def build_query_plan(self) -> None:
         await self._step("build_query_plan")
 
@@ -90,6 +94,10 @@ class AnalyticsFlow(Flow[AnalyticsFlowState]):
         await self._step("execute_query")
 
     @listen(execute_query)
+    async def analyze_result(self) -> None:
+        await self._step("analyze_result")
+
+    @listen(analyze_result)
     async def build_chart_spec(self) -> None:
         await self._step("build_chart_spec")
 

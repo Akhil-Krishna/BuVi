@@ -28,6 +28,8 @@ from analytics_orchestrator.domain.value_objects.agent_outputs import (
     PlanFilter,
     PlanMeasure,
     QueryPlan,
+    ResultInsight,
+    SemanticResolution,
     TimeRange,
 )
 from platform_contracts import ChartEncodings, ChartOptions, ChartSpec, Encoding
@@ -93,6 +95,10 @@ class ScriptedProvider:
             return self._sql(payload)
         if output_type is ChartSpec:
             return self._chart(payload)
+        if output_type is SemanticResolution:
+            return self._semantic(payload)
+        if output_type is ResultInsight:
+            return self._insight(payload)
         raise ProviderError()
 
     @staticmethod
@@ -124,7 +130,80 @@ class ScriptedProvider:
         )
 
     @staticmethod
+    def _semantic(payload: Mapping[str, Any]) -> SemanticResolution:
+        """Lexical: a definition matches when its name or a synonym appears in the request."""
+        text = " ".join(re.findall(r"[a-z0-9]+", str(payload.get("user_request", "")).lower()))
+
+        def matches(item: Mapping[str, Any]) -> bool:
+            words = [str(item["name"]), *item.get("synonyms", [])]
+            return any(re.search(rf"\b{re.escape(w.lower())}\b", text) for w in words)
+
+        return SemanticResolution(
+            metric_ids=[m["id"] for m in payload.get("metrics", []) if matches(m)][:5],
+            dimension_ids=[d["id"] for d in payload.get("dimensions", []) if matches(d)][:3],
+        )
+
+    @staticmethod
+    def _insight(payload: Mapping[str, Any]) -> ResultInsight:
+        stats = payload.get("result_stats", {})
+        title = _UNSAFE_TEXT.sub("", str(payload.get("request", {}).get("title") or "Result"))
+        rows = int(stats.get("row_count", 0))
+        measure = next(
+            (
+                c
+                for c in stats.get("columns", [])
+                if c["type"] == "quantitative" and c.get("sum") is not None
+            ),
+            None,
+        )
+        if measure is None:
+            headline = f"{title}: {rows} row{'s' if rows != 1 else ''}"
+        else:
+            headline = (
+                f"{title}: {measure['field']} ranged from {measure['min']:,.2f} to "
+                f"{measure['max']:,.2f} across {rows} rows"
+            )
+        return ResultInsight(headline=headline[:200])
+
+    @staticmethod
+    def _semantic_plan(payload: Mapping[str, Any]) -> QueryPlan | None:
+        semantic = payload.get("semantic") or {}
+        metrics = semantic.get("metrics") or []
+        if not metrics:
+            return None
+        measures = [PlanMeasure.model_validate(m["measure"]) for m in metrics]
+        table = measures[0].column.rsplit(".", 1)[0]
+        catalog = {f"{t['schema_name']}.{t['table_name']}": t for t in payload.get("catalog", [])}
+        columns = catalog.get(table, {}).get("columns", [])
+        temporal = next(
+            (c["name"] for c in columns if any(t in c["data_type"] for t in ("date", "time"))),
+            None,
+        )
+        request = payload.get("request", {})
+        time_range = request.get("time_range") or {}
+        filters = []
+        if temporal and time_range.get("start") and time_range.get("end"):
+            filters.append(
+                PlanFilter(
+                    column=f"{table}.{temporal}",
+                    operator="between",
+                    values=[time_range["start"], time_range["end"]],
+                )
+            )
+        return QueryPlan(
+            tables=[table],
+            measures=[m for m in measures if m.column.startswith(f"{table}.")],
+            dimensions=[d["column"] for d in semantic.get("dimensions", [])],
+            time_column=f"{table}.{temporal}" if temporal else None,
+            time_grain=(time_range.get("grain") or "month") if temporal else None,
+            filters=filters,
+        )
+
+    @staticmethod
     def _plan(payload: Mapping[str, Any]) -> QueryPlan:
+        planned = ScriptedProvider._semantic_plan(payload)
+        if planned is not None:
+            return planned
         request = payload.get("request", {})
         for table in payload.get("catalog", []):
             columns = table.get("columns", [])
@@ -179,9 +258,14 @@ class ScriptedProvider:
                 )
         # Built only from catalog identifiers the plan was checked against and ISO dates;
         # the result is validated by query-gateway like any model output.
+        column = f"t.{measure.column.split('.')[-1]}"
+        aggregate = (
+            f"count(DISTINCT {column})"
+            if measure.aggregation == "count_distinct"
+            else f"{measure.aggregation}({column})"
+        )
         select_list = (
-            f"date_trunc('{grain}', t.{time_column}) AS {grain}, "
-            f"sum(t.{measure.column.split('.')[-1]}) AS {measure.alias}"
+            f"date_trunc('{grain}', t.{time_column}) AS {grain}, {aggregate} AS {measure.alias}"
         )
         return GeneratedSql(
             sql=f"SELECT {select_list} FROM {table} AS t{where} GROUP BY 1 ORDER BY 1"  # noqa: S608

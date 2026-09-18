@@ -35,6 +35,8 @@ SECTION_32 = [
     "intent.completed",
     "schema.started",
     "schema.completed",
+    "semantic.started",
+    "semantic.completed",
     "sql.started",
     "sql.completed",
     "validation.started",
@@ -261,14 +263,14 @@ def _flow(orchestrator: Service, worker: Service) -> int:
         str(sorted(exposed)),
     )
     check(
-        "run row completed with 4 model calls",
-        run_row(run_id).get("calls") == "4",
+        "run row completed with 5 model calls",
+        run_row(run_id).get("calls") == "5",
         str(run_row(run_id)),
     )
     tail = list(sse_events(admin, run_id, last_event_id="12"))
     check(
         "Last-Event-ID replays only what follows",
-        [e["seq"] for e in tail] == [13, 14, 15],
+        [e["seq"] for e in tail] == list(range(13, len(SECTION_32) + 1)),
         str([e["seq"] for e in tail]),
     )
 
@@ -291,8 +293,8 @@ def _flow(orchestrator: Service, worker: Service) -> int:
     check("events exactly once, in order", db_events(run_id) == SECTION_32, str(db_events(run_id)))
     after = run_row(run_id)
     check(
-        "persisted stages were not re-run (4 charged model calls in total)",
-        after.get("calls") == "4",
+        "persisted stages were not re-run (5 charged model calls in total)",
+        after.get("calls") == "5",
         f"before={before} after={after}",
     )
     resumed_log = (LOG_DIR / f"analytics-orchestrator.{orchestrator.starts}.log").read_text(
@@ -324,7 +326,7 @@ def _flow(orchestrator: Service, worker: Service) -> int:
         str(run_row(run_id)),
     )
     check("events exactly once, in order", db_events(run_id) == SECTION_32, str(db_events(run_id)))
-    check("4 charged model calls", run_row(run_id).get("calls") == "4", str(run_row(run_id)))
+    check("5 charged model calls", run_row(run_id).get("calls") == "5", str(run_row(run_id)))
 
     print("4. token budget: a run over its cap fails with RUN_BUDGET_EXCEEDED")
     orchestrator.restart(ANALYTICS_RUN_TOKEN_BUDGET="1000")  # noqa: S106 - a token count

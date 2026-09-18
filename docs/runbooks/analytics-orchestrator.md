@@ -10,7 +10,7 @@
 
 - `GET /health/live`: the process is up.
 - `GET /health/ready`: returns `503` when Postgres, Redis (events and token ledger) or the NATS run queue is unavailable.
-- identity-service, metadata-service, query-gateway, visualization-service, dashboard-service and the model provider are not readiness dependencies. A run that needs one of them while it is down fails with a typed code.
+- identity-service, metadata-service, query-gateway, visualization-service, dashboard-service, semantic-service and the model provider are not readiness dependencies. A run that needs one of them while it is down fails with a typed code.
 
 ## How a run moves
 
@@ -32,6 +32,8 @@
 | `QUERY_REJECTED` rising | The model is producing SQL the validator refuses (after ≤2 repairs), or prompt injection in the catalog | Inspect `query_gateway.query_executions` rows with `purpose='analytics_run'` and `status='rejected'` for the `run_id`. Never widen the allow-list to silence it. |
 | `NOT_AUTHORIZED` on queued runs | The user was deactivated or lost `chat:use` after posting | Expected: delegated identity is re-resolved at execution time. |
 | SSE clients see no live events | Redis pub/sub down | Clients still get every event through replay (resync every second quiet heartbeat); restore Redis. |
+| Runs fail at `semantic.failed` with `UPSTREAM_UNAVAILABLE` | semantic-service down | Restore it (runbook `semantic-service.md`). Runs fail closed by design. |
+| Artifact summary is `<title> — N rows` instead of an insight | `analyze_result` fell back: the model's numbers were ungrounded, or the model was unavailable (ADR 0009) | Expected and non-fatal. Check `flow_state->'grounding'->'insight_fallback'`. |
 | Startup refuses with "scripted development provider" | `ANALYTICS_LLM_PROVIDER` is not `anthropic` in staging/prod | Set `ANALYTICS_LLM_PROVIDER=anthropic` and provide `ANTHROPIC_API_KEY` from the secret store. |
 
 ## Operations

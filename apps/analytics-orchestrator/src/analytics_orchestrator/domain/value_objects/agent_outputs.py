@@ -7,7 +7,7 @@ caps on every list and string. Nothing an agent produces reaches the next stage 
 from __future__ import annotations
 
 import datetime as dt
-from typing import Final, Literal
+from typing import Annotated, Final, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -18,6 +18,7 @@ _QUALIFIED_COLUMN: Final = (
     r"^[A-Za-z_][A-Za-z0-9_]{0,62}\.[A-Za-z_][A-Za-z0-9_]{0,62}\.[A-Za-z_][A-Za-z0-9_]{0,62}$"
 )
 _TEXT: Final = r"^[^<>{}`\x00-\x1f]*$"
+_UUID: Final = r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
 
 Grain = Literal["day", "week", "month", "quarter", "year"]
 ChartPreference = Literal["line", "bar", "area", "scatter", "pie", "table"]
@@ -74,3 +75,30 @@ class GeneratedSql(BaseModel):
 
     model_config = _STRICT
     sql: str = Field(min_length=1, max_length=20_000)
+
+
+class SemanticResolution(BaseModel):
+    """resolve_semantics: which approved metrics/dimensions the request's business terms mean.
+    Ids only, checked against the candidates the model was shown."""
+
+    model_config = _STRICT
+    metric_ids: list[Annotated[str, Field(pattern=_UUID)]] = Field(
+        default_factory=list, max_length=5
+    )
+    dimension_ids: list[Annotated[str, Field(pattern=_UUID)]] = Field(
+        default_factory=list, max_length=3
+    )
+    unmatched_terms: list[Annotated[str, Field(min_length=1, max_length=60, pattern=_TEXT)]] = (
+        Field(default_factory=list, max_length=5)
+    )
+
+
+class ResultInsight(BaseModel):
+    """analyze_result (ADR 0009): a short, plain-text reading of aggregate statistics. Every
+    number in it must be grounded in those statistics or the user's request."""
+
+    model_config = _STRICT
+    headline: str = Field(min_length=1, max_length=200, pattern=_TEXT)
+    observations: list[Annotated[str, Field(min_length=1, max_length=160, pattern=_TEXT)]] = Field(
+        default_factory=list, max_length=3
+    )

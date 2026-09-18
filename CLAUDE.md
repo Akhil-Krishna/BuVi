@@ -17,19 +17,19 @@ is genuinely missing, stop and ask, don't guess.
 
 > Update this line yourself after every completed phase, then commit it.
 
-**Phase A6 (Visualization Service + Dashboard Service, API only) is complete — `apps/visualization-service`
-owns the Section 17 ChartSpec validator (pure function over raw JSON, `POST /internal/v1/chart-specs/validate`),
-called by the Flow's chart steps and by dashboard-service. `apps/dashboard-service` is the canonical artifact store
-(Section 8.9; the Flow writes idempotently under an id derived from the run) and serves `GET /artifacts/{id}`,
-`GET /artifacts/{id}/data` (rows via query-gateway `POST /internal/v1/results/read`, `410` after the TTL), dashboards
-and tiles (owner-only changes, overrides limited to Section 17 options), publishing `dashboard.tile.pinned`.
-`Idempotency-Key` is enforced for every Section 9 mutating route at api-gateway (Redis; ADR 0008). Live flow: `make test-dashboards` (Section 32 Steps A-D as a client user). Decisions and gaps:
-`docs/adr/0007-phase-a6-visualization-dashboard.md` (A5: `docs/adr/0006-phase-a5-analytics-orchestrator.md`).
-Next up: Phase A7 (Semantic Service). See Section 31 of the build spec.**
+**Phase A7 (Semantic Service) is complete — `apps/semantic-service` owns approved metrics and dimensions
+(Section 8.3 v1 expression grammar `AGG([DISTINCT] column)`, checked against the catalog through metadata-service's
+`POST /internal/v1/catalog/lookup`; draft -> approved -> deprecated, audited). The Flow's `resolve_semantics` maps
+business terms to approved definitions inside the permitted context packet, and a resolved metric fixes the query's
+aggregation (checked on the plan and on the validated SQL). `analyze_result` sees aggregates only and every number
+must be grounded (ADR 0009). Groundedness is tracked per run in `flow_state.grounding` (`make eval-groundedness`).
+Earlier phases: visualization/dashboard (ADR 0007), `Idempotency-Key` at api-gateway (ADR 0008), orchestrator (ADR 0006).
+Live flows: `make test-semantics`, `make test-dashboards`, `make test-analytics-run`. Decisions and gaps:
+`docs/adr/0010-phase-a7-semantic-service.md`.
+Next up: Phase A8 (Additional database connectors). See Section 31 of the build spec.**
 
 **Carried forward (do not drop):**
 - **Before Phase C1:** assign a phase to artifact refresh (re-executing expired results) and to artifact versioning (Section 16, which needs a lineage column); ADR 0007.
-- **Phase A7:** wire both deferred Flow steps, `resolve_semantics` and `analyze_result`. Decide in an ADR what result data `analyze_result` may show the model before building it.
 - **Before Phase C1 starts (required):** test the `anthropic` model provider against the real API with a real key, and record the result in an ADR (spec Phase C1 entry requirement; ADR 0006).
 - **Any crewai/chromadb version bump:** re-review the chromadb advisory ignores. CI's "Accepted-advisory expiry (ADR 0006)" step fails until you do.
 

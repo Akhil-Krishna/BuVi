@@ -23,10 +23,14 @@ from metadata_service.api.v1.schemas import (
     AgentContextColumn,
     AgentContextResponse,
     AgentContextTable,
+    CatalogLookupColumn,
+    CatalogLookupRequest,
+    CatalogLookupResponse,
+    CatalogLookupTable,
     QueryPolicyResponse,
     QueryPolicyTable,
 )
-from metadata_service.core.config import SCOPE_CONTEXT, SCOPE_QUERY_POLICY
+from metadata_service.core.config import SCOPE_CATALOG_LOOKUP, SCOPE_CONTEXT, SCOPE_QUERY_POLICY
 from metadata_service.dependencies import get_session_factory
 from metadata_service.domain.errors import NotFoundError
 from metadata_service.infrastructure.db.repositories.metadata_repository import (
@@ -108,13 +112,17 @@ async def agent_context(
         last_sync_at=data_source.last_sync_at,
         tables=[
             AgentContextTable(
+                id=table.id,
                 schema_name=table.schema_name,
                 table_name=table.table_name,
                 description=table.description,
                 row_count_estimate=table.row_count_estimate,
                 columns=[
                     AgentContextColumn(
-                        column_name=c.column_name, data_type=c.data_type, description=c.description
+                        id=c.id,
+                        column_name=c.column_name,
+                        data_type=c.data_type,
+                        description=c.description,
                     )
                     for c in columns
                     if not c.is_pii
@@ -123,4 +131,37 @@ async def agent_context(
             for table, columns in catalog
             if table.is_visible_to_agent
         ],
+    )
+
+
+@router.post("/catalog/lookup", response_model=CatalogLookupResponse)
+async def catalog_lookup(
+    request: Request,
+    payload: CatalogLookupRequest,
+    _service: Annotated[ServiceIdentity, Depends(require_service_scope(SCOPE_CATALOG_LOOKUP))],
+) -> CatalogLookupResponse:
+    """Resolve table and column ids of one tenant (semantic-service validates metric and
+    dimension definitions against the catalog). RLS-bound: another tenant's ids are absent."""
+    async with tenant_scope(get_session_factory(request), payload.tenant_id) as db:
+        tables, columns = await MetadataRepository(db).lookup_catalog(
+            payload.tenant_id, payload.table_ids, payload.column_ids
+        )
+        await db.commit()
+
+    def column(c: object) -> CatalogLookupColumn:
+        return CatalogLookupColumn.model_validate(c, from_attributes=True)
+
+    return CatalogLookupResponse(
+        tables=[
+            CatalogLookupTable(
+                id=table.id,
+                data_source_id=table.data_source_id,
+                schema_name=table.schema_name,
+                table_name=table.table_name,
+                is_visible_to_agent=table.is_visible_to_agent,
+                columns=[column(c) for c in table_columns],
+            )
+            for table, table_columns in tables
+        ],
+        columns=[column(c) for c in columns],
     )

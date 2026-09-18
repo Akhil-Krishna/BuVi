@@ -47,6 +47,7 @@ from analytics_orchestrator.application.services.ports import (
     QueryRejectedError,
     QueryTimedOutError,
     RunEventPublisher,
+    SemanticCatalog,
     utcnow,
 )
 from analytics_orchestrator.domain.errors import NotFoundError, RunBusyError
@@ -60,10 +61,20 @@ from analytics_orchestrator.domain.policies.flow_steps import (
     STEP_EVENTS,
     TERMINAL_STATUSES,
 )
+from analytics_orchestrator.domain.policies.result_policy import insight_problems
+from analytics_orchestrator.domain.policies.semantic_policy import (
+    metric_measure,
+    resolution_problems,
+    semantic_candidates,
+    semantic_plan_problems,
+    sql_metric_problems,
+)
 from analytics_orchestrator.domain.value_objects.agent_outputs import (
     AnalyticsRequest,
     GeneratedSql,
     QueryPlan,
+    ResultInsight,
+    SemanticResolution,
 )
 from analytics_orchestrator.domain.value_objects.failures import (
     MESSAGES,
@@ -73,6 +84,7 @@ from analytics_orchestrator.domain.value_objects.failures import (
 from analytics_orchestrator.domain.value_objects.run_state import (
     AnalyticsRunState,
     SchemaContext,
+    SemanticState,
 )
 from analytics_orchestrator.infrastructure.db.models import Message
 from analytics_orchestrator.infrastructure.db.repositories.analytics_repository import (
@@ -132,6 +144,7 @@ class RunExecutor:
         queries: QueryGateway,
         charts: ChartValidator,
         artifacts: ArtifactStore,
+        semantics: SemanticCatalog,
         events: RunEventPublisher,
         limits: FlowLimits,
         after_step: AfterStep | None = None,
@@ -145,6 +158,7 @@ class RunExecutor:
         self._queries = queries
         self._charts = charts
         self._artifacts = artifacts
+        self._semantics = semantics
         self._events = events
         self._limits = limits
         self._after_step = after_step
@@ -292,6 +306,80 @@ class RunExecutor:
             raise RunFailedError(FailureCode.NO_RELEVANT_DATA)
         state.schema_context = SchemaContext(data_source_id=state.data_source_id, tables=tables)
 
+    async def _resolve_semantics(self, state: AnalyticsRunState) -> None:
+        """Section 12: map business terms to *approved* definitions. No approved definition in
+        the permitted context -> nothing to resolve, no model call. semantic-service unavailable
+        fails the run: silently guessing a defined metric is what this step exists to prevent."""
+        assert state.schema_context is not None and state.data_source_id is not None
+        tenant = uuid.UUID(state.tenant_id)
+        try:
+            snapshot = await self._semantics.context(tenant)
+        except DependencyUnavailableError:
+            raise RunFailedError(FailureCode.UPSTREAM_UNAVAILABLE) from None
+        state.semantic = SemanticState()
+        if not snapshot.metrics and not snapshot.dimensions:
+            return
+        try:
+            permitted = await self._metadata.context(tenant, uuid.UUID(state.data_source_id))
+        except DataSourceUnknownError:
+            raise RunFailedError(FailureCode.DATA_SOURCE_NOT_ACTIVE) from None
+        except DependencyUnavailableError:
+            raise RunFailedError(FailureCode.UPSTREAM_UNAVAILABLE) from None
+        candidates = semantic_candidates(snapshot.metrics, snapshot.dimensions, permitted.tables)
+        state.semantic.candidate_count = len(candidates.metrics) + len(candidates.dimensions)
+        if not state.semantic.candidate_count:
+            return
+        assert state.request is not None
+        resolution = await self._generate(
+            state,
+            stage="semantic",
+            system=prompts.SEMANTIC,
+            payload={
+                "user_request": state.message,
+                "request": state.request.model_dump(mode="json"),
+                "metrics": [
+                    m.model_dump(mode="json", include={"id", "name", "description", "synonyms"})
+                    for m in candidates.metrics
+                ],
+                "dimensions": [
+                    d.model_dump(mode="json", include={"id", "name", "synonyms"})
+                    for d in candidates.dimensions
+                ],
+            },
+            output_type=SemanticResolution,
+            check=lambda resolved: resolution_problems(resolved, candidates),
+        )
+        metrics = [m for m in candidates.metrics if m.id in resolution.metric_ids]
+        dimensions = [d for d in candidates.dimensions if d.id in resolution.dimension_ids]
+        state.semantic = SemanticState(
+            metrics=metrics,
+            dimensions=dimensions,
+            unmatched_terms=list(resolution.unmatched_terms),
+            candidate_count=state.semantic.candidate_count,
+        )
+        # A resolved definition's table must be plannable even if lexical ranking dropped it.
+        present = {t.qualified_name for t in state.schema_context.tables}
+        needed = {m.column.rsplit(".", 1)[0] for m in metrics} | {
+            d.column.rsplit(".", 1)[0] for d in dimensions
+        }
+        state.schema_context.tables.extend(
+            candidates.tables[name] for name in sorted(needed - present)
+        )
+        state.grounding.metric_ids = [m.id for m in metrics]
+        state.grounding.metric_names = [m.name for m in metrics]
+        state.grounding.dimension_ids = [d.id for d in dimensions]
+        state.grounding.unmatched_terms = list(resolution.unmatched_terms)
+
+    def _semantic_payload(self, state: AnalyticsRunState) -> dict[str, object]:
+        semantic = state.semantic or SemanticState()
+        return {
+            "metrics": [
+                {"name": m.name, "measure": metric_measure(m).model_dump(mode="json")}
+                for m in semantic.metrics
+            ],
+            "dimensions": [{"name": d.name, "column": d.column} for d in semantic.dimensions],
+        }
+
     def _catalog(self, state: AnalyticsRunState) -> list[dict[str, object]]:
         assert state.schema_context is not None
         return [table.model_dump(mode="json") for table in state.schema_context.tables]
@@ -299,16 +387,30 @@ class RunExecutor:
     async def _build_query_plan(self, state: AnalyticsRunState) -> None:
         assert state.schema_context is not None and state.request is not None
         tables = state.schema_context.tables
+        semantic = state.semantic or SemanticState()
+        payload: dict[str, object] = {
+            "request": state.request.model_dump(mode="json"),
+            "catalog": self._catalog(state),
+        }
+        if semantic.metrics or semantic.dimensions:
+            payload["semantic"] = self._semantic_payload(state)
         state.plan = await self._generate(
             state,
             stage="sql",
             system=prompts.PLAN,
-            payload={
-                "request": state.request.model_dump(mode="json"),
-                "catalog": self._catalog(state),
-            },
+            payload=payload,
             output_type=QueryPlan,
-            check=lambda plan: plan_problems(plan, tables),
+            check=lambda plan: (
+                plan_problems(plan, tables)
+                + semantic_plan_problems(plan, semantic.metrics, semantic.dimensions)
+            ),
+        )
+        defined = {
+            (metric_measure(m).column, metric_measure(m).aggregation) for m in semantic.metrics
+        }
+        state.grounding.measures_total = len(state.plan.measures)
+        state.grounding.measures_from_metrics = sum(
+            (m.column, m.aggregation) in defined for m in state.plan.measures
         )
 
     async def _generate_sql(
@@ -319,6 +421,8 @@ class RunExecutor:
             "plan": state.plan.model_dump(mode="json"),
             "catalog": self._catalog(state),
         }
+        if state.semantic and state.semantic.metrics:
+            payload["semantic"] = self._semantic_payload(state)
         if problems:
             payload["previous_sql"] = state.generated_sql
             payload["previous_problems"] = problems
@@ -360,6 +464,17 @@ class RunExecutor:
                 raise RunFailedError(FailureCode.DATA_SOURCE_NOT_ACTIVE) from None
             except DependencyUnavailableError:
                 raise RunFailedError(FailureCode.UPSTREAM_UNAVAILABLE) from None
+            # Section 8.3: a resolved metric must be computed exactly as defined -- checked on
+            # the SQL query-gateway will actually run, and repaired within the same budget.
+            drift = sql_metric_problems(
+                validated.sql, state.semantic.metrics if state.semantic else []
+            )
+            if drift:
+                if attempt == self._limits.max_repairs:
+                    raise RunFailedError(FailureCode.QUERY_REJECTED)
+                await self._generate_sql(state, problems=drift)
+                await self._persist(state, "validate_sql")
+                continue
             state.validated_sql = validated.sql
             state.validated_tables = validated.tables
             return
@@ -392,6 +507,41 @@ class RunExecutor:
             raise RunFailedError(FailureCode.QUERY_FAILED) from None
         except DependencyUnavailableError:
             raise RunFailedError(FailureCode.UPSTREAM_UNAVAILABLE) from None
+
+    async def _analyze_result(self, state: AnalyticsRunState) -> None:
+        """ADR 0009: the model reads aggregate statistics only; every number it writes must be
+        grounded. An ungrounded or failed insight falls back to the deterministic summary --
+        only budget failures stop the run."""
+        assert state.execution is not None and state.request is not None
+        stats = state.execution.stats
+        if stats is None:
+            state.grounding.insight_fallback = True
+            return
+        request_text = f"{state.message} {state.request.title}"
+        try:
+            state.insight = await self._generate(
+                state,
+                stage="visualization",
+                system=prompts.INSIGHT,
+                payload={
+                    "request": {"title": state.request.title, "user_request": state.message},
+                    "result_stats": stats.model_dump(mode="json"),
+                },
+                output_type=ResultInsight,
+                check=lambda insight: insight_problems(insight, stats, request_text),
+            )
+        except RunFailedError as failure:
+            if failure.code in (
+                FailureCode.RUN_BUDGET_EXCEEDED,
+                FailureCode.TENANT_BUDGET_EXCEEDED,
+                FailureCode.BUDGET_UNAVAILABLE,
+            ):
+                raise
+            state.insight = None
+            state.grounding.insight_grounded = False
+            state.grounding.insight_fallback = True
+            return
+        state.grounding.insight_grounded = True
 
     async def _chart_problems(self, state: AnalyticsRunState, spec: ChartSpec) -> list[str]:
         """visualization-service is the one validator (Section 17); an outage fails the run."""
@@ -442,10 +592,14 @@ class RunExecutor:
             and state.data_source_id
         )
         rows = state.execution.row_count
-        summary = f"{state.request.title} — {rows} row{'s' if rows != 1 else ''}" + (
-            " (truncated)" if state.execution.truncated else ""
+        summary = (
+            state.insight.headline
+            if state.insight is not None
+            else f"{state.request.title} — {rows} row{'s' if rows != 1 else ''}"
+            + (" (truncated)" if state.execution.truncated else "")
         )
         artifact_id = uuid.uuid5(ARTIFACT_NAMESPACE, state.id)
+        semantic = state.semantic or SemanticState()
         try:
             await self._artifacts.store(
                 ArtifactDraft(
@@ -455,7 +609,15 @@ class RunExecutor:
                     run_id=uuid.UUID(state.id),
                     title=state.request.title,
                     summary=summary,
-                    semantic_query=state.plan.model_dump(mode="json"),
+                    semantic_query={
+                        **state.plan.model_dump(mode="json"),
+                        "semantic": {
+                            "metrics": [{"id": m.id, "name": m.name} for m in semantic.metrics],
+                            "dimensions": [
+                                {"id": d.id, "name": d.name} for d in semantic.dimensions
+                            ],
+                        },
+                    },
                     source_refs=[
                         {"data_source_id": state.data_source_id, "tables": state.validated_tables}
                     ],

@@ -79,9 +79,15 @@
               }
             ],
             "title": "Description"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
           }
         },
         "required": [
+          "id",
           "column_name",
           "data_type",
           "description"
@@ -169,6 +175,11 @@
             ],
             "title": "Description"
           },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
           "row_count_estimate": {
             "anyOf": [
               {
@@ -190,6 +201,7 @@
           }
         },
         "required": [
+          "id",
           "schema_name",
           "table_name",
           "description",
@@ -197,6 +209,143 @@
           "columns"
         ],
         "title": "AgentContextTable",
+        "type": "object"
+      },
+      "CatalogLookupColumn": {
+        "properties": {
+          "column_name": {
+            "title": "Column Name",
+            "type": "string"
+          },
+          "data_type": {
+            "title": "Data Type",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "is_pii": {
+            "title": "Is Pii",
+            "type": "boolean"
+          },
+          "table_id": {
+            "format": "uuid",
+            "title": "Table Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "table_id",
+          "column_name",
+          "data_type",
+          "is_pii"
+        ],
+        "title": "CatalogLookupColumn",
+        "type": "object"
+      },
+      "CatalogLookupRequest": {
+        "additionalProperties": false,
+        "description": "Internal: resolve catalog ids for semantic definitions (Phase A7).",
+        "properties": {
+          "column_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Column Ids",
+            "type": "array"
+          },
+          "table_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Table Ids",
+            "type": "array"
+          },
+          "tenant_id": {
+            "format": "uuid",
+            "title": "Tenant Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tenant_id"
+        ],
+        "title": "CatalogLookupRequest",
+        "type": "object"
+      },
+      "CatalogLookupResponse": {
+        "description": "Found ids only; an id of another tenant, or unknown, is simply absent.",
+        "properties": {
+          "columns": {
+            "items": {
+              "$ref": "#/components/schemas/CatalogLookupColumn"
+            },
+            "title": "Columns",
+            "type": "array"
+          },
+          "tables": {
+            "items": {
+              "$ref": "#/components/schemas/CatalogLookupTable"
+            },
+            "title": "Tables",
+            "type": "array"
+          }
+        },
+        "required": [
+          "tables",
+          "columns"
+        ],
+        "title": "CatalogLookupResponse",
+        "type": "object"
+      },
+      "CatalogLookupTable": {
+        "properties": {
+          "columns": {
+            "items": {
+              "$ref": "#/components/schemas/CatalogLookupColumn"
+            },
+            "title": "Columns",
+            "type": "array"
+          },
+          "data_source_id": {
+            "format": "uuid",
+            "title": "Data Source Id",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "is_visible_to_agent": {
+            "title": "Is Visible To Agent",
+            "type": "boolean"
+          },
+          "schema_name": {
+            "title": "Schema Name",
+            "type": "string"
+          },
+          "table_name": {
+            "title": "Table Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "data_source_id",
+          "schema_name",
+          "table_name",
+          "is_visible_to_agent",
+          "columns"
+        ],
+        "title": "CatalogLookupTable",
         "type": "object"
       },
       "ColumnRefResponse": {
@@ -1485,6 +1634,48 @@
         "summary": "Ready",
         "tags": [
           "health"
+        ]
+      }
+    },
+    "/internal/v1/catalog/lookup": {
+      "post": {
+        "description": "Resolve table and column ids of one tenant (semantic-service validates metric and\ndimension definitions against the catalog). RLS-bound: another tenant's ids are absent.",
+        "operationId": "catalog_lookup_internal_v1_catalog_lookup_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CatalogLookupRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogLookupResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Catalog Lookup",
+        "tags": [
+          "internal"
         ]
       }
     },

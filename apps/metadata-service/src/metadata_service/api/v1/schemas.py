@@ -256,6 +256,7 @@ class ActiveDataSourceList(BaseModel):
 
 
 class AgentContextColumn(BaseModel):
+    id: uuid.UUID
     column_name: str
     data_type: str
     #: The source's own comment: untrusted text, delimited as data in every prompt.
@@ -263,6 +264,7 @@ class AgentContextColumn(BaseModel):
 
 
 class AgentContextTable(BaseModel):
+    id: uuid.UUID
     schema_name: str
     table_name: str
     description: str | None
@@ -281,3 +283,37 @@ class AgentContextResponse(BaseModel):
     allowed_schemas: list[str]
     last_sync_at: dt.datetime | None
     tables: list[AgentContextTable]
+
+
+class CatalogLookupRequest(BaseModel):
+    """Internal: resolve catalog ids for semantic definitions (Phase A7)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    tenant_id: uuid.UUID
+    table_ids: list[uuid.UUID] = Field(default_factory=list, max_length=100)
+    column_ids: list[uuid.UUID] = Field(default_factory=list, max_length=100)
+
+
+class CatalogLookupColumn(BaseModel):
+    id: uuid.UUID
+    table_id: uuid.UUID
+    column_name: str
+    data_type: str
+    is_pii: bool
+
+
+class CatalogLookupTable(BaseModel):
+    id: uuid.UUID
+    data_source_id: uuid.UUID
+    schema_name: str
+    table_name: str
+    is_visible_to_agent: bool
+    columns: list[CatalogLookupColumn]
+
+
+class CatalogLookupResponse(BaseModel):
+    """Found ids only; an id of another tenant, or unknown, is simply absent."""
+
+    tables: list[CatalogLookupTable]
+    columns: list[CatalogLookupColumn]

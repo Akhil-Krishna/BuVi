@@ -258,6 +258,7 @@ def test_every_step_maps_to_events_and_every_failure_has_a_message() -> None:
     assert list(dict.fromkeys(stages)) == [
         "intent",
         "schema",
+        "semantic",
         "sql",
         "validation",
         "execution",

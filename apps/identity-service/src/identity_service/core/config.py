@@ -28,6 +28,7 @@ _DEV_QUERY_GATEWAY_SECRET_SHA256 = hashlib.sha256(b"dev-query-gateway-secret").h
 _DEV_ORCHESTRATOR_SECRET_SHA256 = hashlib.sha256(b"dev-analytics-orchestrator-secret").hexdigest()
 _DEV_WORKER_SECRET_SHA256 = hashlib.sha256(b"dev-worker-runtime-secret").hexdigest()
 _DEV_DASHBOARD_SECRET_SHA256 = hashlib.sha256(b"dev-dashboard-service-secret").hexdigest()
+_DEV_SEMANTIC_SECRET_SHA256 = hashlib.sha256(b"dev-semantic-service-secret").hexdigest()
 _DEV_SECRET_HASHES = frozenset(
     {
         _DEV_GATEWAY_SECRET_SHA256,
@@ -36,6 +37,7 @@ _DEV_SECRET_HASHES = frozenset(
         _DEV_ORCHESTRATOR_SECRET_SHA256,
         _DEV_WORKER_SECRET_SHA256,
         _DEV_DASHBOARD_SECRET_SHA256,
+        _DEV_SEMANTIC_SECRET_SHA256,
     }
 )
 
@@ -66,6 +68,7 @@ def _dev_service_clients() -> dict[str, ServiceClient]:
                     "analytics-orchestrator:events",
                 ],
                 "dashboard-service": ["dashboard-service:proxy"],
+                "semantic-service": ["semantic-service:proxy"],
             },
         ),
         "metadata-service": ServiceClient(
@@ -88,6 +91,7 @@ def _dev_service_clients() -> dict[str, ServiceClient]:
                 "query-gateway": ["query-gateway:execute"],
                 "visualization-service": ["visualization-service:validate"],
                 "dashboard-service": ["dashboard-service:artifacts"],
+                "semantic-service": ["semantic-service:context"],
             },
         ),
         "worker-runtime": ServiceClient(
@@ -101,6 +105,14 @@ def _dev_service_clients() -> dict[str, ServiceClient]:
                 "visualization-service": ["visualization-service:validate"],
                 "query-gateway": ["query-gateway:results"],
             },
+        ),
+        "semantic-service": ServiceClient(
+            secret_sha256=_DEV_SEMANTIC_SECRET_SHA256,
+            audiences={
+                "identity-service": [SCOPE_INTROSPECT, SCOPE_AUDIT_WRITE],
+                "metadata-service": ["metadata-service:catalog-lookup"],
+            },
+            audit_event_prefixes=["semantic."],
         ),
     }
 

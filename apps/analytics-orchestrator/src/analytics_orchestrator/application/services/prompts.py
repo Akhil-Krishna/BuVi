@@ -3,7 +3,8 @@
 Instructions live only in the system prompt. Everything else -- the user's message, catalog
 names and descriptions, prior outputs, validator feedback -- is rendered as tagged JSON data with
 an explicit rule that nothing inside a data block is an instruction. No prompt carries a
-credential, a `secret_ref`, PII columns, or result rows.
+credential, a `secret_ref`, PII columns, or result rows (`analyze_result` sees aggregate
+statistics only, ADR 0009).
 """
 
 from __future__ import annotations
@@ -26,10 +27,18 @@ INTENT: Final = (
     "is not an analytics question about the organization's data. Keep the title short and "
     "plain. " + _DATA_RULE
 )
+SEMANTIC: Final = (
+    "You map the business terms in a user's analytics request to the organization's approved "
+    "definitions. <metrics> and <dimensions> list the only definitions you may choose, by id. "
+    "Return the ids of those the request asks for; list request terms that match none in "
+    "unmatched_terms. Never invent an id. " + _DATA_RULE
+)
 PLAN: Final = (
     "You plan a read-only analytics query. Use only tables and columns listed in <catalog>, "
     "written as schema.table and schema.table.column. Prefer aggregation in the database. "
-    "If <previous_problems> is present, fix exactly those problems. " + _DATA_RULE
+    "When <semantic> lists metrics, measure each one exactly as its `measure` says (column, "
+    "aggregation and alias) and group by each listed dimension's column. If "
+    "<previous_problems> is present, fix exactly those problems. " + _DATA_RULE
 )
 SQL: Final = (
     "You write one PostgreSQL SELECT statement that implements <plan> using only <catalog>. "
@@ -37,6 +46,13 @@ SQL: Final = (
     "administrative statements, no functions beyond ordinary aggregates, date and string "
     "functions. Name output columns with the plan's aliases. If <previous_problems> is "
     "present, the previous SQL was rejected for those reasons: fix them. " + _DATA_RULE
+)
+INSIGHT: Final = (
+    "You write a one-line headline and at most three short observations about a query result, "
+    "using only <result_stats> (aggregate statistics, not rows) and <request>. Every number you "
+    "write must appear in <result_stats> or <request>; do not compute new figures such as "
+    "percentages or differences. Plain text only. If <previous_problems> is present, fix "
+    "exactly those problems. " + _DATA_RULE
 )
 CHART: Final = (
     "You choose a chart for a query result. Use only fields listed in <result_schema>, with their "

@@ -102,7 +102,7 @@ async def test_full_run_emits_the_section_32_sequence_and_an_artifact(
 
     assert await run_events(platform_db, run_id) == SECTION_32
     assert [f"{e['stage']}.{e['status']}" for e in live] == SECTION_32
-    assert [e["seq"] for e in live] == list(range(1, 16))
+    assert [e["seq"] for e in live] == list(range(1, len(SECTION_32) + 1))
     assert all(e["message"] and "sql" not in e["message"].lower() for e in live)
 
     row = await run_row(platform_db, run_id)
@@ -112,7 +112,13 @@ async def test_full_run_emits_the_section_32_sequence_and_an_artifact(
         and row["completed_at"]
         and row["current_stage"] == "publish_events"
     )
-    assert state.artifact_id is not None and live[13]["artifactId"] == state.artifact_id
+    assert (
+        state.artifact_id is not None
+        and next(e for e in live if e["stage"] == "artifact" and e["status"] == "completed")[
+            "artifactId"
+        ]
+        == state.artifact_id
+    )
     assert state.artifact_id == str(uuid.uuid5(ARTIFACT_NAMESPACE, run_id))
     stored = harness.services.artifacts[state.artifact_id]
     assert (stored["tenant_id"], stored["run_id"]) == (str(tenant), run_id)
@@ -127,7 +133,9 @@ async def test_full_run_emits_the_section_32_sequence_and_an_artifact(
     assert stored["semantic_query"]["tables"] == ["sales.orders"]
     assert len(harness.services.chart_checks) == 2  # build_chart_spec check + validate_chart_spec
     assert "artifact" not in row["flow_state"]
-    assert state.usage.calls == 4 and state.usage.total > 0
+    assert state.usage.calls == 5 and state.usage.total > 0  # intent, plan, SQL, insight, chart
+    assert state.grounding.metric_ids == [] and state.grounding.insight_grounded is True
+    assert state.insight is not None and stored["summary"] == state.insight.headline
 
     validate, execute = harness.services.query_calls
     for call in (validate, execute):
@@ -147,7 +155,7 @@ async def test_full_run_emits_the_section_32_sequence_and_an_artifact(
         params={"tenant_id": str(tenant), "after_seq": 12},
         headers=harness.service_headers("api-gateway", "analytics-orchestrator:events"),
     )
-    assert [e["seq"] for e in replay.json()["events"]] == [13, 14, 15]
+    assert [e["seq"] for e in replay.json()["events"]] == list(range(13, len(SECTION_32) + 1))
     assistant = await platform_db.fetchval(
         "SELECT content FROM analytics.messages WHERE run_id = $1 AND role = 'assistant'",
         uuid.UUID(run_id),
@@ -187,14 +195,14 @@ async def test_crash_mid_run_resumes_from_the_last_persisted_step(
     crashed = await run_row(platform_db, run_id)
     assert crashed["status"] == "running"
     assert crashed["flow_state"]["completed_steps"][-1] == "execute_query"
-    assert await run_events(platform_db, run_id) == SECTION_32[:10]
+    assert await run_events(platform_db, run_id) == SECTION_32[:12]
     calls_before = list(harness.provider.calls)
     assert calls_before == ["AnalyticsRequest", "QueryPlan", "GeneratedSql"]
 
     del harness.hook["after_step"]
     resumed = await harness.execute(who, run_id)
     assert resumed.json()["status"] == "completed"
-    assert harness.provider.calls == [*calls_before, "ChartSpec"]
+    assert harness.provider.calls == [*calls_before, "ResultInsight", "ChartSpec"]
     assert [c["path"] for c in harness.services.query_calls] == [
         "/internal/v1/queries/validate",
         "/internal/v1/queries",
@@ -229,7 +237,7 @@ async def test_token_accounting_survives_a_crash_between_charge_and_step_persist
     resumed = await harness.execute(who, run_id)
     assert resumed.json()["status"] == "completed"
     final = (await run_row(platform_db, run_id))["flow_state"]
-    assert final["usage"]["calls"] == 5  # the interrupted plan call is paid again, not forgotten
+    assert final["usage"]["calls"] == 6  # the interrupted plan call is paid again, not forgotten
     assert final["deadline"] == deadline  # the run timeout does not restart either
     billed = sum(e.quantity for e in harness.queue.usage if e.run_id == uuid.UUID(run_id))
     assert final["usage"]["input_tokens"] + final["usage"]["output_tokens"] == billed

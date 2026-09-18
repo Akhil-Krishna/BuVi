@@ -12,6 +12,7 @@ dist/
 .coverage
 coverage.xml
 htmlcov/
+.kombai/
 
 # --- Node / Next.js ---------------------------------------------------------
 node_modules/

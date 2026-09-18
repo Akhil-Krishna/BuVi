@@ -158,6 +158,21 @@ class QueryGateway(Protocol):
     ) -> ExecutionSummary: ...
 
 
+# --- Semantic layer (Phase A7) -------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class SemanticSnapshot:
+    """Approved metrics (aggregation + bare column + base table id) and dimensions, as served."""
+
+    metrics: list[dict[str, Any]]
+    dimensions: list[dict[str, Any]]
+
+
+class SemanticCatalog(Protocol):
+    async def context(self, tenant_id: uuid.UUID) -> SemanticSnapshot: ...
+
+
 # --- Visualization and artifacts (Phase A6) ------------------------------------------------------
 
 

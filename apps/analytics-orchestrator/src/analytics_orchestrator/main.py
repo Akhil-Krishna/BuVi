@@ -44,6 +44,7 @@ from analytics_orchestrator.infrastructure.http.clients import (
     IdentityClient,
     MetadataClient,
     QueryGatewayClient,
+    SemanticClient,
     VisualizationClient,
 )
 from analytics_orchestrator.infrastructure.llm.scripted_provider import ScriptedProvider
@@ -143,6 +144,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         queries=QueryGatewayClient(base_url=settings.query_gateway_url, http=http, tokens=tokens),
         charts=VisualizationClient(base_url=settings.visualization_url, http=http, tokens=tokens),
         artifacts=DashboardClient(base_url=settings.dashboard_url, http=http, tokens=tokens),
+        semantics=SemanticClient(base_url=settings.semantic_url, http=http, tokens=tokens),
         events=app.state.events,
         limits=FlowLimits(
             stage_timeout_seconds=settings.stage_timeout_seconds,

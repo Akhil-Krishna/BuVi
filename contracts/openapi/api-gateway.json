@@ -945,6 +945,113 @@
         "title": "DataSourceResponse",
         "type": "object"
       },
+      "DimensionCreateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "column_id": {
+            "format": "uuid",
+            "title": "Column Id",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 80,
+            "minLength": 1,
+            "pattern": "^[^<>{}`\\x00-\\x1f]*$",
+            "title": "Name",
+            "type": "string"
+          },
+          "synonyms": {
+            "items": {
+              "maxLength": 60,
+              "minLength": 1,
+              "pattern": "^[^<>{}`\\x00-\\x1f]*$",
+              "type": "string"
+            },
+            "maxItems": 20,
+            "title": "Synonyms",
+            "type": "array"
+          }
+        },
+        "required": [
+          "name",
+          "column_id"
+        ],
+        "title": "DimensionCreateRequest",
+        "type": "object"
+      },
+      "DimensionListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/DimensionResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "DimensionListResponse",
+        "type": "object"
+      },
+      "DimensionResponse": {
+        "properties": {
+          "column_id": {
+            "format": "uuid",
+            "title": "Column Id",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "format": "uuid",
+            "title": "Created By",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "synonyms": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Synonyms",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "column_id",
+          "synonyms",
+          "created_by",
+          "created_at"
+        ],
+        "title": "DimensionResponse",
+        "type": "object"
+      },
       "ErrorResponse": {
         "properties": {
           "error": {
@@ -1111,6 +1218,211 @@
           "content"
         ],
         "title": "MessageCreateRequest",
+        "type": "object"
+      },
+      "MetricCreateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "base_table_id": {
+            "format": "uuid",
+            "title": "Base Table Id",
+            "type": "string"
+          },
+          "default_grain": {
+            "anyOf": [
+              {
+                "enum": [
+                  "day",
+                  "week",
+                  "month",
+                  "quarter",
+                  "year"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Grain"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "pattern": "^[^<>{}`\\x00-\\x1f]*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "expression": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Expression",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 80,
+            "minLength": 1,
+            "pattern": "^[^<>{}`\\x00-\\x1f]*$",
+            "title": "Name",
+            "type": "string"
+          },
+          "synonyms": {
+            "items": {
+              "maxLength": 60,
+              "minLength": 1,
+              "pattern": "^[^<>{}`\\x00-\\x1f]*$",
+              "type": "string"
+            },
+            "maxItems": 20,
+            "title": "Synonyms",
+            "type": "array"
+          }
+        },
+        "required": [
+          "name",
+          "expression",
+          "base_table_id"
+        ],
+        "title": "MetricCreateRequest",
+        "type": "object"
+      },
+      "MetricListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/MetricResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "MetricListResponse",
+        "type": "object"
+      },
+      "MetricResponse": {
+        "properties": {
+          "approved_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approved At"
+          },
+          "approved_by": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approved By"
+          },
+          "base_table_id": {
+            "format": "uuid",
+            "title": "Base Table Id",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "format": "uuid",
+            "title": "Created By",
+            "type": "string"
+          },
+          "default_grain": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Grain"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "expression": {
+            "title": "Expression",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "synonyms": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Synonyms",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "description",
+          "expression",
+          "default_grain",
+          "base_table_id",
+          "synonyms",
+          "status",
+          "created_by",
+          "approved_by",
+          "approved_at",
+          "created_at"
+        ],
+        "title": "MetricResponse",
         "type": "object"
       },
       "MfaEnrollResponse": {
@@ -6158,15 +6470,17 @@
         "x-stream": "server-sent-events"
       }
     },
-    "/api/v1/semantic/metrics": {
+    "/api/v1/semantic/dimensions": {
       "get": {
-        "operationId": "get_semantic_metrics",
+        "operationId": "get_semantic_dimensions",
         "parameters": [],
         "responses": {
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/DimensionListResponse"
+                }
               }
             },
             "description": "Successful Response"
@@ -6201,7 +6515,7 @@
             },
             "description": "Rate limited"
           },
-          "501": {
+          "502": {
             "content": {
               "application/json": {
                 "schema": {
@@ -6209,20 +6523,29 @@
                 }
               }
             },
-            "description": "Backing service not available yet"
+            "description": "Upstream unavailable"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Upstream timeout"
           }
         },
-        "summary": "List metrics",
+        "summary": "List dimensions",
         "tags": [
           "semantic-service"
         ],
         "x-auth": "session or API key, semantic:manage",
-        "x-available-in-phase": "A7",
         "x-backend": "semantic-service",
         "x-rate-tier": "authenticated"
       },
       "post": {
-        "operationId": "post_semantic_metrics",
+        "operationId": "post_semantic_dimensions",
         "parameters": [
           {
             "description": "Section 9: retries with the same key replay the first final response",
@@ -6236,11 +6559,23 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DimensionCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
-          "200": {
+          "201": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/DimensionResponse"
+                }
               }
             },
             "description": "Successful Response"
@@ -6285,7 +6620,7 @@
             },
             "description": "Rate limited"
           },
-          "501": {
+          "502": {
             "content": {
               "application/json": {
                 "schema": {
@@ -6293,15 +6628,498 @@
                 }
               }
             },
-            "description": "Backing service not available yet"
+            "description": "Upstream unavailable"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Upstream timeout"
           }
         },
-        "summary": "Define a metric",
+        "summary": "Define a dimension",
         "tags": [
           "semantic-service"
         ],
         "x-auth": "session or API key, semantic:manage",
-        "x-available-in-phase": "A7",
+        "x-backend": "semantic-service",
+        "x-rate-tier": "authenticated"
+      }
+    },
+    "/api/v1/semantic/metrics": {
+      "get": {
+        "operationId": "get_semantic_metrics",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MetricListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Rate limited"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Upstream unavailable"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Upstream timeout"
+          }
+        },
+        "summary": "List metrics",
+        "tags": [
+          "semantic-service"
+        ],
+        "x-auth": "session or API key, semantic:manage",
+        "x-backend": "semantic-service",
+        "x-rate-tier": "authenticated"
+      },
+      "post": {
+        "operationId": "post_semantic_metrics",
+        "parameters": [
+          {
+            "description": "Section 9: retries with the same key replay the first final response",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MetricCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MetricResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Idempotency-Key reused, in progress, or replay unavailable"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Rate limited"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Upstream unavailable"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Upstream timeout"
+          }
+        },
+        "summary": "Define a metric (draft)",
+        "tags": [
+          "semantic-service"
+        ],
+        "x-auth": "session or API key, semantic:manage",
+        "x-backend": "semantic-service",
+        "x-rate-tier": "authenticated"
+      }
+    },
+    "/api/v1/semantic/metrics/{id}": {
+      "get": {
+        "operationId": "get_semantic_metrics_id",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MetricResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Rate limited"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Upstream unavailable"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Upstream timeout"
+          }
+        },
+        "summary": "Read a metric",
+        "tags": [
+          "semantic-service"
+        ],
+        "x-auth": "session or API key, semantic:manage",
+        "x-backend": "semantic-service",
+        "x-rate-tier": "authenticated"
+      }
+    },
+    "/api/v1/semantic/metrics/{id}/approve": {
+      "post": {
+        "operationId": "post_semantic_metrics_id_approve",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Section 9: retries with the same key replay the first final response",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MetricResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Idempotency-Key reused, in progress, or replay unavailable"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Rate limited"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Upstream unavailable"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Upstream timeout"
+          }
+        },
+        "summary": "Approve a metric",
+        "tags": [
+          "semantic-service"
+        ],
+        "x-auth": "session or API key, semantic:manage",
+        "x-backend": "semantic-service",
+        "x-rate-tier": "authenticated"
+      }
+    },
+    "/api/v1/semantic/metrics/{id}/deprecate": {
+      "post": {
+        "operationId": "post_semantic_metrics_id_deprecate",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Section 9: retries with the same key replay the first final response",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MetricResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Idempotency-Key reused, in progress, or replay unavailable"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Rate limited"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Upstream unavailable"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Upstream timeout"
+          }
+        },
+        "summary": "Deprecate a metric",
+        "tags": [
+          "semantic-service"
+        ],
+        "x-auth": "session or API key, semantic:manage",
         "x-backend": "semantic-service",
         "x-rate-tier": "authenticated"
       }

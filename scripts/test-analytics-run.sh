@@ -20,7 +20,7 @@ UPDATE identity.users SET mfa_enabled = false WHERE email = 'admin@demo.example.
 DELETE FROM metadata.data_sources WHERE name LIKE 'sample-sales-db%';
 SQL
 
-for port in 8000 8001 8002 8003 8004 8005 8006 8007; do
+for port in 8000 8001 8002 8003 8004 8005 8006 8007 8008; do
   if curl -sf "http://localhost:${port}/health/live" >/dev/null 2>&1; then
     echo "error: :${port} is already serving; stop it so this flow can capture logs." >&2; exit 1
   fi
@@ -56,6 +56,8 @@ start_service visualization-service 8006 VISUALIZATION_LOG_LEVEL=DEBUG \
   uv run --package visualization-service uvicorn visualization_service.main:create_app --factory --port 8006
 start_service dashboard-service 8007 DASHBOARD_REQUIRE_GATEWAY_TOKEN=true DASHBOARD_LOG_LEVEL=DEBUG \
   uv run --package dashboard-service uvicorn dashboard_service.main:create_app --factory --port 8007
+start_service semantic-service 8008 SEMANTIC_REQUIRE_GATEWAY_TOKEN=true SEMANTIC_LOG_LEVEL=DEBUG \
+  uv run --package semantic-service uvicorn semantic_service.main:create_app --factory --port 8008
 
 echo "Service logs: $LOGDIR"
 cd "$ROOT"

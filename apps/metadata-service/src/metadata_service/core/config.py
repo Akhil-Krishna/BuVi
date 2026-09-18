@@ -21,6 +21,8 @@ SCOPE_AUDIT_WRITE = "identity-service:audit"
 SCOPE_QUERY_POLICY = "metadata-service:query-policy"
 #: Scope analytics-orchestrator needs to read an agent context packet (Sections 10.3, 12).
 SCOPE_CONTEXT = "metadata-service:context"
+#: Resolve catalog table/column ids for semantic definitions (semantic-service, Phase A7).
+SCOPE_CATALOG_LOOKUP = "metadata-service:catalog-lookup"
 
 _LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
 

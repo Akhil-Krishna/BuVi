@@ -19,9 +19,9 @@
 4. **Grounding check (deterministic).** Every number in the insight must be one of:
    - a value from `ResultStats`, compared at the precision it is written;
    - the row count;
-   - a number from the user's own request, such as "Q2" or "2026".
+   - a number from the user's own request, such as the year "2026" (digits inside a word such as "Q2" are not numbers).
 
-   Anything else, for example a derived "12% growth", is reported back through the bounded repair loop (≤2). The first 6-digit run in an expression like "123456" is judged as written.
+   Anything else, for example a derived "12% growth", is reported back through the bounded repair loop (≤2). A number is compared at the precision it is written, rounding half-up: "2,181" is grounded by a sum of 2180.5.
 5. **Non-fatal.** If the insight stays ungrounded or invalid after repairs, or the model is unavailable or refuses, the run continues with the deterministic summary (`"<title> — N rows"`). Budget failures (`RUN_BUDGET_EXCEEDED`, `TENANT_BUDGET_EXCEEDED`, `BUDGET_UNAVAILABLE`) still fail the run: they are the enforcement, not an insight problem.
 6. **Where it shows.** The grounded headline becomes the artifact `summary` and the assistant message. Whether it was grounded is recorded in the run's grounding record (Phase A7 groundedness eval).
 

@@ -1,0 +1,32 @@
+[project]
+name = "semantic-service"
+version = "0.1.0"
+description = "Approved metrics, dimensions and join rules: the semantic layer (Sections 8.3, 12)"
+readme = "README.md"
+authors = [
+    { name = "Akhil Krishna", email = "akhilmavannoor@gmail.com" }
+]
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "alembic>=1.20.0",
+    "asyncpg>=0.31.0",
+    "fastapi>=0.141.1",
+    "httpx>=0.28.1",
+    "platform-auth",
+    "platform-observability",
+    "pydantic-settings>=2.15.0",
+    "pydantic>=2.12.5",
+    "sqlalchemy[asyncio]>=2.0.52",
+    "uvicorn>=0.52.4",
+]
+
+[project.scripts]
+semantic-service = "semantic_service.main:run"
+
+[build-system]
+requires = ["uv_build>=0.12.13,<0.13.0"]
+build-backend = "uv_build"
+
+[tool.uv.sources]
+platform-auth = { workspace = true }
+platform-observability = { workspace = true }

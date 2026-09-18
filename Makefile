@@ -9,8 +9,9 @@ WEB := web/next-app
 .DEFAULT_GOAL := help
 .PHONY: help sync lint fmt typecheck test web-install web-lint web-typecheck web-test \
         web-build check up down migrate seed dev dev-gateway dev-metadata dev-query-gateway contracts contracts-check \
-        dev-orchestrator dev-worker dev-visualization dev-dashboard test-login test-data-sources \
-        test-query-gateway test-analytics-run test-dashboards
+        dev-orchestrator dev-worker dev-visualization dev-dashboard dev-semantic test-login \
+        test-data-sources test-query-gateway test-analytics-run test-dashboards test-semantics \
+        eval-groundedness
 
 help: ## List available targets
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) \
@@ -115,6 +116,10 @@ dev-dashboard: ## Start dashboard-service with reload on :8007
 	cd apps/dashboard-service && uv run --package dashboard-service \
 		uvicorn dashboard_service.main:create_app --factory --reload --port 8007
 
+dev-semantic: ## Start semantic-service with reload on :8008
+	cd apps/semantic-service && uv run --package semantic-service \
+		uvicorn semantic_service.main:create_app --factory --reload --port 8008
+
 contracts: ## Export OpenAPI documents and platform-contracts JSON Schemas into contracts/
 	scripts/gen-openapi.sh
 	uv run python scripts/export_json_schemas.py
@@ -136,3 +141,10 @@ test-analytics-run: ## Phase A5 scripted flow: message -> SSE Section 32, kill/r
 
 test-dashboards: ## Phase A6 scripted flow: Section 32 Steps A-D over HTTP as a client-role user
 	scripts/test-dashboards.sh
+
+test-semantics: ## Phase A7 scripted flow: metric lifecycle over HTTP, used by the chat flow
+	scripts/test-semantics.sh
+
+eval-groundedness: ## Section 25 groundedness eval: metric usage and insight grounding per run
+	uv run --package analytics-orchestrator pytest -s -o addopts="" \
+		apps/analytics-orchestrator/src/analytics_orchestrator/tests/integration/test_groundedness_eval.py

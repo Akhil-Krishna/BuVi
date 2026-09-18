@@ -185,6 +185,50 @@ class MetadataRepository:
         row = (await self._session.execute(statement)).first()
         return (row[0], int(row[1])) if row else None
 
+    async def lookup_catalog(
+        self, tenant_id: uuid.UUID, table_ids: list[uuid.UUID], column_ids: list[uuid.UUID]
+    ) -> tuple[list[tuple[CatalogTable, list[CatalogColumn]]], list[CatalogColumn]]:
+        """Tables (with their columns) and columns by id, restricted to `tenant_id`."""
+        tables: list[CatalogTable] = []
+        if table_ids:
+            tables = list(
+                (
+                    await self._session.execute(
+                        select(CatalogTable).where(
+                            CatalogTable.tenant_id == tenant_id, CatalogTable.id.in_(table_ids)
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+        table_columns: dict[uuid.UUID, list[CatalogColumn]] = {t.id: [] for t in tables}
+        if tables:
+            for c in (
+                await self._session.execute(
+                    select(CatalogColumn)
+                    .where(CatalogColumn.table_id.in_(list(table_columns)))
+                    .order_by(CatalogColumn.column_name)
+                )
+            ).scalars():
+                table_columns[c.table_id].append(c)
+        columns: list[CatalogColumn] = []
+        if column_ids:
+            columns = list(
+                (
+                    await self._session.execute(
+                        select(CatalogColumn)
+                        .join(CatalogTable, CatalogTable.id == CatalogColumn.table_id)
+                        .where(
+                            CatalogTable.tenant_id == tenant_id, CatalogColumn.id.in_(column_ids)
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+        return [(t, table_columns[t.id]) for t in tables], columns
+
     async def list_catalog(
         self, tenant_id: uuid.UUID, data_source_id: uuid.UUID
     ) -> list[tuple[CatalogTable, list[CatalogColumn]]]:

@@ -26,6 +26,7 @@ IDENTITY: Final = "identity-service"
 METADATA: Final = "metadata-service"
 ANALYTICS: Final = "analytics-orchestrator"
 DASHBOARD: Final = "dashboard-service"
+SEMANTIC: Final = "semantic-service"
 
 
 @dataclass(frozen=True)
@@ -84,6 +85,10 @@ def _analytics(method: str, path: str, summary: str, **kwargs: object) -> RouteS
 
 def _dashboard(method: str, path: str, summary: str, **kwargs: object) -> RouteSpec:
     return RouteSpec(method, path, summary, DASHBOARD, **kwargs)  # type: ignore[arg-type]
+
+
+def _semantic(method: str, path: str, summary: str, **kwargs: object) -> RouteSpec:
+    return RouteSpec(method, path, summary, SEMANTIC, **kwargs)  # type: ignore[arg-type]
 
 
 def _stub(
@@ -282,22 +287,20 @@ CATALOG: Final[tuple[RouteSpec, ...]] = (
         idempotency="no_store",
     ),
     # --- Semantic (Section 12) --------------------------------------------------------------------
-    _stub(
-        "GET",
-        "/semantic/metrics",
-        "List metrics",
-        "semantic-service",
-        "A7",
-        permission="semantic:manage",
+    _semantic("GET", "/semantic/metrics", "List metrics", permission="semantic:manage"),
+    _semantic("POST", "/semantic/metrics", "Define a metric (draft)", permission="semantic:manage"),
+    _semantic("GET", "/semantic/metrics/{id}", "Read a metric", permission="semantic:manage"),
+    _semantic(
+        "POST", "/semantic/metrics/{id}/approve", "Approve a metric", permission="semantic:manage"
     ),
-    _stub(
+    _semantic(
         "POST",
-        "/semantic/metrics",
-        "Define a metric",
-        "semantic-service",
-        "A7",
+        "/semantic/metrics/{id}/deprecate",
+        "Deprecate a metric",
         permission="semantic:manage",
     ),
+    _semantic("GET", "/semantic/dimensions", "List dimensions", permission="semantic:manage"),
+    _semantic("POST", "/semantic/dimensions", "Define a dimension", permission="semantic:manage"),
     # --- Billing (Section 23): owning service not assigned by Section 3 (ADR 0003) ---------------
     _stub(
         "GET",

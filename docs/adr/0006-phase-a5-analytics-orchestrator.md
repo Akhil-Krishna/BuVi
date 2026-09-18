@@ -80,7 +80,7 @@
   - actual token usage matching the ledger.
 
   Record the result in an ADR.
-- **`resolve_semantics` and `analyze_result` (§10) are assigned to Phase A7** (Semantic Service), together.
+- ~~**`resolve_semantics` and `analyze_result` (§10) are assigned to Phase A7**~~ Done in Phase A7 ([ADR 0010](0010-phase-a7-semantic-service.md), [ADR 0009](0009-analyze-result-data-exposure.md)).
   - `resolve_semantics` needs the semantic layer.
   - `analyze_result` is the first stage that would show query results to a model, so A7 must record in an ADR, before implementing it, what result data the model may see.
 - **`billing.usage.recorded` is published to JetStream `BILLING` but nothing consumes it** until the billing phase. The Redis ledger is the enforcement source.

@@ -1,6 +1,7 @@
 """Service clients the Flow uses: identity-service (delegated principal), metadata-service (agent
-context), query-gateway (validate/execute on behalf of the user), visualization-service (ChartSpec
-validation) and dashboard-service (artifact store). Each call carries this service's
+context), query-gateway (validate/execute on behalf of the user), visualization-service
+(ChartSpec validation), dashboard-service (artifact store) and semantic-service (approved
+definitions). Each call carries this service's
 own scoped token and the request id; each failure maps onto a typed port exception."""
 
 from __future__ import annotations
@@ -25,6 +26,7 @@ from analytics_orchestrator.application.services.ports import (
     QueryNotActiveError,
     QueryRejectedError,
     QueryTimedOutError,
+    SemanticSnapshot,
     ValidatedSql,
 )
 from analytics_orchestrator.core.config import (
@@ -33,8 +35,10 @@ from analytics_orchestrator.core.config import (
     SCOPE_CONTEXT,
     SCOPE_QUERY_EXECUTE,
     SCOPE_RESOLVE_PRINCIPAL,
+    SCOPE_SEMANTIC_CONTEXT,
 )
 from analytics_orchestrator.domain.policies.context_policy import field_type_for
+from analytics_orchestrator.domain.policies.result_policy import result_stats
 from analytics_orchestrator.domain.value_objects.run_state import (
     ContextColumn,
     ContextTable,
@@ -154,12 +158,14 @@ class MetadataClient(_ServiceClient):
                 status=str(body["status"]),
                 tables=[
                     ContextTable(
+                        id=str(t["id"]) if t.get("id") else None,
                         schema_name=t["schema_name"],
                         table_name=t["table_name"],
                         description=(t.get("description") or None) and str(t["description"])[:200],
                         row_count_estimate=t.get("row_count_estimate"),
                         columns=[
                             ContextColumn(
+                                id=str(c["id"]) if c.get("id") else None,
                                 name=c["column_name"],
                                 data_type=c["data_type"],
                                 description=(c.get("description") or None)
@@ -230,16 +236,24 @@ class QueryGatewayClient(_ServiceClient):
         if response.status_code != 200:
             self._raise_for(response)
         body = response.json()
+        schema = [
+            ResultField(field=c["name"], type=field_type_for(c["type"])) for c in body["columns"]
+        ]
+        # ADR 0009: reduce rows to aggregates here; the rows go no further than this function.
+        stats = result_stats(
+            schema,
+            body.get("rows") or [],
+            row_count=int(body["row_count"]),
+            truncated=bool(body["truncated"]),
+        )
         return ExecutionSummary(
             query_id=str(body["query_id"]),
-            result_schema=[
-                ResultField(field=c["name"], type=field_type_for(c["type"]))
-                for c in body["columns"]
-            ],
+            result_schema=schema,
             row_count=int(body["row_count"]),
             truncated=bool(body["truncated"]),
             result_handle=str(body["result_handle"]),
             result_expires_at=body["result_expires_at"],
+            stats=stats,
         )
 
 
@@ -297,3 +311,27 @@ class DashboardClient(_ServiceClient):
         if response.status_code in (409, 422):
             raise ArtifactRejectedError()
         raise DependencyUnavailableError()
+
+
+class SemanticClient(_ServiceClient):
+    audience = "semantic-service"
+
+    async def context(self, tenant_id: uuid.UUID) -> SemanticSnapshot:
+        response = await self._request(
+            "GET",
+            "/internal/v1/semantic-context",
+            SCOPE_SEMANTIC_CONTEXT,
+            params={"tenant_id": str(tenant_id)},
+        )
+        if response.status_code != 200:
+            raise DependencyUnavailableError()
+        try:
+            body = response.json()
+            if body["tenant_id"] != str(tenant_id):
+                raise DependencyUnavailableError()
+            return SemanticSnapshot(
+                metrics=[dict(m) for m in body["metrics"]],
+                dimensions=[dict(d) for d in body["dimensions"]],
+            )
+        except (KeyError, TypeError, ValueError):
+            raise DependencyUnavailableError() from None
