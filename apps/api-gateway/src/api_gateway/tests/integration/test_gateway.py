@@ -219,6 +219,37 @@ async def test_auth_tier_is_independent_of_the_public_tier(
         assert (await client.get("/api/v1/share/t")).status_code == 501
 
 
+async def test_users_behind_one_address_do_not_share_the_public_bucket(
+    settings: Settings, upstreams: FakeUpstreams
+) -> None:
+    """One office NAT: many signed-in users, one IP. The strict public bucket must not cap them."""
+    tight = settings.model_copy(
+        update={"rate_public_ip_capacity": 1, "rate_public_ip_refill_per_second": 0.01}
+    )
+    async for _, client in build_client(tight, upstreams):
+        for token in ("u1", "u2", "u1", "u2", "u1"):
+            assert (
+                await client.get("/api/v1/me/notifications", cookies={COOKIE: token})
+            ).status_code == 501
+
+
+async def test_authenticated_ip_guard_stops_a_flood_before_introspection(
+    settings: Settings, upstreams: FakeUpstreams
+) -> None:
+    tight = settings.model_copy(
+        update={
+            "rate_authenticated_ip_capacity": 2,
+            "rate_authenticated_ip_refill_per_second": 0.01,
+        }
+    )
+    async for _, client in build_client(tight, upstreams):
+        for _ in range(2):
+            await client.get("/api/v1/me/notifications", cookies={COOKIE: "junk"})
+        limited = await client.get("/api/v1/me/notifications", cookies={COOKIE: "u1"})
+        assert limited.status_code == 429 and limited.json()["error"]["details"]["scope"] == "ip"
+        assert (await client.get("/api/v1/share/t")).status_code == 501  # separate bucket
+
+
 async def test_user_bucket_limits_one_user_not_another(
     settings: Settings, upstreams: FakeUpstreams
 ) -> None:

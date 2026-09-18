@@ -94,16 +94,26 @@ def test_rate_limit_buckets_are_scoped_per_ip_user_and_tenant() -> None:
     policy = RateLimitPolicy(
         auth_ip=BucketRule("auth", "ip", 1, 1.0),
         public_ip=BucketRule("public", "ip", 1, 1.0),
+        authenticated_ip=BucketRule("authenticated", "ip", 1, 1.0),
         user=BucketRule("user", "user", 1, 1.0),
         tenant=BucketRule("tenant", "tenant", 1, 1.0),
     )
     assert [b.key for b in policy.before_auth(rate_tier="auth", client_ip="1.2.3.4")] == [
         "rl:auth:ip:1.2.3.4"
     ]
-    assert [b.key for b in policy.before_auth(rate_tier="authenticated", client_ip="1.2.3.4")] == [
+    assert [b.key for b in policy.before_auth(rate_tier="public", client_ip="1.2.3.4")] == [
         "rl:public:ip:1.2.3.4"
+    ]
+    # Authenticated traffic does not share the public bucket: one NAT carries a whole office.
+    assert [b.key for b in policy.before_auth(rate_tier="authenticated", client_ip="1.2.3.4")] == [
+        "rl:authenticated:ip:1.2.3.4"
     ]
     assert [b.key for b in policy.after_auth(tenant_id="t", user_id="u")] == [
         "rl:user:t:u",
         "rl:tenant:t",
     ]
+
+
+def test_every_public_route_has_a_strict_ip_tier() -> None:
+    """The generous authenticated-IP guard is only for routes that introspect a session."""
+    assert all(r.rate_tier in ("auth", "public") for r in CATALOG if r.public)

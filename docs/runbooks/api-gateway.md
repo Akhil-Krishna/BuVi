@@ -15,6 +15,7 @@
 | Spike of `502 UPSTREAM_UNAVAILABLE` on every protected route | identity-service down, or the gateway cannot get a service token | Check identity-service `/health/ready`; check `GATEWAY_SERVICE_CLIENT_SECRET` matches identity's registered `secret_sha256`. Users see 502, never a misleading 401. |
 | `504 UPSTREAM_TIMEOUT` | Owning service slow | Check that service; tune `GATEWAY_UPSTREAM_TIMEOUT_SECONDS` only as a stopgap. |
 | `429 RATE_LIMITED` spike, `details.scope=ip` on auth routes | Credential stuffing or a misbehaving client | Expected protection (Section 24). Identify the IP from logs by `request_id`; block at the edge if hostile. |
+| `429` with `scope=ip` on authenticated routes | Over `GATEWAY_RATE_AUTHENTICATED_IP_CAPACITY` from one address: a flood, or a very large office behind one NAT | For a flood, block it at the edge. For a legitimate shared address, raise the capacity and refill, and record the change. |
 | `429` with `scope=tenant` for a legitimate tenant | Tenant outgrew defaults | Raise `GATEWAY_RATE_TENANT_CAPACITY`/`_REFILL_PER_SECOND`; record the change. |
 | Rate limiting silently not applied | Redis outage with fail-open | Logs show `rate limiter unavailable`; restore Redis. Set `GATEWAY_RATE_LIMIT_FAIL_OPEN=false` during an active attack. |
 | Audit rows show the gateway's IP | Deployed behind another proxy with `TRUSTED_PROXY_HOPS=0` | Set `GATEWAY_TRUSTED_PROXY_HOPS` to the number of trusted proxies in front. |

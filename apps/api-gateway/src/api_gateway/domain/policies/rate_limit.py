@@ -5,9 +5,12 @@ Pure data and key-building. The atomic token-bucket arithmetic runs in Redis
 
 Tiers, all enforced together on a request:
 
-* per IP, before authentication -- a strict `auth` bucket for login, callback,
-  invitation acceptance and MFA verification (Section 24: auth endpoints get limits
-  independent of the general limiter), and a `public` bucket for everything else;
+* per IP, before authentication, so a flood costs no session introspection -- a strict `auth`
+  bucket for login, callback, invitation acceptance and MFA verification (Section 24: auth
+  endpoints get limits independent of the general limiter), a `public` bucket for the other
+  public routes, and a flood guard for authenticated routes. That guard is sized for a whole
+  tenant behind one NAT or proxy address: fair use per person is the user bucket's job, not
+  the IP's;
 * per user and per tenant, after authentication -- so one noisy user cannot exhaust
   their tenant, and one noisy tenant cannot starve the platform (Section 20).
 """
@@ -38,12 +41,15 @@ class Bucket:
 class RateLimitPolicy:
     auth_ip: BucketRule
     public_ip: BucketRule
+    authenticated_ip: BucketRule
     user: BucketRule
     tenant: BucketRule
     key_prefix: str = "rl"
 
     def before_auth(self, *, rate_tier: str, client_ip: str) -> list[Bucket]:
-        rule = self.auth_ip if rate_tier == "auth" else self.public_ip
+        rule = {"auth": self.auth_ip, "public": self.public_ip}.get(
+            rate_tier, self.authenticated_ip
+        )
         return [Bucket(rule, f"{self.key_prefix}:{rule.name}:ip:{client_ip}")]
 
     def after_auth(self, *, tenant_id: str, user_id: str) -> list[Bucket]:

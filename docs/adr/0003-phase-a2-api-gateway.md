@@ -33,6 +33,11 @@
    `TIME`, so replicas share an atomic, clock-skew-free count. Tiers: per-IP `auth` (10, 0.2/s) for login,
    callback, invitation acceptance and MFA verify; per-IP `public` (60, 1/s); per-user (120, 2/s);
    per-tenant (1000, 20/s). IP limits apply before authentication, so a burst costs no introspection.
+   **Amended after Phase A8:** authenticated routes no longer draw from the `public` IP bucket. That
+   bucket capped every signed-in user behind one NAT or corporate proxy at 1 request/s combined,
+   and a dashboard load exceeds that. They get their own per-IP flood guard, `authenticated`
+   (1000, 20/s, the tenant tier's size). Fair use per person remains the user bucket's job. Every
+   public route must name a strict tier (`auth` or `public`), which a catalog test enforces.
    **Fail-open** by default: a Redis outage must not take down the API. It is logged and reported as
    `degraded`, and can be switched to fail-closed during an attack.
 

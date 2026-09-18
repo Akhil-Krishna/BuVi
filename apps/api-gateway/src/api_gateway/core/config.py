@@ -61,6 +61,10 @@ class Settings(BaseSettings):
     rate_auth_ip_refill_per_second: float = 0.2
     rate_public_ip_capacity: int = 60
     rate_public_ip_refill_per_second: float = 1.0
+    #: Authenticated routes, per IP before introspection: a flood guard sized like a tenant,
+    #: since one office NAT carries many users (ADR 0003 amendment).
+    rate_authenticated_ip_capacity: int = 1000
+    rate_authenticated_ip_refill_per_second: float = 20.0
     rate_user_capacity: int = 120
     rate_user_refill_per_second: float = 2.0
     rate_tenant_capacity: int = 1000
@@ -77,6 +81,12 @@ class Settings(BaseSettings):
             ),
             public_ip=BucketRule(
                 "public", "ip", self.rate_public_ip_capacity, self.rate_public_ip_refill_per_second
+            ),
+            authenticated_ip=BucketRule(
+                "authenticated",
+                "ip",
+                self.rate_authenticated_ip_capacity,
+                self.rate_authenticated_ip_refill_per_second,
             ),
             user=BucketRule(
                 "user", "user", self.rate_user_capacity, self.rate_user_refill_per_second
