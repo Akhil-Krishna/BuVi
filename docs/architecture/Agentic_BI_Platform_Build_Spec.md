@@ -595,6 +595,14 @@ to normal permission checks, and are always written to the audit log with before
 - Exporting or downloading raw query results above a configurable row/byte threshold.
 - Rotating or revealing (masked, last-4-only) API keys.
 
+**How step-up is proven (Phase A10).** The session records the method of its last MFA check
+(`totp` or `webauthn`). identity-service decides whether a caller must use WebAuthn: always for
+`platform_super_admin` (Section 6.6), and for `org_admin` when the tenant policy says so. It puts
+that decision in the `Principal`. A step-up done with the wrong method is not fresh, so the
+gateway and every service enforce the rule the same way. The refusal is
+`403 STEP_UP_REQUIRED` with `details.method`. The export threshold is configurable
+(`export_step_up_rows`, default 10,000); a request or response above it needs step-up.
+
 ### 7.4 Frontend authorization is UX-only
 
 `proxy.ts` route grouping and client-side role checks control what's *shown*, never what's
@@ -689,6 +697,9 @@ CREATE TABLE identity.sessions (
     ip_address INET,
     user_agent TEXT,
     idp_refresh_token_ref TEXT NOT NULL,   -- reference into Vault, never the raw token
+    mfa_verified_method TEXT CHECK (mfa_verified_method IN ('totp','webauthn')),  -- A10
+    webauthn_challenge TEXT,               -- A10: pending WebAuthn challenge, single-use
+    webauthn_challenge_expires_at TIMESTAMPTZ,
     mfa_verified_at TIMESTAMPTZ,           -- set on successful MFA check; step-up (Section 7.3)
                                             -- requires now() - mfa_verified_at <= 5 minutes
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -697,6 +708,17 @@ CREATE TABLE identity.sessions (
     revoked_at TIMESTAMPTZ
 );
 CREATE INDEX idx_sessions_user ON identity.sessions(user_id);
+
+-- Phase A10: tenant policies (Section 3, "policy mapping"). One row per tenant; a missing
+-- row means every default (the most restrictive setting).
+CREATE TABLE identity.tenant_policies (
+    tenant_id UUID PRIMARY KEY REFERENCES identity.tenants(id),
+    client_can_share_dashboards BOOLEAN NOT NULL DEFAULT false,  -- Section 7.1 "tenant policy"
+    developer_can_manage_mcp BOOLEAN NOT NULL DEFAULT false,     -- Section 7.1 "(if granted)"
+    org_admin_requires_webauthn BOOLEAN NOT NULL DEFAULT false,  -- Section 6.6 SHOULD
+    updated_by UUID REFERENCES identity.users(id),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 
 CREATE TABLE identity.mfa_credentials (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -777,6 +799,17 @@ CREATE TABLE metadata.data_sources (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX idx_datasources_tenant ON metadata.data_sources(tenant_id);
+
+-- Phase A10: per-connection `sql:execute` grants (Section 7.1). `org_admin` needs none.
+CREATE TABLE metadata.data_source_grants (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id UUID NOT NULL,
+    data_source_id UUID NOT NULL REFERENCES metadata.data_sources(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL,
+    granted_by UUID NOT NULL,
+    granted_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (data_source_id, user_id)
+);
 
 CREATE TABLE metadata.schema_snapshots (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -1127,7 +1160,10 @@ optional `Idempotency-Key` header. All responses use the error envelope in Secti
 | Auth | `POST /auth/logout` | session | revokes session + IdP token |
 | Auth | `GET /auth/session` | session | current principal, roles, tenant |
 | Auth | `POST /auth/mfa/enroll` | session (first enrollment); step-up once a factor exists (Section 6.6) | starts TOTP/WebAuthn enrollment |
-| Auth | `POST /auth/mfa/verify` | session | completes MFA |
+| Auth | `POST /auth/mfa/verify` | session | completes MFA: a TOTP code, a WebAuthn registration, or a WebAuthn assertion |
+| Auth | `POST /auth/mfa/challenge` | session | WebAuthn assertion options for the caller's keys (Phase A10); single-use, bound to the session |
+| Auth | `GET /me/mfa` | session | the caller's factors (method, label, dates); never secret material |
+| Auth | `DELETE /me/mfa/{id}` | session (owner), step-up | remove one of the caller's own factors; audited |
 | Users | `GET /admin/users` | `user:manage` | tenant-scoped list |
 | Invitations | `POST /invitations/{token}/accept` **(public, token-gated)** | signed invitation token + IdP login | creates/activates the invited user; IdP email MUST match the invited email (Section 6.7) |
 | Sessions | `GET /me/sessions` | session | list the caller's own active sessions (Section 6.9) |
@@ -1136,7 +1172,11 @@ optional `Idempotency-Key` header. All responses use the error envelope in Secti
 | Users | `PATCH /admin/users/{id}/roles` | `role:manage`, step-up | grant/revoke role |
 | Users | `POST /admin/users/{id}/sessions/revoke` | `user:manage`, step-up | force logout |
 | Users | `DELETE /admin/users/{id}` | `user:manage`, step-up | cannot delete last `org_admin` |
-| API Keys | `POST /me/api-keys` | session | returns secret once |
+| Users | `POST /admin/users/{id}/mfa/reset` | `user:manage`, step-up | revokes all of the user's factors and sessions; audited (Section 7.3) |
+| Roles | `GET /admin/roles` | `role:manage` | the fixed Section 2 tenant roles and their Section 7.1 permissions |
+| Policies | `GET /admin/policies` | `policy:manage` | the tenant's policies (Phase A10) |
+| Policies | `PATCH /admin/policies` | `policy:manage`, step-up | change tenant policies; audited |
+| API Keys | `POST /me/api-keys` | session, step-up | returns secret once (Section 7.3: creating or rotating a key) |
 | API Keys | `DELETE /me/api-keys/{id}` | session (owner) or `user:manage` | revoke |
 | Chat | `POST /conversations` | `chat:use` | creates conversation |
 | Chat | `POST /conversations/{id}/messages` | `chat:use` + resource-tenant check | returns `{run_id}` |
@@ -1149,34 +1189,41 @@ optional `Idempotency-Key` header. All responses use the error envelope in Secti
 | Dashboards | `GET /dashboards/{id}` | `dashboard:read` + resource-tenant check | dashboard with its tiles; a `private` dashboard of another user is `404` |
 | Dashboards | `POST /dashboards/{id}/tiles` | `dashboard:pin` + resource-tenant check | body `{artifact_id}`; dashboard owner only |
 | Dashboards | `PATCH /tiles/{id}` | `dashboard:pin` + resource-tenant check | layout/overrides; dashboard owner only; overrides limited to Section 17's `options` keys |
-| Dashboards | `POST /dashboards/{id}/share-links` | `dashboard:share`, step-up | time-boxed token (Phase A10) |
+| Dashboards | `POST /dashboards/{id}/share-links` | `dashboard:share`, step-up | dashboard owner only; time-boxed token, returned once |
+| Dashboards | `GET /dashboards/{id}/share-links` | `dashboard:share` + resource-tenant check | owner only; never the token |
+| Dashboards | `DELETE /dashboards/{id}/share-links/{link_id}` | `dashboard:share` + resource-tenant check | owner only; revoke now |
 | Data sources | `GET/POST /data-sources` | `data:manage` | create = pending until secret set |
 | Data sources | `POST /data-sources/{id}/secret` | `data:manage`, step-up | writes to Vault via metadata-service→secrets |
 | Data sources | `POST /data-sources/{id}/test` | `data:manage` | sanitized connectivity result only |
 | Data sources | `POST /data-sources/{id}/sync` | `data:manage` | enqueues catalog sync job |
 | Data sources | `GET /data-sources/{id}` | `catalog:read` + resource-tenant check | status, `last_sync_at`; never credentials |
+| Data sources | `GET/POST /data-sources/{id}/sql-grants` | `org_admin` + resource-tenant check | per-connection `sql:execute` grants to users (Section 7.1) |
+| Data sources | `DELETE /data-sources/{id}/sql-grants/{grant_id}` | `org_admin` + resource-tenant check | revoke; audited |
 | Catalog | `GET /data-sources/{id}/tables` | `catalog:read` + resource-tenant check | tables of a data source, paginated |
 | Catalog | `GET /data-sources/{id}/tables/{table_id}` | `catalog:read` + resource-tenant check | columns and relationships |
 | SQL | `POST /sql/validate` | `sql:execute` | dry validation, no execution |
-| SQL | `POST /sql/execute` | `sql:execute` + per-connection grant | proxies to query-gateway |
+| SQL | `POST /sql/execute` | `sql:execute` + per-connection grant | proxies to query-gateway; step-up above the export row threshold |
 | SQL | `GET /sql/history` | `sql:execute` (own) or `run:debug` | — |
 | MCP | `GET/POST /mcp/servers` | `mcp:manage` | registration = pending_approval, with a declared tool manifest; no network contact |
 | MCP | `GET /mcp/servers/{id}` | `mcp:manage` + resource-tenant check | declared tools and grants; never the auth token |
-| MCP | `POST /mcp/servers/{id}/approve` | `org_admin`, step-up | discovers tools and verifies the manifest against the live server |
-| MCP | `POST /mcp/servers/{id}/tools/{tool}/grants` | `org_admin` | grant a role or a user; read-class tools only until Phase A10 |
+| MCP | `POST /mcp/servers/{id}/approve` | `org_admin`, step-up | `pending_approval` or `disabled` -> `approved`; discovers tools and verifies the manifest against the live server |
+| MCP | `POST /mcp/servers/{id}/disable` | `org_admin` | `approved` -> `disabled`, effective immediately; audited |
+| MCP | `POST /mcp/servers/{id}/reject` | `org_admin` | `pending_approval` -> `rejected` (final); audited |
+| MCP | `POST /mcp/servers/{id}/tools/{tool}/grants` | `org_admin`; step-up for `write`/`admin` tools | grant a role or a user |
 | MCP | `DELETE /mcp/servers/{id}/tools/{tool}/grants/{grant_id}` | `org_admin` | revoke; audited |
-| MCP | `POST /mcp/servers/{id}/tools/{tool}/invoke` | tool grant required | proxied, policy-checked; output returned as untrusted, never stored |
+| MCP | `POST /mcp/servers/{id}/tools/{tool}/invoke` | tool grant required; step-up for `write`/`admin` tools | proxied, policy-checked; output returned as untrusted, never stored |
 | Semantic | `GET/POST /semantic/metrics` | `semantic:manage` | create = `draft`; list filters by `status`, paginated |
 | Semantic | `GET /semantic/metrics/{id}` | `semantic:manage` + resource-tenant check | — |
 | Semantic | `POST /semantic/metrics/{id}/approve` | `semantic:manage` + resource-tenant check | `draft` -> `approved`; audited |
 | Semantic | `POST /semantic/metrics/{id}/deprecate` | `semantic:manage` + resource-tenant check | `approved` -> `deprecated`; audited |
 | Semantic | `GET/POST /semantic/dimensions` | `semantic:manage` | a named, catalogued non-PII column |
 | Billing | `GET /billing/usage` | `billing:read` | tokens, query minutes, seats |
+| Billing | `GET /billing/quotas` | `billing:read` | today's LLM token budget: limit, used, remaining, reset time (Phase A10) |
 | Billing | `POST /billing/subscription` | `billing:manage`, step-up | — |
 | Audit | `GET /admin/audit` | `audit:read` | filter by actor/date/event_type |
 | Notifications | `GET /me/notifications` | session | — |
 | Webhooks | `POST /admin/webhooks` | `org_admin`, step-up | signing secret shown once |
-| Guest share | `GET /share/{token}` **(public, token-gated)** | signed link | read-only dashboard snapshot (Phase A10) |
+| Guest share | `GET /share/{token}` **(public, token-gated)** | share-link token | read-only dashboard snapshot: names, chart specs and chart data only |
 
 ### 9.1 Representative request/response schemas
 
@@ -2425,28 +2472,80 @@ mkdir -p apps web/next-app packages/python packages/ts infra/{docker,compose,kub
 
 ### Phase A10 — Admin backend, step-up auth, quotas, WebAuthn (API only)
 
-- Implement every `(admin)`-area endpoint from Section 9 (`/admin/users`, `/admin/roles`,
-  `/admin/audit`, `/admin/webhooks`, connection approval), plus MCP server disable/reject.
-  MCP approval itself shipped in Phase A9.
-- Implement dashboard share links (`POST /dashboards/{id}/share-links`, step-up, tenant sharing
-  policy for `dashboard:share`) and the token-gated `GET /share/{token}` snapshot, on the
-  `dashboard.share_links` table created in Phase A6.
-- Implement step-up authorization middleware (Section 7.3) and apply it to every sensitive
-  operation listed there, including now-unblocking MCP write-tool invocation from Phase A9.
-- Implement WebAuthn enrollment endpoints; make WebAuthn mandatory for `platform_super_admin`
-  at the API level (reject non-WebAuthn step-up for that role even if a UI attempted it).
-- Implement per-tenant quotas (token budget enforcement — already started in A5's `ModelRouter`,
-  now exposed via `/billing/usage`-adjacent read endpoints — and query concurrency limits).
-- **DoD:** every Section 7.3 sensitive operation requires a fresh MFA check, provable with an
-  automated test that first performs the action with a stale/absent step-up token (expect `403`)
-  and then with a fresh one (expect success); quota breach returns a documented error code, not a
-  silent failure. **No admin console UI exists yet — that is Phase B6.**
+Phase A1 already built most of the admin API: users, roles, invitations, session revocation,
+user deletion, audit. It also built step-up (`require_step_up`, and the gateway's step-up
+flag). A10 completes authorization:
+
+- **Step-up on every Section 7.3 operation, proven by method.**
+  - Sessions record `mfa_verified_method`, and the `Principal` carries whether WebAuthn is
+    required. A step-up done with the wrong method is not fresh.
+  - New step-up coverage:
+    - API-key creation;
+    - removing one's own MFA factor, and an admin resetting another user's MFA;
+    - enrolling a second factor once one exists (Section 6.6);
+    - tenant policy changes;
+    - granting and invoking `write`/`admin` MCP tools;
+    - reads of query results above the export threshold (`POST /sql/execute`,
+      `GET /artifacts/{id}/data`).
+  - Tenant deletion has no API (platform operations) and is out of scope.
+- **WebAuthn** (identity-service, py_webauthn):
+  - enrollment through `POST /auth/mfa/enroll` and `/verify`;
+  - step-up through `POST /auth/mfa/challenge` and `/verify`, with single-use challenges bound
+    to the session;
+  - credential material in Vault (Section 8.1);
+  - `platform_super_admin` is refused step-up by any other method.
+  - Tested with a software authenticator against the real library.
+- **Tenant policies** (identity-service owns "policy mapping", Section 3): `GET/PATCH
+  /admin/policies` covers:
+  - clients may share dashboards (Section 7.1 "tenant policy");
+  - developers may manage MCP servers (Section 7.1 "(if granted)", tenant-wide);
+  - `org_admin` must use WebAuthn (Section 6.6).
+
+  The policies feed the effective permissions of every principal (sessions, API keys,
+  delegated resolution). `GET /admin/roles` lists the fixed roles.
+- **Share links** (dashboard-service, on the Phase A6 table):
+  - the dashboard owner creates (step-up), lists and revokes them;
+  - the token is 256-bit random, stored hashed, returned once, and time-boxed (at most 7 days);
+  - `GET /share/{token}` is public and rate-limited. It returns names, chart specs and chart
+    data only: no ids, no SQL, no users.
+- **MCP:**
+  - `disable` (approved -> disabled, immediate) and `reject` (pending -> rejected);
+  - re-approval from `disabled`;
+  - `write`/`admin` tools can be granted with step-up and invoked with a fresh step-up;
+    `admin` tools by `org_admin` only.
+- **Quotas:**
+  - The token budget (A5's `ModelRouter`) is readable at `GET /billing/quotas`.
+  - Query concurrency becomes a per-tenant limit across replicas (Redis leases in
+    query-gateway; a Redis outage falls back to the per-process limit, never to none).
+  - A breach is a documented error: `429 QUERY_CONCURRENCY_LIMITED` at the API, and
+    `QUERY_CONCURRENCY_LIMITED` for a run after a bounded retry, never `UPSTREAM_UNAVAILABLE`.
+- **Public SQL API** (no earlier phase built it, and Phase B3 needs it):
+  - `POST /sql/validate`, `POST /sql/execute` (purpose `sql_editor`) and `GET /sql/history`,
+    through query-gateway's existing validator and executor;
+  - per-connection grants for `sql:execute` (`metadata.data_source_grants`; `org_admin` needs
+    none). This replaces Section 7.1's "approval by admin for prod", which has no basis in the
+    DDL: data sources carry no environment.
+- **Not in A10:**
+  - `/admin/webhooks` (Phase A11, with notification-service);
+  - a four-eyes rule for semantic approval (post-GA backlog);
+  - platform-operator tenant administration.
+- **DoD:**
+  - every Section 7.3 operation with an API requires a fresh MFA check. An automated test
+    first performs it with a stale or absent step-up (expect `403`), then with a fresh one
+    (expect success). A TOTP step-up is refused for `platform_super_admin`, and for `org_admin`
+    under the WebAuthn policy;
+  - a quota breach returns a documented error code, not a silent failure;
+  - a share link serves its snapshot until it expires or is revoked, then `404`;
+  - a developer without a per-connection grant gets `403` from `/sql/execute`.
+
+  **No admin console UI exists yet — that is Phase B6.**
 
 ### Phase A11 — Notification service, webhooks, billing usage (API only)
 
 - Scaffold `apps/notification-service`; implement DDL from Section 8.8; wire it as a consumer of
   the topics in Section 18.1 that have `notification-service` listed.
-- Implement webhook delivery with HMAC signing and the SSRF controls from Section 15.
+- Implement `POST /admin/webhooks` (moved from A10: notification-service owns webhooks) and
+  webhook delivery with HMAC signing and the SSRF controls from Section 15.
 - Implement `/billing/usage` aggregation from `billing.usage.recorded` events (Section 23).
 - **DoD:** a dashboard pin, a failed MCP invocation, and a sync completion each produce the
   correct in-app/email notification (MailHog inbox checked by test), provable over HTTP/queue
@@ -2580,6 +2679,9 @@ mkdir -p apps web/next-app packages/python packages/ts infra/{docker,compose,kub
   registries, the unsafe corpus run in each dialect, and the Section 13.1 standing verification
   rule met against each vendor's sandbox. Until then their `engine` values are refused
   (`ENGINE_NOT_SUPPORTED`).
+
+- **Four-eyes semantic approval:** a tenant policy that stops a metric's creator from approving
+  it (ADR 0010). It needs the tenant policy in semantic-service's authorization path.
 
 - **Richer metrics:** ratio metrics (e.g. average order value as revenue / orders), metric-level
   filters, and multi-table metrics over approved `semantic.join_rules`, with join-rule management
