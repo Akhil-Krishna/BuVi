@@ -3,6 +3,7 @@
 # invitees and the admin's MFA first, starts identity-service if it is not
 # already running, then runs scripts/test_login.py.
 set -euo pipefail
+source "$(dirname "$0")/live-flow.sh"  # flush_redis; this flow keeps its own service handling
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PGCONTAINER="${PGCONTAINER:-buvi-dev-postgres-1}"
 SERVICE_URL="${GATEWAY_URL:-http://localhost:8000}"
@@ -11,7 +12,9 @@ SERVICE_URL="${GATEWAY_URL:-http://localhost:8000}"
 "$ROOT/scripts/migrate-all.sh" >/dev/null
 "$ROOT/scripts/seed-demo-tenant.sh" >/dev/null
 
-echo "Resetting demo invitees, admin MFA, and MailHog"
+echo "Resetting demo invitees, admin MFA, rate-limit buckets and MailHog"
+# Empty token buckets: the burst checks must not depend on what ran just before.
+flush_redis
 docker exec -i "$PGCONTAINER" psql -U postgres -d agentic_bi -q -v ON_ERROR_STOP=1 <<'SQL'
 DELETE FROM identity.invitations WHERE email IN ('client@demo.example.com', 'developer@demo.example.com');
 DELETE FROM identity.users WHERE email IN ('client@demo.example.com', 'developer@demo.example.com');

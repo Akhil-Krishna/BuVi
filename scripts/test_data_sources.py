@@ -197,10 +197,16 @@ def main() -> int:
     check(
         "metadata endpoint IP refused (DESTINATION_NOT_ALLOWED)",
         literal.status_code == 422 and literal.json()["error"]["code"] == "DESTINATION_NOT_ALLOWED",
+        literal.text,
     )
-    audit = call("GET", "/api/v1/admin/audit", admin, params={"limit": 200}).json().get("items", [])
+    audited = call("GET", "/api/v1/admin/audit", admin, params={"limit": 200})
+    audit = audited.json().get("items", [])
     types = {item["event_type"] for item in audit if item.get("resource_id") == source_id}
-    check("audit: connection.created recorded", "connection.created" in types, str(types))
+    check(
+        "audit: connection.created recorded",
+        "connection.created" in types,
+        f"{audited.status_code} {types or audited.text[:300]}",
+    )
     check(
         "audit: connection.secret_rotated recorded",
         "connection.secret_rotated" in types,

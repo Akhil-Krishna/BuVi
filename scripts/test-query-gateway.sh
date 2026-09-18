@@ -1,56 +1,9 @@
 #!/usr/bin/env bash
-# Phase A4 DoD scripted flow. Needs `make up`. Starts identity, metadata, api-gateway and
-# query-gateway with captured logs, then runs scripts/test_query_gateway.py.
+# Phase A4 DoD scripted flow. Needs `make up`. Starts identity, metadata, query-gateway and
+# api-gateway with captured logs, then runs scripts/test_query_gateway.py.
 set -euo pipefail
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-PGCONTAINER="${PGCONTAINER:-buvi-dev-postgres-1}"
+source "$(dirname "$0")/live-flow.sh"
 
-"$ROOT/scripts/keycloak-bootstrap.sh" >/dev/null
-"$ROOT/scripts/migrate-all.sh" >/dev/null
-"$ROOT/scripts/seed-demo-tenant.sh" >/dev/null
-"$ROOT/scripts/seed-sample-sales.sh" >/dev/null
-docker exec buvi-dev-redis-1 redis-cli FLUSHDB >/dev/null
-
-docker exec -i "$PGCONTAINER" psql -U postgres -d agentic_bi -q -v ON_ERROR_STOP=1 <<'SQL'
-DELETE FROM identity.mfa_credentials
-  WHERE user_id IN (SELECT id FROM identity.users WHERE email = 'admin@demo.example.com');
-UPDATE identity.users SET mfa_enabled = false WHERE email = 'admin@demo.example.com';
-DELETE FROM metadata.data_sources WHERE name LIKE 'sample-sales-db%' OR name LIKE 'sample-sales-mysql%';
-SQL
-
-for port in 8000 8001 8002 8003; do
-  if curl -sf "http://localhost:${port}/health/live" >/dev/null 2>&1; then
-    echo "error: :${port} is already serving; stop it so this flow can capture logs." >&2; exit 1
-  fi
-done
-
-LOGDIR="$(mktemp -d -t buvi-a4.XXXX)"
-PIDS=()
-cleanup() { for pid in "${PIDS[@]:-}"; do [ -n "$pid" ] && kill "$pid" 2>/dev/null || true; done; }
-trap cleanup EXIT
-
-start_service() {  # name, port, env..., command...
-  local name="$1" port="$2"; shift 2
-  local log="$LOGDIR/$name.log"
-  echo "Starting $name on :$port"
-  (cd "$ROOT/apps/$name" && exec env "$@") >"$log" 2>&1 &
-  PIDS+=("$!")
-  for _ in $(seq 1 60); do
-    curl -sf "http://localhost:${port}/health/live" >/dev/null 2>&1 && return
-    sleep 1
-  done
-  echo "$name failed to start"; tail -40 "$log"; exit 1
-}
-
-start_service identity-service 8001 IDENTITY_REQUIRE_GATEWAY_TOKEN=true IDENTITY_LOG_LEVEL=DEBUG \
-  uv run --package identity-service uvicorn identity_service.main:create_app --factory --port 8001
-start_service metadata-service 8002 METADATA_REQUIRE_GATEWAY_TOKEN=true METADATA_LOG_LEVEL=DEBUG \
-  uv run --package metadata-service uvicorn metadata_service.main:create_app --factory --port 8002
-start_service query-gateway 8003 QUERY_GATEWAY_LOG_LEVEL=DEBUG \
-  uv run --package query-gateway uvicorn query_gateway.main:create_app --factory --port 8003
-start_service api-gateway 8000 GATEWAY_LOG_LEVEL=DEBUG \
-  uv run --package api-gateway uvicorn api_gateway.main:create_app --factory --port 8000
-
-cd "$ROOT"
-BUVI_SERVICE_LOGS="$LOGDIR" PGCONTAINER="$PGCONTAINER" \
-  uv run --package identity-service python scripts/test_query_gateway.py
+reset_demo_state
+start_services identity-service metadata-service query-gateway api-gateway
+run_flow test_query_gateway.py

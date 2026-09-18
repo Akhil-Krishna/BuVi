@@ -184,7 +184,9 @@ def main() -> int:
         "gateway mints its own request id",
         rid.startswith("req_") and rid != "client-chosen-id-0001",
     )
-    stub = api("GET", "/api/v1/dashboards", admin)
+    # A route whose service is not built yet (notification-service, Phase A11). Move this check
+    # to another stub when A11 lands, as /dashboards had to move when A6 built dashboard-service.
+    stub = api("GET", "/api/v1/me/notifications", admin)
     stub_code = stub.json().get("error", {}).get("code") if stub.content else None
     check(
         "stubbed backend answers 501 NOT_IMPLEMENTED after auth",
