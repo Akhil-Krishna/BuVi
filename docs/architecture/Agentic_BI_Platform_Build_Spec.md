@@ -1428,6 +1428,24 @@ browser → backend → backend fetches the secret → performs a bounded connec
 only status + sanitized diagnostics (e.g., "Connected. 42 tables discovered." not the DSN or raw
 driver error text, which can leak host/port/user).
 
+**Connector security verification (standing rule, every engine).** A connector's defenses are
+proven against a live instance of that engine in CI, never taken from driver or vendor
+documentation. Drivers change protocol defaults silently (Phase A8: aiomysql requests
+multi-statement support on every connection, whatever its docs imply). For each engine, integration
+tests must show, on a real server:
+- a write is refused even when the credential could write;
+- a second statement is refused;
+- the execution timeout fires;
+- no file or network read works;
+- the session settings the validator's parsing depends on hold against a hostile server
+  configuration;
+- driver messages never leak.
+
+Connectors also check the server's identity at connect time. A protocol-compatible server of
+another product (e.g. MariaDB behind the MySQL connector) is refused with `UNSUPPORTED_SERVER`,
+not run with only part of the defenses applied. An engine without such an instance in CI is not
+supported (see "Post-GA backlog").
+
 ---
 
 ## 14. MCP Gateway — governed tool integrations
@@ -1782,6 +1800,10 @@ specified elsewhere in this document — treat this as the checklist a reviewer 
 
 Authorization tests are not optional — every endpoint that accepts a user-supplied identifier
 gets a same-tenant-allowed / cross-tenant-404 / no-permission-403 test triplet at minimum.
+
+Database connectors follow the standing verification rule in Section 13.1: their security
+defaults are proven by integration tests against a live instance of each engine (and a refused
+look-alike server), never from documentation alone.
 
 ---
 
@@ -2304,6 +2326,9 @@ mkdir -p apps web/next-app packages/python packages/ts infra/{docker,compose,kub
   - row and byte caps while streaming.
 - **The Flow is dialect-aware.** The agent context carries the engine; the SQL generator is told
   the dialect; the metric check (Phase A7) parses in that dialect.
+- **Server identity.** Both connectors accept MySQL 8.0+ only, by the handshake's server version.
+  MariaDB and TiDB are refused (`UNSUPPORTED_SERVER`); MariaDB, for example, has no
+  `max_execution_time`. Proven against a real MariaDB (Section 13.1 standing rule).
 - A MySQL twin of `sample-sales-db` (same schema and data) runs in compose for development and
   the live flow.
 - **Not in A8:** Snowflake, BigQuery and Redshift connectors. There is no local or CI instance
@@ -2448,6 +2473,16 @@ mkdir -p apps web/next-app packages/python packages/ts infra/{docker,compose,kub
   DoD message, primary and fallback models, structured output parsing, refusal and `max_tokens`
   handling, and actual token usage matching the budget ledger — with the result recorded in an ADR.
   Until then it is tested only through the offline scripted provider (ADR 0006).
+- **Entry requirement (before C1 starts):** certificate-verified data-source connections
+  (`sslmode: verify-full`) work and are proven live for both Postgres and MySQL. This includes a
+  per-data-source CA bundle in the secret (managed databases such as RDS and Cloud SQL sign with
+  their own CA, which the system trust store does not hold). CI tests run against a TLS-enabled
+  instance of each engine, covering:
+  - a hostname mismatch is refused;
+  - an untrusted CA is refused;
+  - `require` still encrypts.
+
+  Today `verify-full` uses only the system trust store and has not been exercised live (ADR 0011).
 - Run every item in Section 24's checklist as an explicit test or manual review sign-off recorded
   in `docs/runbooks/security-review-<date>.md`.
 - Complete Section 28 (Terraform environments, DR drill), Section 22.1 (SLO dashboards/alerts),
@@ -2468,8 +2503,9 @@ mkdir -p apps web/next-app packages/python packages/ts infra/{docker,compose,kub
 
 - **Warehouse connectors (Snowflake, BigQuery, Redshift).** They need vendor sandbox accounts
   wired into CI (credentials in the secret store), connector modules behind the Phase A8
-  registries, and the unsafe corpus run in each dialect. Until then their `engine` values are
-  refused (`ENGINE_NOT_SUPPORTED`).
+  registries, the unsafe corpus run in each dialect, and the Section 13.1 standing verification
+  rule met against each vendor's sandbox. Until then their `engine` values are refused
+  (`ENGINE_NOT_SUPPORTED`).
 
 - **Richer metrics:** ratio metrics (e.g. average order value as revenue / orders), metric-level
   filters, and multi-table metrics over approved `semantic.join_rules`, with join-rule management
