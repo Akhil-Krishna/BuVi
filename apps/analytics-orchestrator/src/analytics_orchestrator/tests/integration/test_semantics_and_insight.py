@@ -120,8 +120,34 @@ async def test_sql_that_drifts_from_the_metric_is_regenerated(
     run_id = await harness.start_run(who, MESSAGE)
     assert (await harness.execute(who, run_id)).json()["status"] == "completed"
     assert harness.provider.calls.count("GeneratedSql") == 2
-    assert "SQL does not compute metric Revenue" in harness.provider.users[4]
+    assert (
+        "SQL must output revenue as exactly sum(sales.orders.gross_amount)"
+        in harness.provider.users[4]
+    )
     assert "sum(t.gross_amount)" in _executed_sql(harness)
+
+
+async def test_sql_that_keeps_modifying_the_metric_fails_closed(
+    harness: Harness, platform_db: Any, tenant: uuid.UUID
+) -> None:
+    """A mismatch that survives the repairs fails the run: nothing is executed, nothing is shown."""
+    who = harness.services.add_user(tenant, {"client"})
+    harness.services.add_data_source(tenant)
+    harness.services.add_metric(tenant)
+    doubled = GeneratedSql(
+        sql="SELECT date_trunc('month', t.order_date) AS month, sum(t.gross_amount) * 2 AS revenue "
+        "FROM sales.orders AS t GROUP BY 1 ORDER BY 1"
+    )
+    harness.provider.queue(GeneratedSql, doubled, doubled, doubled)
+    run_id = await harness.start_run(who, MESSAGE)
+    result = (await harness.execute(who, run_id)).json()
+    assert result["status"] == "failed" and result["error_code"] == "QUERY_REJECTED"
+    assert harness.provider.calls.count("GeneratedSql") == 3  # first attempt + 2 repairs
+    assert [c["path"] for c in harness.services.query_calls] == [
+        "/internal/v1/queries/validate"
+    ] * 3  # validated three times, executed never
+    assert (await run_events(platform_db, run_id))[-2:] == ["validation.failed", "run.failed"]
+    assert harness.services.artifact_posts == 0
 
 
 async def test_semantic_service_outage_fails_closed(

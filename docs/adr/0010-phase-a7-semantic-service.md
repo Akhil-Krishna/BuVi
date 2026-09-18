@@ -23,7 +23,10 @@
 2. **Grounding is deterministic; the model only chooses.**
    - `resolve_semantics` offers the model the approved candidates that fall inside the permitted context packet. A definition on a hidden table, a PII column or another data source is never offered, so it cannot widen access.
    - The model answers with ids, which are checked against the candidates.
-   - A resolved metric fixes the measure: aggregation, column and alias come from the definition. The plan is checked for it, then the SQL query-gateway validated is checked for it, each with ≤2 repairs. The model cannot substitute its own aggregation.
+   - A resolved metric fixes the measure: aggregation, column and alias come from the definition. The plan must contain that exact measure, alias included.
+   - The SQL query-gateway validated is **parsed** (sqlglot, the same parser and version range as query-gateway). The output column named by the metric's alias must be exactly `AGG([DISTINCT] column)` on the metric's base table: no arithmetic, `FILTER`, window, `CASE`, other column or duplicate alias.
+   - Unparseable SQL, or anything that is not a single `SELECT`, is a problem too.
+   - **Fail-closed path:** a mismatch goes through the existing ≤2 SQL repairs, and one that survives them fails the run `QUERY_REJECTED` (`validation.failed`), with nothing executed and no artifact. `test_sql_that_keeps_modifying_the_metric_fails_closed` covers it.
    - With no approved definition in scope there is no model call.
 3. **Fail closed.** If semantic-service is unavailable the run fails `UPSTREAM_UNAVAILABLE` (`semantic.failed`) rather than guessing a metric that may be defined differently.
 4. **Groundedness per run.** `flow_state.grounding` records:
@@ -38,10 +41,11 @@
 6. **Bugs fixed on the way.**
    - The scripted SQL generator always wrote `sum(...)` whatever the plan's aggregation.
    - Insight grounding initially used banker's rounding, so 2180.5 did not ground "2,181".
+   - **The first SQL check was presence-based** (a regex for `AGG(column)` anywhere in the SQL). It silently accepted `SUM(x) * 2 AS revenue`, `SUM(x) FILTER (…)`, `SUM(x) OVER ()`, and the metric computed under another alias while the metric's alias came from a different column. It was replaced by the parsed exact check above (review follow-up after commit 7380996); the plan check now also pins the alias.
 
 ## Gaps
 
-- **Only single-aggregate, single-table metrics.** Ratios (AOV as revenue ÷ orders), metric filters and approved joins (`join_rules` is modeled, with no routes) need a grammar and join-approval phase.
+- **Only single-aggregate, single-table metrics.** Ratios (AOV as revenue ÷ orders), metric filters and approved joins (`join_rules` is modeled, with no routes) are **post-GA backlog** (spec "Post-GA backlog"; CLAUDE.md "Carried forward").
 - **Dimensions are create/list only.** Edits and deletion follow B4's management UI needs.
 - **No four-eyes rule.** A creator may approve their own metric; separation of duties is a tenant policy for Phase A10.
-- **Semantic context is not cached** (§20 asks for TTL caching). Each run makes one extra metadata context call when approved definitions exist.
+- **Semantic context is not cached** (§20 asks for TTL caching). Each run makes one extra metadata context call when approved definitions exist. This is a **Phase C1 hardening requirement** (spec Phase C1), not an open-ended gap.

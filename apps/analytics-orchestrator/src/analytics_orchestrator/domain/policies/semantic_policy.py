@@ -7,10 +7,12 @@ use it; the model only chooses *which* approved metric a business term means.
 
 from __future__ import annotations
 
-import re
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Final
+
+import sqlglot
+from sqlglot import exp
 
 from analytics_orchestrator.domain.value_objects.agent_outputs import (
     PlanMeasure,
@@ -102,11 +104,11 @@ def metric_measure(metric: SemanticMetric) -> PlanMeasure:
 def semantic_plan_problems(
     plan: QueryPlan, metrics: Sequence[SemanticMetric], dimensions: Sequence[SemanticDimension]
 ) -> list[str]:
-    measures = {(m.column, m.aggregation) for m in plan.measures}
+    measures = {(m.column, m.aggregation, m.alias) for m in plan.measures}
     problems = []
     for metric in metrics:
         required = metric_measure(metric)
-        if (required.column, required.aggregation) not in measures:
+        if (required.column, required.aggregation, required.alias) not in measures:
             problems.append(
                 f"metric {metric.name} must be measured as {required.aggregation}"
                 f"({required.column}) alias {required.alias}"
@@ -117,18 +119,76 @@ def semantic_plan_problems(
     return problems
 
 
-def _aggregate_pattern(metric: SemanticMetric) -> re.Pattern[str]:
-    column = re.escape(metric.column.rsplit(".", 1)[1])
-    reference = rf'(?:"?\w+"?\.)*"?{column}"?'
+_AGGREGATE_NODES: Final[dict[str, type[exp.Expression]]] = {
+    "sum": exp.Sum,
+    "avg": exp.Avg,
+    "min": exp.Min,
+    "max": exp.Max,
+    "count": exp.Count,
+    "count_distinct": exp.Count,
+}
+
+
+def _tables_by_alias(select: exp.Select) -> dict[str, str]:
+    tables: dict[str, str] = {}
+    for table in select.find_all(exp.Table):
+        qualified = f"{table.db}.{table.name}".lower() if table.db else table.name.lower()
+        tables[(table.alias or table.name).lower()] = qualified
+    return tables
+
+
+def _is_exact_aggregate(
+    node: exp.Expression, metric: SemanticMetric, tables: dict[str, str]
+) -> bool:
+    """True only for `AGG([DISTINCT] base_table.column)` itself -- no arithmetic, FILTER, window
+    or CASE around or inside it."""
+    expected = _AGGREGATE_NODES[metric.aggregation]
+    if type(node) is not expected:
+        return False
+    argument = node.this
     if metric.aggregation == "count_distinct":
-        return re.compile(rf"\bcount\s*\(\s*distinct\s+{reference}\s*\)", re.IGNORECASE)
-    return re.compile(rf"\b{metric.aggregation}\s*\(\s*{reference}\s*\)", re.IGNORECASE)
+        if not isinstance(argument, exp.Distinct) or len(argument.expressions) != 1:
+            return False
+        argument = argument.expressions[0]
+    elif isinstance(argument, exp.Distinct):
+        return False
+    if not isinstance(argument, exp.Column):
+        return False
+    schema, table, column = metric.column.lower().split(".")
+    if argument.name.lower() != column:
+        return False
+    qualifier = argument.table.lower()
+    if qualifier:
+        resolved = tables.get(qualifier)
+    else:
+        resolved = next(iter(tables.values())) if len(tables) == 1 else None
+    return resolved in (f"{schema}.{table}", table)
 
 
 def sql_metric_problems(sql: str, metrics: Sequence[SemanticMetric]) -> list[str]:
-    """The validated (regenerated) SQL must aggregate each resolved metric as defined."""
-    return [
-        f"SQL does not compute metric {m.name} as {metric_measure(m).aggregation}({m.column})"
-        for m in metrics
-        if not _aggregate_pattern(m).search(sql)
-    ]
+    """The validated (regenerated) SQL must output each resolved metric, under its alias, as
+    exactly the defined aggregate. Anything unparseable or ambiguous is a problem (fail closed)."""
+    if not metrics:
+        return []
+    try:
+        tree = sqlglot.parse_one(sql, read="postgres")
+    except sqlglot.errors.ParseError:
+        return ["SQL could not be parsed to check the metrics it must compute"]
+    if not isinstance(tree, exp.Select):
+        return ["SQL must be a single SELECT to compute the defined metrics"]
+    tables = _tables_by_alias(tree)
+    outputs: dict[str, list[exp.Expression]] = {}
+    for item in tree.expressions:
+        outputs.setdefault(item.alias_or_name.lower(), []).append(
+            item.this if isinstance(item, exp.Alias) else item
+        )
+    problems = []
+    for metric in metrics:
+        measure = metric_measure(metric)
+        candidates = outputs.get(measure.alias, [])
+        if len(candidates) != 1 or not _is_exact_aggregate(candidates[0], metric, tables):
+            problems.append(
+                f"SQL must output {measure.alias} as exactly {measure.aggregation}({metric.column})"
+                f" for metric {metric.name}"
+            )
+    return problems

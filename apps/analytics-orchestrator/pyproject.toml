@@ -23,6 +23,8 @@ dependencies = [
     "pydantic>=2.12.5",
     "redis>=8.1.0",
     "sqlalchemy[asyncio]>=2.0.52",
+    # Same parser and range as query-gateway: checks a chosen metric's output column exactly.
+    "sqlglot>=30.18.0,<31",
     "uvicorn>=0.52.4",
 ]
 

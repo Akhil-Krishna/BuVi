@@ -108,6 +108,11 @@ def test_plan_must_measure_the_metric_as_defined() -> None:
         tables=["sales.orders"],
         measures=[PlanMeasure(column="sales.orders.amount", aggregation="avg", alias="revenue")],
     )
+    renamed = QueryPlan(
+        tables=["sales.orders"],
+        measures=[PlanMeasure(column="sales.orders.amount", aggregation="sum", alias="other")],
+    )
+    assert semantic_plan_problems(renamed, [metric], []) != []
     assert semantic_plan_problems(wrong, [metric], [dimension]) == [
         "metric Net Revenue (USD) must be measured as sum(sales.orders.amount) alias net_revenue_usd",
         "dimension Status must group by sales.orders.status",
@@ -117,16 +122,56 @@ def test_plan_must_measure_the_metric_as_defined() -> None:
 @pytest.mark.parametrize(
     ("sql", "ok"),
     [
-        ('SELECT SUM("t"."amount") AS "revenue" FROM "sales"."orders" AS "t"', True),
-        ("select sum( t.amount ) from sales.orders t", True),
-        ("SELECT AVG(t.amount) FROM sales.orders t", False),
-        ("SELECT SUM(t.amount_net) FROM sales.orders t", False),
-        ("SELECT SUM(t.amount) * 2 FROM sales.orders t", True),
+        # query-gateway's regenerated form, and the plain form
+        ('SELECT SUM("t"."amount") AS "net_revenue_usd" FROM "sales"."orders" AS "t"', True),
+        ("select sum( t.amount ) as net_revenue_usd from sales.orders t", True),
+        ("SELECT SUM(amount) AS net_revenue_usd FROM sales.orders", True),
+        # a modified or relocated metric: rejected, never silently accepted
+        ("SELECT SUM(t.amount) * 2 AS net_revenue_usd FROM sales.orders AS t", False),
+        (
+            "SELECT SUM(t.amount) AS x, SUM(t.status) AS net_revenue_usd FROM sales.orders AS t",
+            False,
+        ),
+        (
+            "SELECT SUM(t.amount) FILTER (WHERE t.status = 'x') AS net_revenue_usd "
+            "FROM sales.orders AS t",
+            False,
+        ),
+        ("SELECT SUM(t.amount) OVER () AS net_revenue_usd FROM sales.orders AS t", False),
+        ("SELECT AVG(t.amount) AS net_revenue_usd FROM sales.orders AS t", False),
+        ("SELECT SUM(DISTINCT t.amount) AS net_revenue_usd FROM sales.orders AS t", False),
+        ("SELECT SUM(r.amount) AS net_revenue_usd FROM sales.regions AS r", False),
+        (
+            "SELECT SUM(t.amount) AS net_revenue_usd, SUM(t.amount) AS net_revenue_usd "
+            "FROM sales.orders AS t",
+            False,
+        ),
+        ("SELECT 1 AS net_revenue_usd UNION SELECT SUM(amount) FROM sales.orders", False),
+        ("SELECT SUM(amount AS net_revenue_usd FROM", False),
     ],
 )
-def test_sql_must_aggregate_the_metric(sql: str, ok: bool) -> None:
+def test_sql_must_output_the_metric_exactly(sql: str, ok: bool) -> None:
     metric = _candidates().metrics[0]
     assert (sql_metric_problems(sql, [metric]) == []) is ok
+
+
+def test_count_distinct_metric() -> None:
+    [metric] = semantic_candidates(
+        [
+            {
+                "id": M_REVENUE,
+                "name": "Orders",
+                "aggregation": "count_distinct",
+                "column": "status",
+                "base_table_id": "t-orders",
+            }
+        ],
+        [],
+        [ORDERS],
+    ).metrics
+    good = "SELECT COUNT(DISTINCT t.status) AS orders FROM sales.orders AS t"
+    assert sql_metric_problems(good, [metric]) == []
+    assert sql_metric_problems(good.replace("DISTINCT ", ""), [metric]) != []
 
 
 SCHEMA = [
