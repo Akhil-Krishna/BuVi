@@ -826,11 +826,13 @@ CREATE TABLE semantic.metrics (
     tenant_id UUID NOT NULL,
     name TEXT NOT NULL,               -- "Revenue"
     description TEXT,
-    expression TEXT NOT NULL,          -- e.g. "SUM(orders.amount)"
+    expression TEXT NOT NULL,          -- v1 grammar: AGG([DISTINCT] column), e.g. "SUM(amount)"
     default_grain TEXT,
-    base_table_id UUID,                -- references metadata.tables.id (cross-service; store id only)
+    base_table_id UUID NOT NULL,       -- references metadata.tables.id (cross-service; store id only)
     synonyms TEXT[] NOT NULL DEFAULT '{}',
+    created_by UUID NOT NULL,
     approved_by UUID,
+    approved_at TIMESTAMPTZ,
     status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','approved','deprecated')),
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE (tenant_id, name)
@@ -840,8 +842,10 @@ CREATE TABLE semantic.dimensions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id UUID NOT NULL,
     name TEXT NOT NULL,
-    column_id UUID,                    -- references metadata.columns.id
+    column_id UUID NOT NULL,           -- references metadata.columns.id
     synonyms TEXT[] NOT NULL DEFAULT '{}',
+    created_by UUID NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE (tenant_id, name)
 );
 
@@ -854,6 +858,14 @@ CREATE TABLE semantic.join_rules (
     is_approved BOOLEAN NOT NULL DEFAULT false
 );
 ```
+
+**Metric expressions (v1).** `expression` is not free SQL: it must match
+`SUM|AVG|MIN|MAX|COUNT( [DISTINCT] column )`. `column` is a column of the metric's base table
+(optionally written `table.column`); it must exist in the catalog, must not be PII, and the table
+must be visible to agents. `SUM`/`AVG` require a numeric column. semantic-service checks this at
+write time through metadata-service. Only `approved` metrics reach the Flow, and the SQL built from
+them is still validated by query-gateway (Section 13). Ratios, filters and multi-table metrics need
+`join_rules` and a richer grammar in a later phase.
 
 ### 8.4 `analytics` schema (owner: analytics-orchestrator)
 
@@ -1150,7 +1162,11 @@ optional `Idempotency-Key` header. All responses use the error envelope in Secti
 | MCP | `GET/POST /mcp/servers` | `mcp:manage` | registration = pending_approval |
 | MCP | `POST /mcp/servers/{id}/approve` | `org_admin`, step-up | — |
 | MCP | `POST /mcp/servers/{id}/tools/{tool}/invoke` | tool grant required | proxied, policy-checked |
-| Semantic | `GET/POST /semantic/metrics` | `semantic:manage` | — |
+| Semantic | `GET/POST /semantic/metrics` | `semantic:manage` | create = `draft`; list filters by `status`, paginated |
+| Semantic | `GET /semantic/metrics/{id}` | `semantic:manage` + resource-tenant check | — |
+| Semantic | `POST /semantic/metrics/{id}/approve` | `semantic:manage` + resource-tenant check | `draft` -> `approved`; audited |
+| Semantic | `POST /semantic/metrics/{id}/deprecate` | `semantic:manage` + resource-tenant check | `approved` -> `deprecated`; audited |
+| Semantic | `GET/POST /semantic/dimensions` | `semantic:manage` | a named, catalogued non-PII column |
 | Billing | `GET /billing/usage` | `billing:read` | tokens, query minutes, seats |
 | Billing | `POST /billing/subscription` | `billing:manage`, step-up | — |
 | Audit | `GET /admin/audit` | `audit:read` | filter by actor/date/event_type |
@@ -2234,13 +2250,29 @@ mkdir -p apps web/next-app packages/python packages/ts infra/{docker,compose,kub
 
 ### Phase A7 — Semantic Service
 
-- Scaffold per Section 4.1; implement DDL from Section 8.3.
-- Wire `resolve_semantics` into the Flow (now the agent maps business terms to approved
-  metrics/dimensions before SQL generation, Section 12).
+- Scaffold per Section 4.1; implement DDL from Section 8.3 with RLS. Routes: Section 9's
+  semantic rows. Metric expressions follow Section 8.3's v1 grammar and are checked against the
+  catalog through a new metadata-service internal lookup; metric create/approve/deprecate are
+  audited through identity-service.
+- metadata-service's agent context packet carries table and column ids (additive), so a metric's
+  `base_table_id` or a dimension's `column_id` can be matched to what the agent may see.
+- Wire `resolve_semantics` into the Flow (emits `semantic.started/completed`, Section 32). It loads
+  the tenant's approved metrics and dimensions from semantic-service, keeps those whose base table
+  or column is in the permitted context packet (adding a metric's base table if ranking dropped
+  it), and asks the semantic agent to map the request's business terms to them (typed output, ids
+  checked against the candidates). A resolved metric fixes the plan's measure deterministically
+  (aggregation and column from the definition): the plan and the validated SQL are checked to
+  use it, so the model never guesses an aggregation for a defined metric. semantic-service
+  unavailable fails the run (`UPSTREAM_UNAVAILABLE`) rather than silently guessing.
 - Wire `analyze_result` into the Flow (after `execute_query`, bounded and typed per Section 10.3).
   Before implementing it, decide and record in an ADR what result data the model may see (result
   schema, aggregates, or capped rows), since this is the first stage that exposes query results
-  to a model.
+  to a model. It runs inside the `visualization` stage (no new event stage).
+- Groundedness is tracked per run in `flow_state` (metrics and dimensions used, unmatched terms,
+  whether every measure and every number in the insight is grounded) and copied into the
+  artifact's `semantic_query`; an eval corpus over the Flow reports it.
+- Not in A7: dimension/join-rule edit routes beyond create, approved joins, and metric grammar
+  beyond a single aggregate -- each needs its own phase decision.
 - **DoD:** a defined "Revenue" metric is used by the chat flow instead of the agent guessing an
   aggregation expression; groundedness eval (Section 25) shows metric usage tracked per run;
   `GET/POST /semantic/metrics` is fully testable over HTTP. (The metric-management UI is Phase B4.)
@@ -2413,6 +2445,7 @@ Step B — GET /api/v1/runs/{run_id}/events   (SSE)
   followed by `run.failed`):
     intent.started          intent.completed
     schema.started          schema.completed
+    semantic.started        semantic.completed
     sql.started             sql.completed
     validation.started      validation.completed
     execution.started       execution.completed
