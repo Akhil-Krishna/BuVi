@@ -1381,6 +1381,10 @@ POST /internal/v1/queries          (called only by analytics-orchestrator's exec
 -> emit query.completed event
 ```
 
+The validator parses and regenerates SQL in the data source's dialect (Postgres, MySQL from
+Phase A8); only the regenerated text executes, so comments -- including MySQL's executable
+`/*! */` comments -- never reach a database.
+
 `POST /internal/v1/queries/validate` runs the same authorization, policy load and validation
 without executing (audited as `validated` or `rejected`); the Flow's `validate_sql` stage calls it,
 so there is exactly one validator. A queued analytics run has no live user session:
@@ -2279,13 +2283,38 @@ mkdir -p apps web/next-app packages/python packages/ts infra/{docker,compose,kub
   aggregation expression; groundedness eval (Section 25) shows metric usage tracked per run;
   `GET/POST /semantic/metrics` is fully testable over HTTP. (The metric-management UI is Phase B4.)
 
-### Phase A8 — Additional database connectors
+### Phase A8 — Additional database connectors (MySQL)
 
-- Implement MySQL, then Snowflake/BigQuery adapters behind `infrastructure/connectors/base.py`
-  (Section 4.1) — core Flow/query-gateway logic does not branch per engine outside the connector
-  layer.
-- **DoD:** the same unsafe-SQL corpus (Section 25) passes against each new connector's dialect;
-  the vertical-slice journey (Section 32) succeeds against a second engine, proven over HTTP.
+- Implement **MySQL 8** end to end behind the existing connector registries
+  (`infrastructure/connectors/`, Section 4.1): metadata-service's connectivity test and catalog
+  introspection (`information_schema`, only objects the read principal can see), and
+  query-gateway's read-only executor. In MySQL a "schema" is a database, so `allowed_schemas`
+  lists databases. Core Flow and query-gateway logic do not branch per engine outside the
+  connector layer and one dialect lookup.
+- **One validator, per-dialect parsing.** query-gateway parses and regenerates SQL in the data
+  source's dialect (Section 13). The allow-list is shared, plus a small per-dialect list of
+  builtins sqlglot does not model. Engine-specific attacks are added to the unsafe corpus. For
+  MySQL: executable `/*! */` comments, `INTO OUTFILE/DUMPFILE`, `@var`/`@@var`, `SLEEP`,
+  `BENCHMARK`, `LOAD_FILE`, lock clauses, `HANDLER`/`DO`/`CALL`. Only regenerated SQL ever
+  executes, so comments never reach the database.
+- **Database-side defense for the new engine, not just the parser:**
+  - a read-only transaction and a server-side execution timeout per query;
+  - the multi-statement protocol flag off and `LOCAL INFILE` off;
+  - a SELECT-only principal;
+  - row and byte caps while streaming.
+- **The Flow is dialect-aware.** The agent context carries the engine; the SQL generator is told
+  the dialect; the metric check (Phase A7) parses in that dialect.
+- A MySQL twin of `sample-sales-db` (same schema and data) runs in compose for development and
+  the live flow.
+- **Not in A8:** Snowflake, BigQuery and Redshift connectors. There is no local or CI instance
+  to verify them against, so they are post-GA backlog. Their `engine` values stay in the DDL, and
+  creating such a data source stays `422 ENGINE_NOT_SUPPORTED`.
+- **DoD:**
+  - the unsafe-SQL corpus (Section 25), plus the MySQL-specific entries, is 100% rejected in
+    both dialects;
+  - a write attempted directly through the MySQL executor is refused by the database;
+  - the vertical-slice journey (Section 32) succeeds against MySQL, proven over HTTP, including
+    an approved metric (Phase A7) applied in MySQL SQL.
 
 ### Phase A9 — MCP Gateway (read-only tools first)
 
@@ -2436,6 +2465,11 @@ mkdir -p apps web/next-app packages/python packages/ts infra/{docker,compose,kub
 - Only after Phase C1. Evaluate embed vs. API-integration per Section 34; do not rewrite Superset.
 
 ### Post-GA backlog (explicitly out of Track A-C; each needs its own spec section before work starts)
+
+- **Warehouse connectors (Snowflake, BigQuery, Redshift).** They need vendor sandbox accounts
+  wired into CI (credentials in the secret store), connector modules behind the Phase A8
+  registries, and the unsafe corpus run in each dialect. Until then their `engine` values are
+  refused (`ENGINE_NOT_SUPPORTED`).
 
 - **Richer metrics:** ratio metrics (e.g. average order value as revenue / orders), metric-level
   filters, and multi-table metrics over approved `semantic.join_rules`, with join-rule management
