@@ -864,8 +864,9 @@ CREATE TABLE semantic.join_rules (
 (optionally written `table.column`); it must exist in the catalog, must not be PII, and the table
 must be visible to agents. `SUM`/`AVG` require a numeric column. semantic-service checks this at
 write time through metadata-service. Only `approved` metrics reach the Flow, and the SQL built from
-them is still validated by query-gateway (Section 13). Ratios, filters and multi-table metrics need
-`join_rules` and a richer grammar in a later phase.
+them is still validated by query-gateway (Section 13). Ratio metrics, metric filters and
+multi-table metrics (approved `join_rules`) are **post-GA backlog** (Section 31, "Post-GA backlog"):
+`join_rules` is created but unused until then, and the v1 grammar is the contract for GA.
 
 ### 8.4 `analytics` schema (owner: analytics-orchestrator)
 
@@ -2271,8 +2272,9 @@ mkdir -p apps web/next-app packages/python packages/ts infra/{docker,compose,kub
 - Groundedness is tracked per run in `flow_state` (metrics and dimensions used, unmatched terms,
   whether every measure and every number in the insight is grounded) and copied into the
   artifact's `semantic_query`; an eval corpus over the Flow reports it.
-- Not in A7: dimension/join-rule edit routes beyond create, approved joins, and metric grammar
-  beyond a single aggregate -- each needs its own phase decision.
+- Not in A7: dimension/join-rule edit routes beyond create. Approved joins and metric grammar
+  beyond a single aggregate (ratios, filters, multi-table) are post-GA backlog; semantic-lookup
+  caching is a Phase C1 hardening requirement.
 - **DoD:** a defined "Revenue" metric is used by the chat flow instead of the agent guessing an
   aggregation expression; groundedness eval (Section 25) shows metric usage tracked per run;
   `GET/POST /semantic/metrics` is fully testable over HTTP. (The metric-management UI is Phase B4.)
@@ -2421,11 +2423,24 @@ mkdir -p apps web/next-app packages/python packages/ts infra/{docker,compose,kub
   in `docs/runbooks/security-review-<date>.md`.
 - Complete Section 28 (Terraform environments, DR drill), Section 22.1 (SLO dashboards/alerts),
   Section 29 (data export/delete flows).
-- **DoD:** Section 38 (Definition of Done for production readiness) is fully satisfied.
+- Semantic-lookup caching (Section 20): cache semantic-service's approved-definition context and
+  the metadata agent-context packet per tenant (and data source) with a TTL and explicit
+  invalidation on metric approve/deprecate and catalog sync. Correctness never depends on the
+  cache: a miss or an outage falls back to the live call, and an invalidation failure only shortens
+  the TTL. Required before C1's DoD.
+- **DoD:** Section 38 (Definition of Done for production readiness) is fully satisfied, including
+  the semantic-lookup caching item above.
 
 ### Phase C2 — Optional: Superset integration
 
 - Only after Phase C1. Evaluate embed vs. API-integration per Section 34; do not rewrite Superset.
+
+### Post-GA backlog (explicitly out of Track A-C; each needs its own spec section before work starts)
+
+- **Richer metrics:** ratio metrics (e.g. average order value as revenue / orders), metric-level
+  filters, and multi-table metrics over approved `semantic.join_rules`, with join-rule management
+  routes and an approval workflow. v1's single-aggregate grammar (Section 8.3) stays valid; any
+  extension must keep the Flow's deterministic metric check (ADR 0010) exact, not presence-based.
 
 ---
 
