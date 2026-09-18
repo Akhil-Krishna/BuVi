@@ -52,5 +52,25 @@
 ## Gaps
 
 - **Warehouses** (Snowflake, BigQuery, Redshift): post-GA backlog, as above.
-- **MariaDB is not supported as `mysql`.** It lacks `max_execution_time` (it uses `max_statement_time`) and differs in the data dictionary.
-- **TLS `verify-full` for MySQL is untested live.** The compose MySQL has no certificate; the code path is the same as Postgres's (connect by name, verify).
+- **TLS `verify-full` is untested live, for MySQL and Postgres alike.** The compose databases have no certificate, and `verify-full` trusts only the system store, so managed databases with their own CA (RDS, Cloud SQL) cannot pass it yet. This is now a Phase C1 entry requirement: a per-data-source CA bundle and live TLS tests for both engines (spec Phase C1; follow-up below).
+
+## Follow-up after review
+
+An external review of this phase raised five points. All were checked against the code:
+
+- **Verification rule for future connectors.** Correct, and now a spec rule (Section 13.1, referenced from Section 25 and the warehouse backlog entry). Every engine's defenses must be proven against a live instance in CI, never from documentation. The aiomysql multi-statement default above is why.
+- **Server identity (MariaDB).** Correct: MariaDB was refused only by accident. The first unsupported statement failed (`SET max_execution_time` → `QUERY_FAILED` / `CONNECTION_FAILED`), which is not a guarantee.
+  - Both connectors now check the handshake's server version: MySQL 8.0+ only. MariaDB and TiDB are refused (`UNSUPPORTED_SERVER` in metadata-service, `DATA_SOURCE_UNAVAILABLE` in query-gateway), and no query runs.
+  - Proven against a real MariaDB 11.4 in both services. The tests fail without the check, because the codes differ.
+  - Percona and managed MySQL 8 (for example `8.0.36-28`) pass the check. Their defenses then rest on the same live-tested session settings.
+- **Live-flow isolation.** Correct: the fix was copied into every script. The runners now share `scripts/live-flow.sh`: one `reset_demo_state` (seeds, empty Redis, admin MFA off, no demo data sources left behind) and one service table. `make test-live` runs every flow in sequence, and any order works.
+- **Rate limiter: latent flakiness.** Correct, and the cause was a gateway bug, not the tests.
+  - Live flows do not run in CI, and no test principal is exempted from the limiter; an exemption would be a bypass.
+  - The real cause: every authenticated request drew from the strict `public` per-IP bucket (60, 1/s). A flow making 60+ calls quickly passed or failed depending on timing: `test-data-sources` failed right after `test-login` and passed alone.
+  - In production the same rule caps every signed-in user behind one NAT or corporate proxy at 1 request/s combined.
+  - Fixed in api-gateway (ADR 0003 amendment): authenticated routes get their own per-IP flood guard, sized like the tenant tier. The user and tenant buckets are unchanged.
+  - Every runner, `test-login.sh` included, now really starts with empty buckets. The old `docker exec … FLUSHDB` reset nothing on a machine where a host `redis-server` listens on `127.0.0.1:6379`: the services connect to that one, not to compose's. The runners now flush through the services' own URL, and only after a probe proves it is the compose Redis. Otherwise they stop with an error rather than flush a database this project does not own.
+- **Stale live check found by `make test-live`.** The A1 flow still expected `/dashboards` to answer `501` (a stub), which stopped being true when A6 built dashboard-service. Nobody noticed, because each phase re-ran only its own flow. The check now uses a route that is still a stub.
+- **Certificate-verified MySQL.** Tracked as a Phase C1 entry requirement, together with Postgres (see Gaps).
+
+A bug found while reviewing: when a MySQL pool was evicted as idle, or dropped after an auth failure, while a query was still running, that query's connection went back to the dropped pool's idle list and stayed open. A closed pool now closes connections returned to it. A unit test covers this.
