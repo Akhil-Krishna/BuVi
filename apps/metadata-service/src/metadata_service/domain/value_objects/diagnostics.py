@@ -26,6 +26,7 @@ class DiagnosticCode(StrEnum):
     TIMEOUT = "TIMEOUT"
     TOO_MANY_CONNECTIONS = "TOO_MANY_CONNECTIONS"
     CATALOG_TOO_LARGE = "CATALOG_TOO_LARGE"
+    UNSUPPORTED_SERVER = "UNSUPPORTED_SERVER"
     CONNECTION_FAILED = "CONNECTION_FAILED"
 
 
@@ -47,6 +48,9 @@ FAILURE_MESSAGES: Final[dict[DiagnosticCode, str]] = {
         "The database refused the connection: too many connections."
     ),
     DiagnosticCode.CATALOG_TOO_LARGE: "The catalog exceeds the sync limits for one data source.",
+    DiagnosticCode.UNSUPPORTED_SERVER: (
+        "The server is not a supported version of the data source's engine."
+    ),
     DiagnosticCode.CONNECTION_FAILED: "The connection failed.",
 }
 

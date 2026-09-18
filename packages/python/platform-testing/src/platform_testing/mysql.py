@@ -63,3 +63,28 @@ def sample_sales_mysql(image: str = "mysql:8.4", ready_seconds: float = 180) -> 
                     raise
                 time.sleep(1)
         yield info
+
+
+def mariadb(image: str = "mariadb:11.4", ready_seconds: float = 180) -> Iterator[MySqlInfo]:
+    """A real MariaDB (root / ROOT_PASSWORD, empty database `sales`): the protocol-compatible
+    server the MySQL connectors must refuse by identity. Use as a fixture body."""
+    from testcontainers.core.container import DockerContainer
+
+    container = (
+        DockerContainer(image)
+        .with_env("MARIADB_ROOT_PASSWORD", ROOT_PASSWORD)
+        .with_env("MARIADB_DATABASE", "sales")
+        .with_exposed_ports(3306)
+    )
+    with container:
+        info = MySqlInfo(container.get_container_host_ip(), int(container.get_exposed_port(3306)))
+        deadline = time.monotonic() + ready_seconds
+        while True:
+            try:
+                info.root("sales").close()
+                break
+            except pymysql.MySQLError:
+                if time.monotonic() > deadline:
+                    raise
+                time.sleep(1)
+        yield info

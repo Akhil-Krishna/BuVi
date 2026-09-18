@@ -11,7 +11,14 @@ from metadata_service.domain.value_objects.diagnostics import ConnectorError, Di
 from metadata_service.infrastructure.connectors.base import ConnectorLimits
 from metadata_service.infrastructure.connectors.mysql import MySqlCatalogConnector
 from platform_egress import EgressPolicy
-from platform_testing.mysql import READER_PASSWORD, READER_USER, MySqlInfo, sample_sales_mysql
+from platform_testing.mysql import (
+    READER_PASSWORD,
+    READER_USER,
+    ROOT_PASSWORD,
+    MySqlInfo,
+    mariadb,
+    sample_sales_mysql,
+)
 
 pytestmark = [pytest.mark.integration, pytest.mark.security]
 
@@ -108,3 +115,30 @@ async def test_catalog_size_cap(mysql: MySqlInfo) -> None:
     with pytest.raises(ConnectorError) as info:
         await small.introspect(_target(mysql))
     assert info.value.code is DiagnosticCode.CATALOG_TOO_LARGE
+
+
+@pytest.fixture(scope="module")
+def maria() -> Iterator[MySqlInfo]:
+    yield from mariadb()
+
+
+async def test_mariadb_is_refused_by_server_identity(maria: MySqlInfo) -> None:
+    """MariaDB speaks the protocol and accepts these credentials, but not every session
+    setting above (no max_execution_time): it is refused before any catalog query runs."""
+    target = ConnectionTarget(
+        engine="mysql",
+        database_name="sales",
+        allowed_schemas=("sales",),
+        secret=ConnectionSecret(
+            host=maria.host,
+            port=maria.port,
+            username="root",
+            password=ROOT_PASSWORD,
+            sslmode="disable",
+        ),
+    )
+    result = await _connector(maria).test(target)
+    assert (result.ok, result.code) == (False, DiagnosticCode.UNSUPPORTED_SERVER)
+    with pytest.raises(ConnectorError) as info:
+        await _connector(maria).introspect(target)
+    assert info.value.code is DiagnosticCode.UNSUPPORTED_SERVER

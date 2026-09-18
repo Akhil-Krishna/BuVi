@@ -27,7 +27,7 @@ any `secret_ref mismatch` log line
 - Each MySQL session is read-only, with multi-statements and `LOCAL INFILE` off. `sql_mode` is pinned to MySQL 8's default: a server running `ANSI_QUOTES`/`NO_BACKSLASH_ESCAPES` does not change what executes. `max_execution_time` enforces the query timeout.
 - `QUERY_TIMEOUT` on MySQL means `max_execution_time` fired (error 3024).
 - `REJECTED_BY_DATABASE` means the read-only transaction or the user's grants refused the statement. Check that the credential is a SELECT-only user.
-- MariaDB is not supported as `mysql` (no `max_execution_time`).
+- Only MySQL 8.0+ is accepted, checked from the server version on every new connection. MariaDB and TiDB are refused before any query runs (log line `data source is not a supported MySQL server`; the caller sees `DATA_SOURCE_UNAVAILABLE`). The fix is the right engine, not a workaround: MariaDB has no `max_execution_time`.
 
 ## Security operations
 

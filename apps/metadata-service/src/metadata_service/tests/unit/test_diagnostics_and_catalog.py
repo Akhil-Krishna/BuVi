@@ -24,6 +24,9 @@ from metadata_service.domain.value_objects.diagnostics import (
     failure_message,
     synced_message,
 )
+from metadata_service.infrastructure.connectors.mysql import (
+    supported_server as mysql_supported_server,
+)
 from metadata_service.infrastructure.connectors.postgres import classify
 
 pytestmark = pytest.mark.unit
@@ -118,3 +121,21 @@ def test_cursor_round_trip_and_rejection() -> None:
     for bad in ("", "!!!", encode_cursor(("only",)), "eyJ4IjoxfQ", "a" * 2000):
         with pytest.raises(InvalidCursorError):
             decode_cursor(bad)
+
+
+@pytest.mark.parametrize(
+    ("version", "supported"),
+    [
+        ("8.4.3", True),
+        ("8.0.36-28", True),
+        ("5.7.44", False),
+        ("11.4.2-MariaDB-ubu2404", False),
+        ("5.5.5-10.11.6-MariaDB", False),
+        ("8.0.11-TiDB-v7.5.0", False),
+    ],
+)
+def test_mysql_connector_accepts_only_mysql_8_or_later(version: str, supported: bool) -> None:
+    assert mysql_supported_server(version) is supported
+    assert failure_message(DiagnosticCode.UNSUPPORTED_SERVER) != failure_message(
+        DiagnosticCode.CONNECTION_FAILED
+    )

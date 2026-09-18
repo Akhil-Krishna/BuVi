@@ -9,7 +9,13 @@ import pymysql
 import pytest
 
 from platform_egress import EgressPolicy
-from platform_testing.mysql import READER_PASSWORD, ROOT_PASSWORD, MySqlInfo, sample_sales_mysql
+from platform_testing.mysql import (
+    READER_PASSWORD,
+    ROOT_PASSWORD,
+    MySqlInfo,
+    mariadb,
+    sample_sales_mysql,
+)
 from query_gateway.domain.value_objects.execution import (
     ConnectionCredentials,
     ExecutionError,
@@ -211,3 +217,22 @@ async def test_failures_are_sanitized_and_egress_is_enforced(
     with pytest.raises(ExecutionError) as denied:
         await _run(closed, mysql, "SELECT 1")
     assert denied.value.failure is ExecutionFailure.DESTINATION_NOT_ALLOWED
+
+
+@pytest.fixture(scope="module")
+def maria() -> Iterator[MySqlInfo]:
+    yield from mariadb()
+
+
+async def test_mariadb_is_refused_by_server_identity(maria: MySqlInfo) -> None:
+    """MariaDB has no max_execution_time: running there would lose the server-side timeout,
+    so the executor refuses the server instead of running with part of its defenses."""
+    executor = MySqlQueryExecutor(
+        egress=EgressPolicy.from_hosts([maria.host]),
+        connect_timeout_seconds=5,
+        pool_max_size=1,
+        pool_idle_seconds=60,
+    )
+    with pytest.raises(ExecutionError) as info:
+        await _run(executor, maria, "SELECT 1", user="root", password=ROOT_PASSWORD)
+    assert info.value.failure is ExecutionFailure.UNAVAILABLE

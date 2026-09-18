@@ -16,7 +16,9 @@ comments. Independently of it, every session here:
 * streams with an unbuffered cursor and stops at the **row and byte caps**. A truncated
   connection is discarded rather than drained;
 * connects only to addresses that pass **Section 15 egress** at pool creation;
-* expects a **SELECT-only database user**, which MySQL itself enforces.
+* expects a **SELECT-only database user**, which MySQL itself enforces;
+* refuses servers that are not **MySQL 8+** by the handshake's version: MariaDB and TiDB speak
+  the protocol but not all of the settings above, so they are refused, not half-defended.
 
 Driver messages never leave this module: failures become an `ExecutionError` code.
 """
@@ -96,6 +98,18 @@ def mysql_ssl(sslmode: str) -> ssl.SSLContext | None:
     return context
 
 
+#: Protocol-compatible servers whose session settings differ from MySQL's (MariaDB has no
+#: `max_execution_time`; MariaDB 10.x+ and TiDB report versions >= 8 in the handshake).
+_OTHER_SERVERS: Final = ("mariadb", "tidb")
+
+
+def supported_server(version: str) -> bool:
+    """MySQL 8.0 or later, by the handshake's server version (e.g. "8.4.3", "8.0.36-28")."""
+    major = version.split(".", 1)[0]
+    lowered = version.lower()
+    return major.isdigit() and int(major) >= 8 and not any(s in lowered for s in _OTHER_SERVERS)
+
+
 class SingleStatementConnection(aiomysql.Connection):  # type: ignore[misc]
     """An aiomysql connection that does *not* ask for multi-statement support: the server then
     rejects `SELECT 1; DROP ...` at the protocol level, whatever the validator did."""
@@ -108,6 +122,10 @@ class SingleStatementConnection(aiomysql.Connection):  # type: ignore[misc]
 async def open_single_statement_connection(**kwargs: Any) -> Any:
     connection = SingleStatementConnection(**kwargs)
     await connection._connect()  # what aiomysql.connect() does after building its Connection
+    if not supported_server(connection.get_server_info() or ""):
+        connection.close()
+        logger.warning("data source is not a supported MySQL server; connection refused")
+        raise ExecutionError(ExecutionFailure.UNAVAILABLE)
     return connection
 
 
@@ -118,6 +136,7 @@ class ConnectionPool:
         self._kwargs = connect_kwargs
         self._slots = asyncio.Semaphore(max_size)
         self._idle: list[Any] = []
+        self._closed = False
 
     @asynccontextmanager
     async def acquire(self) -> AsyncIterator[Any]:
@@ -131,10 +150,13 @@ class ConnectionPool:
             try:
                 yield connection
             finally:
-                if not connection.closed:
+                if self._closed:  # evicted or dropped while this query ran
+                    connection.close()
+                elif not connection.closed:
                     self._idle.append(connection)
 
     def close(self) -> None:
+        self._closed = True
         while self._idle:
             self._idle.pop().close()
 

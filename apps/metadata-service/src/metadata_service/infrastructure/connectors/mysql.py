@@ -11,6 +11,9 @@ Same contract and defenses as the Postgres connector, in MySQL terms:
 * **Catalog-only SQL.** Fixed `information_schema` queries with bound parameters. MySQL 8 lists
   only objects the connected user holds a privilege on, so the catalog is what the platform's
   read principal can reach. In MySQL a schema is a database: `allowed_schemas` lists databases.
+* **MySQL 8+ only.** The server's handshake version is checked on every connection; MariaDB
+  and TiDB speak the protocol but differ in the settings above, so they are refused
+  (`UNSUPPORTED_SERVER`) rather than half-defended.
 * **No driver text escapes.** Failures become a `DiagnosticCode`; the driver message is dropped.
 """
 
@@ -98,6 +101,18 @@ def foreign_keys_sql(schemas: int) -> str:
         f"AND table_schema {_NOT_SYSTEM} "
         f"AND referenced_table_schema IN ({_in(schemas)}) ORDER BY 1, 2, 3, 4, 5, 6"
     )
+
+
+#: Protocol-compatible servers whose session settings differ from MySQL's (MariaDB has no
+#: `max_execution_time`; MariaDB 10.x+ and TiDB report versions >= 8 in the handshake).
+_OTHER_SERVERS: Final = ("mariadb", "tidb")
+
+
+def supported_server(version: str) -> bool:
+    """MySQL 8.0 or later, by the handshake's server version (e.g. "8.4.3", "8.0.36-28")."""
+    major = version.split(".", 1)[0]
+    lowered = version.lower()
+    return major.isdigit() and int(major) >= 8 and not any(s in lowered for s in _OTHER_SERVERS)
 
 
 class _SingleStatementConnection(aiomysql.Connection):  # type: ignore[misc]
@@ -205,6 +220,9 @@ class MySqlCatalogConnector:
                     raise ConnectorError(failure) from None
         if connection is None:
             raise ConnectorError(failure)
+        if not supported_server(connection.get_server_info() or ""):
+            connection.close()
+            raise ConnectorError(DiagnosticCode.UNSUPPORTED_SERVER)
         try:
             async with connection.cursor() as cursor:
                 await cursor.execute(

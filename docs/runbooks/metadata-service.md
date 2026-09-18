@@ -38,6 +38,7 @@ sustained `DESTINATION_NOT_ALLOWED` or `AUTHENTICATION_FAILED` spikes from one t
 
 - `allowed_schemas` lists MySQL **databases**. The catalog shows only objects `information_schema` reveals to the connected user, so a missing table is usually a missing `GRANT SELECT`.
 - The read user needs `SELECT` on the listed databases and nothing else; the connector sets a read-only session regardless.
+- `UNSUPPORTED_SERVER`: the server is not MySQL 8.0+ (for example MariaDB, TiDB or MySQL 5.7). The server's version is checked on connect, before any catalog query runs. There is no override.
 - Dev: `make seed-sample-mysql` (compose service `sample-sales-mysql`, port 3307).
 
 ## Deploy / rollback
