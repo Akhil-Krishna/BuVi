@@ -1,0 +1,64 @@
+{
+  "additionalProperties": false,
+  "description": "`mcp.invocation.denied`: mcp-gateway -> notification-service, audit (a security signal).\n\nSection 18.1's `{tool_id, tenant_id, reason}` plus the ids that let an alert be traced.\nNever carries tool arguments or output.",
+  "properties": {
+    "invocation_id": {
+      "format": "uuid",
+      "title": "Invocation Id",
+      "type": "string"
+    },
+    "reason": {
+      "enum": [
+        "server_not_approved",
+        "tool_denied_by_policy",
+        "not_granted",
+        "destination_not_allowed"
+      ],
+      "title": "Reason",
+      "type": "string"
+    },
+    "request_id": {
+      "anyOf": [
+        {
+          "maxLength": 128,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Request Id"
+    },
+    "schema_version": {
+      "default": "1.0",
+      "pattern": "^\\d+\\.\\d+$",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "tenant_id": {
+      "format": "uuid",
+      "title": "Tenant Id",
+      "type": "string"
+    },
+    "tool_id": {
+      "format": "uuid",
+      "title": "Tool Id",
+      "type": "string"
+    },
+    "user_id": {
+      "format": "uuid",
+      "title": "User Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "tenant_id",
+    "tool_id",
+    "reason",
+    "invocation_id",
+    "user_id"
+  ],
+  "title": "McpInvocationDenied",
+  "type": "object"
+}

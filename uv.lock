@@ -9,6 +9,7 @@ members = [
     "buvi",
     "dashboard-service",
     "identity-service",
+    "mcp-gateway",
     "metadata-service",
     "platform-auth",
     "platform-contracts",
@@ -1546,6 +1547,45 @@ wheels = [
 ]
 
 [[package]]
+name = "mcp-gateway"
+version = "0.1.0"
+source = { editable = "apps/mcp-gateway" }
+dependencies = [
+    { name = "alembic" },
+    { name = "asyncpg" },
+    { name = "fastapi" },
+    { name = "httpx" },
+    { name = "nats-py" },
+    { name = "platform-auth" },
+    { name = "platform-contracts" },
+    { name = "platform-egress" },
+    { name = "platform-observability" },
+    { name = "platform-secrets" },
+    { name = "pydantic" },
+    { name = "pydantic-settings" },
+    { name = "sqlalchemy", extra = ["asyncio"] },
+    { name = "uvicorn" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "alembic", specifier = ">=1.20.0" },
+    { name = "asyncpg", specifier = ">=0.31.0" },
+    { name = "fastapi", specifier = ">=0.141.1" },
+    { name = "httpx", specifier = ">=0.28.1" },
+    { name = "nats-py", specifier = ">=2.16.0" },
+    { name = "platform-auth", editable = "packages/python/platform-auth" },
+    { name = "platform-contracts", editable = "packages/python/platform-contracts" },
+    { name = "platform-egress", editable = "packages/python/platform-egress" },
+    { name = "platform-observability", editable = "packages/python/platform-observability" },
+    { name = "platform-secrets", editable = "packages/python/platform-secrets" },
+    { name = "pydantic", specifier = ">=2.12.5" },
+    { name = "pydantic-settings", specifier = ">=2.15.0" },
+    { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0.52" },
+    { name = "uvicorn", specifier = ">=0.52.4" },
+]
+
+[[package]]
 name = "mdit-py-plugins"
 version = "0.6.1"
 source = { registry = "https://pypi.org/simple" }
@@ -2063,14 +2103,20 @@ name = "platform-testing"
 version = "0.1.0"
 source = { editable = "packages/python/platform-testing" }
 dependencies = [
+    { name = "cryptography" },
+    { name = "mcp" },
     { name = "pymysql" },
     { name = "testcontainers" },
+    { name = "uvicorn" },
 ]
 
 [package.metadata]
 requires-dist = [
+    { name = "cryptography", specifier = ">=44.0.0" },
+    { name = "mcp", specifier = ">=1.28.1" },
     { name = "pymysql", specifier = ">=1.1.0" },
     { name = "testcontainers", specifier = ">=4.13.1" },
+    { name = "uvicorn", specifier = ">=0.52.4" },
 ]
 
 [[package]]

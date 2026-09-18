@@ -75,6 +75,9 @@ _service() {
     visualization-service) echo "8006 visualization_service VISUALIZATION_LOG_LEVEL=DEBUG" ;;
     dashboard-service) echo "8007 dashboard_service DASHBOARD_REQUIRE_GATEWAY_TOKEN=true DASHBOARD_LOG_LEVEL=DEBUG" ;;
     semantic-service) echo "8008 semantic_service SEMANTIC_REQUIRE_GATEWAY_TOKEN=true SEMANTIC_LOG_LEVEL=DEBUG" ;;
+    # Plain HTTP to the local sample MCP server is allowed only because localhost is allow-listed
+    # here (dev); staging/prod refuse loopback in this list at startup.
+    mcp-gateway) echo "8009 mcp_gateway MCP_REQUIRE_GATEWAY_TOKEN=true MCP_LOG_LEVEL=DEBUG MCP_EGRESS_ALLOWED_INTERNAL_HOSTS=[\"localhost\"]" ;;
     *) echo "unknown service: $1" >&2; return 1 ;;
   esac
 }
@@ -100,8 +103,8 @@ start_services() {  # name...
   for name in "$@"; do
     read -r port module env <<<"$(_service "$name")"
     echo "Starting $name on :$port"
-    # shellcheck disable=SC2086 # env is a list of KEY=value words
-    (cd "$ROOT/apps/$name" && exec env $env uv run --package "$name" \
+    # shellcheck disable=SC2086 # env is a list of KEY=value words; set -f: split, never glob
+    (set -f; cd "$ROOT/apps/$name" && exec env $env uv run --package "$name" \
       uvicorn "$module.main:create_app" --factory --port "$port") >"$LOGDIR/$name.log" 2>&1 &
     PIDS+=("$!")
     local ready=""

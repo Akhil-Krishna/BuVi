@@ -11,7 +11,7 @@ WEB := web/next-app
         web-build check up down migrate seed dev dev-gateway dev-metadata dev-query-gateway contracts contracts-check \
         dev-orchestrator dev-worker dev-visualization dev-dashboard dev-semantic test-login \
         test-data-sources test-query-gateway test-analytics-run test-dashboards test-semantics \
-        eval-groundedness seed-sample-mysql test-mysql-slice test-live
+        eval-groundedness seed-sample-mysql test-mysql-slice test-live dev-mcp test-mcp
 
 help: ## List available targets
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) \
@@ -151,6 +151,13 @@ seed-sample-mysql: ## Re-apply the MySQL twin of the sample customer database (P
 test-mysql-slice: ## Phase A8 scripted flow: Section 32 against MySQL with an approved metric
 	scripts/test-mysql-slice.sh
 
+dev-mcp: ## Start mcp-gateway with reload on :8009
+	cd apps/mcp-gateway && uv run --package mcp-gateway \
+		uvicorn mcp_gateway.main:create_app --factory --reload --port 8009
+
+test-mcp: ## Phase A9 scripted flow: register, approve, grant, invoke and deny MCP tools over HTTP
+	scripts/test-mcp.sh
+
 test-live: ## Every scripted DoD flow in sequence; each resets demo state, so order does not matter
 	scripts/test-login.sh
 	scripts/test-data-sources.sh
@@ -159,6 +166,7 @@ test-live: ## Every scripted DoD flow in sequence; each resets demo state, so or
 	scripts/test-dashboards.sh
 	scripts/test-semantics.sh
 	scripts/test-mysql-slice.sh
+	scripts/test-mcp.sh
 
 eval-groundedness: ## Section 25 groundedness eval: metric usage and insight grounding per run
 	uv run --package analytics-orchestrator pytest -s -o addopts="" \

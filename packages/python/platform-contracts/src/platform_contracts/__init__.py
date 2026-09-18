@@ -1,7 +1,8 @@
 """Shared, versioned wire contracts (Sections 11, 17, 18.1).
 
 Contract: `ChartSpec` and its parts, `ResultField`, `AnalyticsRunEvent`, `RunRequested`,
-`BillingUsageRecorded`, `DashboardTilePinned`, `SchemaVersionError`. Nothing here imports a service.
+`BillingUsageRecorded`, `DashboardTilePinned`, `McpInvocationDenied`, `SchemaVersionError`.
+Nothing here imports a service.
 """
 
 from platform_contracts.analytics import (
@@ -21,6 +22,7 @@ from platform_contracts.chart_spec import (
     ResultField,
 )
 from platform_contracts.dashboard import DashboardTilePinned
+from platform_contracts.mcp import McpInvocationDenied
 
 __all__ = [
     "RUN_STAGES",
@@ -33,6 +35,7 @@ __all__ = [
     "DashboardTilePinned",
     "Encoding",
     "FieldType",
+    "McpInvocationDenied",
     "ResultField",
     "RunRequested",
     "SchemaVersionError",

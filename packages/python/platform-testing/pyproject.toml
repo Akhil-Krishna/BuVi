@@ -8,8 +8,12 @@ authors = [
 ]
 requires-python = ">=3.12,<3.13"
 dependencies = [
+    # The official SDK serves the real MCP server that mcp-gateway is tested against (Phase A9).
+    "cryptography>=44.0.0",
+    "mcp>=1.28.1",
     "pymysql>=1.1.0",
     "testcontainers>=4.13.1",
+    "uvicorn>=0.52.4",
 ]
 
 [build-system]

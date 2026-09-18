@@ -16,6 +16,7 @@ from platform_contracts import (
     BillingUsageRecorded,
     ChartSpec,
     DashboardTilePinned,
+    McpInvocationDenied,
     RunRequested,
 )
 
@@ -29,6 +30,7 @@ def schemas() -> dict[str, dict[str, Any]]:
         "contracts/events/analytics.run.requested.v1.json": RunRequested.model_json_schema(),
         "contracts/events/billing.usage.recorded.v1.json": BillingUsageRecorded.model_json_schema(),
         "contracts/events/dashboard.tile.pinned.v1.json": DashboardTilePinned.model_json_schema(),
+        "contracts/events/mcp.invocation.denied.v1.json": McpInvocationDenied.model_json_schema(),
     }
 
 

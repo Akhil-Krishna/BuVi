@@ -27,6 +27,7 @@ METADATA: Final = "metadata-service"
 ANALYTICS: Final = "analytics-orchestrator"
 DASHBOARD: Final = "dashboard-service"
 SEMANTIC: Final = "semantic-service"
+MCP: Final = "mcp-gateway"
 
 
 @dataclass(frozen=True)
@@ -89,6 +90,10 @@ def _dashboard(method: str, path: str, summary: str, **kwargs: object) -> RouteS
 
 def _semantic(method: str, path: str, summary: str, **kwargs: object) -> RouteSpec:
     return RouteSpec(method, path, summary, SEMANTIC, **kwargs)  # type: ignore[arg-type]
+
+
+def _mcp(method: str, path: str, summary: str, **kwargs: object) -> RouteSpec:
+    return RouteSpec(method, path, summary, MCP, **kwargs)  # type: ignore[arg-type]
 
 
 def _stub(
@@ -259,31 +264,33 @@ CATALOG: Final[tuple[RouteSpec, ...]] = (
         "A4",
         any_permission=frozenset({"sql:execute", "run:debug"}),
     ),
-    # --- MCP (Section 14) -----------------------------------------------------------------------
-    _stub("GET", "/mcp/servers", "List MCP servers", "mcp-gateway", "A9", permission="mcp:manage"),
-    _stub(
-        "POST",
-        "/mcp/servers",
-        "Register an MCP server",
-        "mcp-gateway",
-        "A9",
-        permission="mcp:manage",
-    ),
-    _stub(
+    # --- MCP (Sections 8.7, 14, 15) ---------------------------------------------------------------
+    _mcp("GET", "/mcp/servers", "List MCP servers", permission="mcp:manage"),
+    _mcp("POST", "/mcp/servers", "Register an MCP server", permission="mcp:manage"),
+    _mcp("GET", "/mcp/servers/{id}", "An MCP server with its tools", permission="mcp:manage"),
+    _mcp(
         "POST",
         "/mcp/servers/{id}/approve",
         "Approve an MCP server",
-        "mcp-gateway",
-        "A10",
         role="org_admin",
         step_up=True,
     ),
-    _stub(
+    _mcp(
+        "POST",
+        "/mcp/servers/{id}/tools/{tool}/grants",
+        "Grant a tool to a role or user",
+        role="org_admin",
+    ),
+    _mcp(
+        "DELETE",
+        "/mcp/servers/{id}/tools/{tool}/grants/{grant_id}",
+        "Revoke a tool grant",
+        role="org_admin",
+    ),
+    _mcp(
         "POST",
         "/mcp/servers/{id}/tools/{tool}/invoke",
         "Invoke an MCP tool",
-        "mcp-gateway",
-        "A9",
         idempotency="no_store",
     ),
     # --- Semantic (Section 12) --------------------------------------------------------------------

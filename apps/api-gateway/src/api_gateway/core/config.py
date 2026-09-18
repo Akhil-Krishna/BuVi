@@ -30,6 +30,7 @@ class Settings(BaseSettings):
             "analytics-orchestrator": "http://localhost:8004",
             "dashboard-service": "http://localhost:8007",
             "semantic-service": "http://localhost:8008",
+            "mcp-gateway": "http://localhost:8009",
         }
     )
     upstream_connect_timeout_seconds: float = 3.0

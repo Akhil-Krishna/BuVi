@@ -17,15 +17,15 @@ is genuinely missing, stop and ask, don't guess.
 
 > Update this line yourself after every completed phase, then commit it.
 
-**Phase A8 (Additional database connectors: MySQL) is complete — MySQL 8 works end to end: metadata-service
-catalog connector (`information_schema`, system databases refused), query-gateway executor (read-only session,
-multi-statement flag cleared -- aiomysql sets it by default -- `LOCAL INFILE` off, pinned `sql_mode`,
-`max_execution_time`, caps), and a per-dialect validator (`DIALECTS`; MySQL corpus + `@@var` now blocked). The Flow
-is dialect-aware (engine in the agent context; metric check parses in that dialect). Snowflake/BigQuery/Redshift are
-post-GA backlog (no verifiable instance). Live flows: `make test-mysql-slice` (Section 32 on MySQL, answer equals
-MySQL's and the Postgres twin's), plus `test-semantics`, `test-dashboards`, `test-analytics-run`. Decisions:
-`docs/adr/0011-phase-a8-mysql-connector.md` (A7: 0010, A6: 0007, idempotency: 0008, A5: 0006).
-Next up: Phase A9 (MCP Gateway, read-only tools first). See Section 31 of the build spec.**
+**Phase A9 (MCP Gateway, read-only tools first) is complete -- mcp-gateway (port 8009, schema `mcp`, RLS,
+append-only `invocations`): registration with a declared tool manifest and no network contact; approval
+(`org_admin` + step-up) that discovers tools over MCP Streamable HTTP and verifies the manifest; read-class tool
+grants; invocation with approved -> policy -> grant checks, every attempt recorded and audited, denials published as
+`mcp.invocation.denied`, output returned as untrusted and never stored. Section 15 runs at request time: resolve and
+check, pin to the address with TLS verified against the hostname, no keep-alive, no redirects, capped JSON/SSE
+bodies. The client is tested against the official MCP SDK server in both response modes. Live: `make test-mcp`.
+Decisions: `docs/adr/0012-phase-a9-mcp-gateway.md` (A8: 0011, A7: 0010, A6: 0007, idempotency: 0008, A5: 0006).
+Next up: Phase A10 (Admin backend, step-up, quotas, WebAuthn -- API only). See Section 31 of the build spec.**
 
 **Carried forward (do not drop):**
 - **Phase C1 hardening (required for C1's DoD):** semantic-lookup caching. Cache the approved-definition context and the metadata agent-context packet per tenant/data source with a TTL and invalidation on approve/deprecate/sync; correctness must not depend on the cache (spec Phase C1; ADR 0010).
@@ -33,6 +33,10 @@ Next up: Phase A9 (MCP Gateway, read-only tools first). See Section 31 of the bu
 - **Before Phase C1:** assign a phase to artifact refresh (re-executing expired results) and to artifact versioning (Section 16, which needs a lineage column); ADR 0007.
 - **Before Phase C1 starts (required):** test the `anthropic` model provider against the real API with a real key, and record the result in an ADR (spec Phase C1 entry requirement; ADR 0006).
 - **Before Phase C1 starts (required):** certificate-verified data-source TLS (`verify-full`) for Postgres and MySQL. Add a per-data-source CA bundle, and prove hostname-mismatch and untrusted-CA refusal against TLS-enabled instances in CI (spec Phase C1 entry requirement; ADR 0011).
+- **Phase C1 (required):** mcp-gateway/notification-service egress through a dedicated egress proxy with a
+  NetworkPolicy, and per-tenant MCP invocation concurrency/rate limits (spec Sections 15, 24; ADR 0012).
+- **Phase A10:** MCP server disable/reject, write-tool invocation with per-invocation step-up confirmation, and
+  per-user `mcp:manage` for developers (spec Phase A10; ADR 0012).
 - **Every new connector engine:** meet the spec Section 13.1 standing rule. Prove its defenses and its server-identity check against a live instance in CI, never from documentation.
 - **Any crewai/chromadb version bump:** re-review the chromadb advisory ignores. CI's "Accepted-advisory expiry (ADR 0006)" step fails until you do.
 
