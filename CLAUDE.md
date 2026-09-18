@@ -17,20 +17,19 @@ is genuinely missing, stop and ask, don't guess.
 
 > Update this line yourself after every completed phase, then commit it.
 
-**Phase A7 (Semantic Service) is complete — `apps/semantic-service` owns approved metrics and dimensions
-(Section 8.3 v1 expression grammar `AGG([DISTINCT] column)`, checked against the catalog through metadata-service's
-`POST /internal/v1/catalog/lookup`; draft -> approved -> deprecated, audited). The Flow's `resolve_semantics` maps
-business terms to approved definitions inside the permitted context packet, and a resolved metric fixes the query's
-aggregation (checked on the plan and on the validated SQL). `analyze_result` sees aggregates only and every number
-must be grounded (ADR 0009). Groundedness is tracked per run in `flow_state.grounding` (`make eval-groundedness`).
-Earlier phases: visualization/dashboard (ADR 0007), `Idempotency-Key` at api-gateway (ADR 0008), orchestrator (ADR 0006).
-Live flows: `make test-semantics`, `make test-dashboards`, `make test-analytics-run`. Decisions and gaps:
-`docs/adr/0010-phase-a7-semantic-service.md`.
-Next up: Phase A8 (Additional database connectors). See Section 31 of the build spec.**
+**Phase A8 (Additional database connectors: MySQL) is complete — MySQL 8 works end to end: metadata-service
+catalog connector (`information_schema`, system databases refused), query-gateway executor (read-only session,
+multi-statement flag cleared -- aiomysql sets it by default -- `LOCAL INFILE` off, pinned `sql_mode`,
+`max_execution_time`, caps), and a per-dialect validator (`DIALECTS`; MySQL corpus + `@@var` now blocked). The Flow
+is dialect-aware (engine in the agent context; metric check parses in that dialect). Snowflake/BigQuery/Redshift are
+post-GA backlog (no verifiable instance). Live flows: `make test-mysql-slice` (Section 32 on MySQL, answer equals
+MySQL's and the Postgres twin's), plus `test-semantics`, `test-dashboards`, `test-analytics-run`. Decisions:
+`docs/adr/0011-phase-a8-mysql-connector.md` (A7: 0010, A6: 0007, idempotency: 0008, A5: 0006).
+Next up: Phase A9 (MCP Gateway, read-only tools first). See Section 31 of the build spec.**
 
 **Carried forward (do not drop):**
 - **Phase C1 hardening (required for C1's DoD):** semantic-lookup caching. Cache the approved-definition context and the metadata agent-context packet per tenant/data source with a TTL and invalidation on approve/deprecate/sync; correctness must not depend on the cache (spec Phase C1; ADR 0010).
-- **Post-GA backlog (not in Tracks A–C):** ratio metrics, metric filters, and multi-table metrics over approved `join_rules`, with join-rule management. Any extension must keep the metric-vs-SQL check exact (parsed), never presence-based (spec "Post-GA backlog"; ADR 0010).
+- **Post-GA backlog (not in Tracks A–C):** Snowflake/BigQuery/Redshift connectors (need vendor sandboxes in CI; spec "Post-GA backlog"; ADR 0011). Also: ratio metrics, metric filters, and multi-table metrics over approved `join_rules`, with join-rule management. Any extension must keep the metric-vs-SQL check exact (parsed), never presence-based (spec "Post-GA backlog"; ADR 0010).
 - **Before Phase C1:** assign a phase to artifact refresh (re-executing expired results) and to artifact versioning (Section 16, which needs a lineage column); ADR 0007.
 - **Before Phase C1 starts (required):** test the `anthropic` model provider against the real API with a real key, and record the result in an ADR (spec Phase C1 entry requirement; ADR 0006).
 - **Any crewai/chromadb version bump:** re-review the chromadb advisory ignores. CI's "Accepted-advisory expiry (ADR 0006)" step fails until you do.

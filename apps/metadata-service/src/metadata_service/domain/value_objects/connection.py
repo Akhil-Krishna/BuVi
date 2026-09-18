@@ -18,7 +18,7 @@ from typing import Final, Literal, get_args
 #: Section 8.2 `engine` CHECK constraint.
 ENGINES: Final[tuple[str, ...]] = ("postgres", "mysql", "snowflake", "bigquery", "redshift")
 #: Engines with a connector. Phase A3 ships one Postgres connector; Phase A8 adds more.
-SUPPORTED_ENGINES: Final[frozenset[str]] = frozenset({"postgres"})
+SUPPORTED_ENGINES: Final[frozenset[str]] = frozenset({"postgres", "mysql"})
 
 #: Section 8.2 `status` CHECK constraint.
 STATUS_PENDING: Final = "pending"
@@ -38,11 +38,16 @@ _HOSTNAME_LABEL: Final = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9\-]{0,61}[A-Za-z0
 _USERNAME: Final = re.compile(r"^[^\x00-\x1f\x7f]{1,63}$")
 
 
+#: Server catalogs, never data: Postgres `pg_*`/`information_schema`; MySQL's system databases
+#: (a MySQL "schema" is a database, Phase A8). Some are readable by any user.
+SYSTEM_SCHEMAS: Final = frozenset({"information_schema", "mysql", "performance_schema", "sys"})
+
+
 def validate_schema_name(name: str) -> str:
-    """A plain Postgres identifier; quoting tricks and system schemas are refused."""
+    """A plain identifier; quoting tricks and system schemas are refused."""
     if not _SCHEMA_NAME.match(name) or name.lower().startswith("pg_"):
         raise ValueError("invalid schema name")
-    if name.lower() == "information_schema":
+    if name.lower() in SYSTEM_SCHEMAS:
         raise ValueError("invalid schema name")
     return name
 

@@ -15,7 +15,7 @@ docker exec -i "$PGCONTAINER" psql -U postgres -d agentic_bi -q -v ON_ERROR_STOP
 DELETE FROM identity.mfa_credentials
   WHERE user_id IN (SELECT id FROM identity.users WHERE email = 'admin@demo.example.com');
 UPDATE identity.users SET mfa_enabled = false WHERE email = 'admin@demo.example.com';
-DELETE FROM metadata.data_sources WHERE name LIKE 'sample-sales-db%';
+DELETE FROM metadata.data_sources WHERE name LIKE 'sample-sales-db%' OR name LIKE 'sample-sales-mysql%';
 SQL
 
 for port in 8000 8001 8002 8003 8004 8005 8006 8007 8008; do

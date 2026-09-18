@@ -23,6 +23,9 @@ Design choices that matter for security:
   with an empty `search_path`, as a read-only database role.
 * **Rejections carry a reason and at most the offending keyword or identifier** as the
   caller wrote it. Parser messages and the SQL text never leave this module.
+* **One validator, the data source's dialect** (Phase A8). SQL is parsed and regenerated in the
+  engine's dialect; an engine without a dialect here is rejected, never parsed as another.
+  Regeneration drops comments, so MySQL's executable `/*! ... */` comments never execute.
 
 Pure: sqlglot is a parser, not a framework or I/O.
 """
@@ -44,7 +47,8 @@ from sqlglot.optimizer.scope import traverse_scope
 
 from query_gateway.domain.value_objects.policy import DataSourcePolicy, Purpose, TablePolicy
 
-DIALECT: Final = "postgres"
+#: Engine -> sqlglot dialect. An engine missing here cannot be validated, so it cannot run.
+DIALECTS: Final[dict[str, str]] = {"postgres": "postgres", "mysql": "mysql"}
 DEFAULT_MAX_SQL_LENGTH: Final = 50_000
 DEFAULT_MAX_NODES: Final = 5_000
 _MAX_DETAIL: Final = 128
@@ -237,6 +241,25 @@ _ALLOWED_FUNCTION_NAMES: Final = (
     "TimeToUnix",
     "ToChar",
     "ToNumber",
+    # implicit date/string conversions sqlglot inserts around MySQL date arguments
+    "TsOrDsToDate",
+    "TsOrDsToTimestamp",
+    "TsOrDsToTime",
+    "TimeStrToTime",
+    "DateStrToDate",
+    # date parts (MySQL YEAR(), MONTH(), ... and their Postgres equivalents)
+    "Year",
+    "Quarter",
+    "Month",
+    "Week",
+    "WeekOfYear",
+    "Day",
+    "DayOfMonth",
+    "DayOfWeek",
+    "DayOfYear",
+    "Hour",
+    "Minute",
+    "Second",
     # conditional and types
     "Case",
     "If",
@@ -259,7 +282,7 @@ _ALLOWED_FUNCTIONS: Final[frozenset[type[Any]]] = frozenset(
 )
 
 #: Postgres builtins sqlglot does not model (parsed as `Anonymous`), by lower-cased name.
-_ALLOWED_ANONYMOUS: Final[frozenset[str]] = frozenset(
+_POSTGRES_ANONYMOUS: Final[frozenset[str]] = frozenset(
     {
         "age",
         "make_date",
@@ -321,6 +344,41 @@ _ALLOWED_ANONYMOUS: Final[frozenset[str]] = frozenset(
         "corr",
     }
 )
+
+#: MySQL builtins sqlglot does not model: read-only date, string and numeric helpers only.
+#: Deliberately absent: SLEEP, BENCHMARK, LOAD_FILE, GET_LOCK/RELEASE_LOCK, USER(),
+#: CONNECTION_ID(), SYS_EXEC and anything else that blocks, reads files or reveals the session.
+_MYSQL_ANONYMOUS: Final[frozenset[str]] = frozenset(
+    {
+        "makedate",
+        "maketime",
+        "last_day",
+        "dayname",
+        "monthname",
+        "yearweek",
+        "weekday",
+        "to_days",
+        "from_days",
+        "period_add",
+        "period_diff",
+        "sec_to_time",
+        "time_to_sec",
+        "char_length",
+        "character_length",
+        "locate",
+        "instr",
+        "lpad",
+        "rpad",
+        "field",
+        "elt",
+        "truncate",
+        "format",
+    }
+)
+_ALLOWED_ANONYMOUS: Final[dict[str, frozenset[str]]] = {
+    "postgres": _POSTGRES_ANONYMOUS,
+    "mysql": _MYSQL_ANONYMOUS,
+}
 
 #: Operators and connectors sqlglot models as `Func` subclasses; they are not function calls.
 _OPERATOR_BASES: Final = (exp.Binary, exp.Connector, exp.Unary)
@@ -384,8 +442,11 @@ class SqlValidator:
     def validate(
         self, sql: str, policy: DataSourcePolicy, *, purpose: Purpose
     ) -> ValidationOutcome:
+        dialect = DIALECTS.get(policy.engine)
+        if dialect is None:
+            return ValidationOutcome(ok=False, reason=RejectionReason.PARSE_ERROR)
         try:
-            canonical, tables = self._validate(sql, policy, purpose)
+            canonical, tables = self._validate(sql, policy, purpose, dialect)
         except _RejectedError as rejected:
             return ValidationOutcome(ok=False, reason=rejected.reason, detail=rejected.detail)
         return ValidationOutcome(ok=True, sql=canonical, tables=tables)
@@ -393,7 +454,7 @@ class SqlValidator:
     # --- pipeline -------------------------------------------------------------------------
 
     def _validate(
-        self, sql: str, policy: DataSourcePolicy, purpose: Purpose
+        self, sql: str, policy: DataSourcePolicy, purpose: Purpose, dialect: str
     ) -> tuple[str, tuple[str, ...]]:
         if not sql or not sql.strip():
             raise _RejectedError(RejectionReason.EMPTY)
@@ -402,25 +463,25 @@ class SqlValidator:
         if "\x00" in sql:
             raise _RejectedError(RejectionReason.INVALID_CHARACTERS)
 
-        root = self._parse_single(sql)
+        root = self._parse_single(sql, dialect)
         self._check_statement_shape(root)
-        self._check_nodes(root)
-        root = normalize_identifiers(root, dialect=DIALECT)
+        self._check_nodes(root, dialect)
+        root = normalize_identifiers(root, dialect=dialect)
         referenced = self._resolve_tables(root, policy, purpose)
-        qualified = self._qualify(root, policy)
+        qualified = self._qualify(root, policy, dialect)
         if purpose is not Purpose.SQL_EDITOR:
             self._check_columns(qualified, policy)
 
-        canonical = qualified.sql(dialect=DIALECT, comments=False)
+        canonical = qualified.sql(dialect=dialect, comments=False)
         # Defense in depth: what executes must itself pass the structural checks.
-        again = self._parse_single(canonical)
+        again = self._parse_single(canonical, dialect)
         self._check_statement_shape(again)
-        self._check_nodes(again)
+        self._check_nodes(again, dialect)
         return canonical, tuple(sorted({t.qualified_name for t in referenced}))
 
-    def _parse_single(self, sql: str) -> exp.Expression:
+    def _parse_single(self, sql: str, dialect: str) -> exp.Expression:
         try:
-            statements = [s for s in sqlglot.parse(sql, read=DIALECT) if s is not None]
+            statements = [s for s in sqlglot.parse(sql, read=dialect) if s is not None]
         except (ParseError, TokenError, ValueError):
             raise _RejectedError(RejectionReason.PARSE_ERROR) from None
         except RecursionError:
@@ -438,7 +499,7 @@ class SqlValidator:
             raise _RejectedError(RejectionReason.WRITE_OPERATION, _keyword(root))
         raise _RejectedError(RejectionReason.NOT_A_SELECT)
 
-    def _check_nodes(self, root: exp.Expression) -> None:
+    def _check_nodes(self, root: exp.Expression, dialect: str) -> None:
         for count, node in enumerate(root.walk(), start=1):
             if count > self._max_nodes:
                 raise _RejectedError(RejectionReason.TOO_COMPLEX)
@@ -450,22 +511,23 @@ class SqlValidator:
                 raise _RejectedError(RejectionReason.INTO_CLAUSE)
             if isinstance(node, exp.Lock):
                 raise _RejectedError(RejectionReason.LOCKING_CLAUSE)
-            if isinstance(node, exp.Placeholder | exp.Parameter):
+            if isinstance(node, exp.Placeholder | exp.Parameter | exp.SessionParameter):
+                # includes MySQL `@user_var` and `@@system_var` (server state disclosure)
                 raise _RejectedError(RejectionReason.PARAMETER)
             if isinstance(node, exp.Dot) and isinstance(node.expression, exp.Func):
                 raise _RejectedError(RejectionReason.QUALIFIED_FUNCTION, node.expression.name)
             if isinstance(node, exp.Cast | exp.TryCast):
-                target = node.to.sql(dialect=DIALECT).lower() if node.to else ""
+                target = node.to.sql(dialect=dialect).lower() if node.to else ""
                 if target.startswith(_BLOCKED_CAST_PREFIXES):
                     raise _RejectedError(RejectionReason.CAST_NOT_ALLOWED, target)
             if isinstance(node, exp.Func) and not isinstance(node, _OPERATOR_BASES):
-                self._check_function(node)
+                self._check_function(node, dialect)
 
     @staticmethod
-    def _check_function(node: exp.Func) -> None:
+    def _check_function(node: exp.Func, dialect: str) -> None:
         if isinstance(node, exp.Anonymous):
             name = str(node.name).lower()
-            if name not in _ALLOWED_ANONYMOUS:
+            if name not in _ALLOWED_ANONYMOUS[dialect]:
                 raise _RejectedError(RejectionReason.FUNCTION_NOT_ALLOWED, name)
             return
         if type(node) not in _ALLOWED_FUNCTIONS:
@@ -511,12 +573,14 @@ class SqlValidator:
             }
         return dict(schema)
 
-    def _qualify(self, root: exp.Expression, policy: DataSourcePolicy) -> exp.Expression:
+    def _qualify(
+        self, root: exp.Expression, policy: DataSourcePolicy, dialect: str
+    ) -> exp.Expression:
         try:
             return qualify(
                 root,
                 schema=self._schema(policy),
-                dialect=DIALECT,
+                dialect=dialect,
                 validate_qualify_columns=True,
                 quote_identifiers=True,
                 identify=True,

@@ -11,7 +11,7 @@ WEB := web/next-app
         web-build check up down migrate seed dev dev-gateway dev-metadata dev-query-gateway contracts contracts-check \
         dev-orchestrator dev-worker dev-visualization dev-dashboard dev-semantic test-login \
         test-data-sources test-query-gateway test-analytics-run test-dashboards test-semantics \
-        eval-groundedness
+        eval-groundedness seed-sample-mysql test-mysql-slice
 
 help: ## List available targets
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) \
@@ -144,6 +144,12 @@ test-dashboards: ## Phase A6 scripted flow: Section 32 Steps A-D over HTTP as a 
 
 test-semantics: ## Phase A7 scripted flow: metric lifecycle over HTTP, used by the chat flow
 	scripts/test-semantics.sh
+
+seed-sample-mysql: ## Re-apply the MySQL twin of the sample customer database (Phase A8)
+	scripts/seed-sample-sales-mysql.sh
+
+test-mysql-slice: ## Phase A8 scripted flow: Section 32 against MySQL with an approved metric
+	scripts/test-mysql-slice.sh
 
 eval-groundedness: ## Section 25 groundedness eval: metric usage and insight grounding per run
 	uv run --package analytics-orchestrator pytest -s -o addopts="" \

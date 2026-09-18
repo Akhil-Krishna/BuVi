@@ -12,7 +12,10 @@ from query_gateway.core.config import Settings
 from query_gateway.domain.errors import QueryConcurrencyLimitedError
 from query_gateway.domain.value_objects.execution import ConnectionCredentials
 from query_gateway.infrastructure.cache.tenant_concurrency import TenantConcurrencyLimiter
-from query_gateway.infrastructure.connectors.postgres import _json_value, credential_fingerprint
+from query_gateway.infrastructure.connectors.result_values import (
+    credential_fingerprint,
+    json_value,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -58,11 +61,11 @@ def test_credentials_parse_and_hide() -> None:
 
 
 def test_result_values_are_json_safe() -> None:
-    assert _json_value(decimal.Decimal("1.50")) == "1.50"
-    assert _json_value(dt.date(2026, 4, 1)) == "2026-04-01"
-    assert _json_value(b"\x00\x01") == "AAE="
-    assert _json_value([uuid.UUID(int=0)]) == ["00000000-0000-0000-0000-000000000000"]
-    assert _json_value({"k": dt.timedelta(seconds=2)}) == {"k": 2.0}
+    assert json_value(decimal.Decimal("1.50")) == "1.50"
+    assert json_value(dt.date(2026, 4, 1)) == "2026-04-01"
+    assert json_value(b"\x00\x01") == "AAE="
+    assert json_value([uuid.UUID(int=0)]) == ["00000000-0000-0000-0000-000000000000"]
+    assert json_value({"k": dt.timedelta(seconds=2)}) == {"k": 2.0}
 
 
 def test_dev_defaults_are_refused_in_prod() -> None:

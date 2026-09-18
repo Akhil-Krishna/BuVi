@@ -304,7 +304,9 @@ class RunExecutor:
         )
         if not tables:
             raise RunFailedError(FailureCode.NO_RELEVANT_DATA)
-        state.schema_context = SchemaContext(data_source_id=state.data_source_id, tables=tables)
+        state.schema_context = SchemaContext(
+            data_source_id=state.data_source_id, tables=tables, engine=snapshot.engine
+        )
 
     async def _resolve_semantics(self, state: AnalyticsRunState) -> None:
         """Section 12: map business terms to *approved* definitions. No approved definition in
@@ -380,6 +382,10 @@ class RunExecutor:
             "dimensions": [{"name": d.name, "column": d.column} for d in semantic.dimensions],
         }
 
+    @staticmethod
+    def _dialect(state: AnalyticsRunState) -> str:
+        return state.schema_context.engine if state.schema_context else "postgres"
+
     def _catalog(self, state: AnalyticsRunState) -> list[dict[str, object]]:
         assert state.schema_context is not None
         return [table.model_dump(mode="json") for table in state.schema_context.tables]
@@ -418,6 +424,7 @@ class RunExecutor:
     ) -> None:
         assert state.plan is not None
         payload: dict[str, object] = {
+            "dialect": self._dialect(state),
             "plan": state.plan.model_dump(mode="json"),
             "catalog": self._catalog(state),
         }
@@ -467,7 +474,9 @@ class RunExecutor:
             # Section 8.3: a resolved metric must be computed exactly as defined -- checked on
             # the SQL query-gateway will actually run, and repaired within the same budget.
             drift = sql_metric_problems(
-                validated.sql, state.semantic.metrics if state.semantic else []
+                validated.sql,
+                state.semantic.metrics if state.semantic else [],
+                dialect=self._dialect(state),
             )
             if drift:
                 if attempt == self._limits.max_repairs:

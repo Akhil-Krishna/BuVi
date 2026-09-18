@@ -34,6 +34,12 @@ sustained `DESTINATION_NOT_ALLOWED` or `AUTHENTICATION_FAILED` spikes from one t
 - **Investigations:** join logs and audit rows on `request_id`. Connector logs carry only `code` and
   `error_type`; a driver's message is never logged, so do not expect hosts or users in logs.
 
+## MySQL data sources (Phase A8)
+
+- `allowed_schemas` lists MySQL **databases**. The catalog shows only objects `information_schema` reveals to the connected user, so a missing table is usually a missing `GRANT SELECT`.
+- The read user needs `SELECT` on the listed databases and nothing else; the connector sets a read-only session regardless.
+- Dev: `make seed-sample-mysql` (compose service `sample-sales-mysql`, port 3307).
+
 ## Deploy / rollback
 
 1. `alembic upgrade head` as `buvi_migrator` (separate job, Section 26), then roll the deployment.

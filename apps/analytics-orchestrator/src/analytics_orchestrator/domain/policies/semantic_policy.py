@@ -165,13 +165,15 @@ def _is_exact_aggregate(
     return resolved in (f"{schema}.{table}", table)
 
 
-def sql_metric_problems(sql: str, metrics: Sequence[SemanticMetric]) -> list[str]:
+def sql_metric_problems(
+    sql: str, metrics: Sequence[SemanticMetric], *, dialect: str = "postgres"
+) -> list[str]:
     """The validated (regenerated) SQL must output each resolved metric, under its alias, as
     exactly the defined aggregate. Anything unparseable or ambiguous is a problem (fail closed)."""
     if not metrics:
         return []
     try:
-        tree = sqlglot.parse_one(sql, read="postgres")
+        tree = sqlglot.parse_one(sql, read=dialect)
     except sqlglot.errors.ParseError:
         return ["SQL could not be parsed to check the metrics it must compute"]
     if not isinstance(tree, exp.Select):

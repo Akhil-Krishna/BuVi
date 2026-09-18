@@ -279,7 +279,7 @@ async def test_data_source_list_paginates(
 @pytest.mark.parametrize(
     ("overrides", "code"),
     [
-        ({"engine": "mysql"}, "ENGINE_NOT_SUPPORTED"),
+        ({"engine": "snowflake"}, "ENGINE_NOT_SUPPORTED"),
         ({"engine": "oracle"}, "VALIDATION_FAILED"),
         ({"host_label": "postgres://reader:pw@db:5432/sales"}, "VALIDATION_FAILED"),
         ({"allowed_schemas": []}, "VALIDATION_FAILED"),

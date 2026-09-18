@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Phase A7 DoD scripted flow: semantic metrics over HTTP and their use by the chat flow. Needs
-# `make up`. Starts every service with captured logs, then runs scripts/test_semantics.py.
+# Phase A8 DoD scripted flow: the Section 32 journey against MySQL over HTTP. Needs `make up`
+# (including sample-sales-mysql). Starts every service with captured logs, then runs
+# scripts/test_mysql_slice.py.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PGCONTAINER="${PGCONTAINER:-buvi-dev-postgres-1}"
@@ -9,6 +10,7 @@ PGCONTAINER="${PGCONTAINER:-buvi-dev-postgres-1}"
 "$ROOT/scripts/migrate-all.sh" >/dev/null
 "$ROOT/scripts/seed-demo-tenant.sh" >/dev/null
 "$ROOT/scripts/seed-sample-sales.sh" >/dev/null
+"$ROOT/scripts/seed-sample-sales-mysql.sh" >/dev/null
 docker exec buvi-dev-redis-1 redis-cli FLUSHDB >/dev/null
 
 docker exec -i "$PGCONTAINER" psql -U postgres -d agentic_bi -q -v ON_ERROR_STOP=1 <<'SQL'
@@ -24,7 +26,7 @@ for port in 8000 8001 8002 8003 8004 8005 8006 8007 8008; do
   fi
 done
 
-LOGDIR="$(mktemp -d -t buvi-a7.XXXX)"
+LOGDIR="$(mktemp -d -t buvi-a8.XXXX)"
 PIDS=()
 cleanup() { for pid in "${PIDS[@]:-}"; do [ -n "$pid" ] && kill "$pid" 2>/dev/null || true; done; }
 trap cleanup EXIT
@@ -65,4 +67,4 @@ start_service worker-runtime 8005 WORKER_LOG_LEVEL=DEBUG \
 echo "Service logs: $LOGDIR"
 cd "$ROOT"
 BUVI_SERVICE_LOGS="$LOGDIR" PGCONTAINER="$PGCONTAINER" \
-  uv run --package identity-service python scripts/test_semantics.py
+  uv run --package identity-service python scripts/test_mysql_slice.py

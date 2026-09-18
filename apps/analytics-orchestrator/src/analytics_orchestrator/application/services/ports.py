@@ -99,6 +99,8 @@ class ActiveSource:
 class ContextSnapshot:
     status: str
     tables: list[ContextTable]
+    #: The data source's engine; decides the SQL dialect (Phase A8).
+    engine: str = "postgres"
 
 
 class DataSourceUnknownError(Exception):

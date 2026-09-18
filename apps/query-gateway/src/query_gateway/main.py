@@ -32,6 +32,7 @@ from query_gateway.dependencies import resolve_principal
 from query_gateway.domain.policies.sql_validator import SqlValidator
 from query_gateway.infrastructure.cache.tenant_concurrency import TenantConcurrencyLimiter
 from query_gateway.infrastructure.connectors.base import QueryExecutor
+from query_gateway.infrastructure.connectors.mysql import MySqlQueryExecutor
 from query_gateway.infrastructure.connectors.postgres import PostgresQueryExecutor
 from query_gateway.infrastructure.db.session import create_engine, create_session_factory
 from query_gateway.infrastructure.http.identity_resolver import IdentityResolver
@@ -104,11 +105,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     owned_executors = app.state.executors is None
     if owned_executors:
         app.state.executors = {
-            "postgres": PostgresQueryExecutor(
+            engine: executor(
                 egress=EgressPolicy.from_hosts(settings.connector_allowed_internal_hosts),
                 connect_timeout_seconds=settings.connector_connect_timeout_seconds,
                 pool_max_size=settings.connector_pool_max_size,
                 pool_idle_seconds=settings.connector_pool_idle_seconds,
+            )
+            for engine, executor in (
+                ("postgres", PostgresQueryExecutor),
+                ("mysql", MySqlQueryExecutor),
             )
         }
     app.state.limiter = TenantConcurrencyLimiter(settings.tenant_max_concurrent_queries)

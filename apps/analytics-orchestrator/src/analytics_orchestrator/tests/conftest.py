@@ -230,6 +230,8 @@ class FakeServices:
     semantic_metrics: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
     semantic_dimensions: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
     semantic_down: bool = False
+    #: The engine the metadata context reports for every data source (Phase A8).
+    engine: str = "postgres"
     artifact_posts: int = 0
     dashboard_down: bool = False
 
@@ -338,7 +340,7 @@ class FakeServices:
                 json={
                     "data_source_id": source,
                     "tenant_id": tenant,
-                    "engine": "postgres",
+                    "engine": self.engine,
                     "status": "active",
                     "allowed_schemas": ["sales"],
                     "last_sync_at": None,

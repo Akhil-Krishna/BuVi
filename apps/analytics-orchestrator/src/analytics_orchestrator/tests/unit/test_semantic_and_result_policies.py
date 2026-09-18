@@ -155,6 +155,14 @@ def test_sql_must_output_the_metric_exactly(sql: str, ok: bool) -> None:
     assert (sql_metric_problems(sql, [metric]) == []) is ok
 
 
+def test_metric_check_parses_mysql_backticks_in_the_mysql_dialect() -> None:
+    metric = _candidates().metrics[0]
+    regenerated = "SELECT SUM(`t`.`amount`) AS `net_revenue_usd` FROM `sales`.`orders` AS `t`"
+    assert sql_metric_problems(regenerated, [metric], dialect="mysql") == []
+    doubled = "SELECT SUM(`t`.`amount`) * 2 AS `net_revenue_usd` FROM `sales`.`orders` AS `t`"
+    assert sql_metric_problems(doubled, [metric], dialect="mysql") != []
+
+
 def test_count_distinct_metric() -> None:
     [metric] = semantic_candidates(
         [

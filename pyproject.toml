@@ -24,10 +24,16 @@ dev = [
     "pytest-cov>=7.1.0",
     "ruff>=0.14.0",
     "testcontainers>=4.13.1",
+    "types-PyMySQL>=1.1.0",
+    # Shared test fixtures (Section 4); in the dev group so it never ships in a service image.
+    "platform-testing",
 ]
 
 [tool.uv]
 package = false
+
+[tool.uv.sources]
+platform-testing = { workspace = true }
 
 [tool.uv.workspace]
 members = ["apps/*", "packages/python/*"]

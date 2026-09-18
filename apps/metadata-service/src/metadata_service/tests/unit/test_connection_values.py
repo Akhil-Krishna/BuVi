@@ -56,7 +56,18 @@ def test_host_label_accepts_display_text() -> None:
 
 
 @pytest.mark.parametrize(
-    "name", ["pg_catalog", "PG_TOAST", "information_schema", 'sales"; drop', "1sales", "a" * 64]
+    "name",
+    [
+        "pg_catalog",
+        "PG_TOAST",
+        "information_schema",
+        "mysql",
+        "performance_schema",
+        "SYS",
+        'sales"; drop',
+        "1sales",
+        "a" * 64,
+    ],
 )
 def test_schema_names_refuse_system_schemas_and_quoting(name: str) -> None:
     with pytest.raises(ValueError):

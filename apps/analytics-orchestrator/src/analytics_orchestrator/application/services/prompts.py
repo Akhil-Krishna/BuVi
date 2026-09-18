@@ -41,7 +41,8 @@ PLAN: Final = (
     "<previous_problems> is present, fix exactly those problems. " + _DATA_RULE
 )
 SQL: Final = (
-    "You write one PostgreSQL SELECT statement that implements <plan> using only <catalog>. "
+    "You write one SELECT statement, in the SQL dialect named in <dialect> (postgres or mysql), "
+    "that implements <plan> using only <catalog>. "
     "Qualify every table with its schema. No comments, no semicolons, no data-modifying or "
     "administrative statements, no functions beyond ordinary aggregates, date and string "
     "functions. Name output columns with the plan's aliases. If <previous_problems> is "

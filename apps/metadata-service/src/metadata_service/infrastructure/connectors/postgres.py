@@ -23,7 +23,7 @@ import logging
 import socket
 import ssl
 import time
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Sequence
 from contextlib import asynccontextmanager
 from typing import Any, Final
 
@@ -274,16 +274,18 @@ class PostgresCatalogConnector:
             code = classify(exc)
             _log_failure("catalog introspection", code, exc)
             raise ConnectorError(code) from None
-        return _build_catalog(table_rows, column_rows, fk_rows)
+        return build_catalog(table_rows, column_rows, fk_rows)
 
 
 def _elapsed_ms(started: float) -> int:
     return round((time.perf_counter() - started) * 1000)
 
 
-def _build_catalog(
-    table_rows: list[Any], column_rows: list[Any], fk_rows: list[Any]
+def build_catalog(
+    table_rows: Sequence[Any], column_rows: Sequence[Any], fk_rows: Sequence[Any]
 ) -> IntrospectedCatalog:
+    """Rows (mapping-like, with the aliases the catalog queries use) -> the catalog. Shared by
+    every connector: the queries differ per engine, the shape does not."""
     columns: dict[tuple[str, str], list[IntrospectedColumn]] = {}
     for row in column_rows:
         columns.setdefault((row["schema_name"], row["table_name"]), []).append(

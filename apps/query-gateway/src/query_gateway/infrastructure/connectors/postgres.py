@@ -20,14 +20,9 @@ fresh pool, and idle pools are closed.
 from __future__ import annotations
 
 import asyncio
-import base64
-import datetime as dt
-import decimal
-import hashlib
 import json
 import logging
 import time
-import uuid
 from typing import Any, Final
 
 import asyncpg
@@ -41,44 +36,15 @@ from query_gateway.domain.value_objects.execution import (
     QueryResult,
     ResultColumn,
 )
+from query_gateway.infrastructure.connectors.result_values import (
+    credential_fingerprint,
+    json_value,
+)
 
 logger = logging.getLogger(__name__)
 
 APPLICATION_NAME: Final = "buvi-query-gateway"
 _FETCH_CHUNK: Final = 500
-
-
-def credential_fingerprint(credentials: ConnectionCredentials) -> str:
-    raw = "\x1f".join(
-        [
-            credentials.host,
-            str(credentials.port),
-            credentials.username,
-            credentials.password,
-            credentials.sslmode,
-        ]
-    )
-    return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
-
-
-def _json_value(value: Any) -> Any:
-    if value is None or isinstance(value, bool | int | float | str):
-        return value
-    if isinstance(value, decimal.Decimal):
-        return str(value)
-    if isinstance(value, dt.datetime | dt.date | dt.time):
-        return value.isoformat()
-    if isinstance(value, dt.timedelta):
-        return value.total_seconds()
-    if isinstance(value, uuid.UUID):
-        return str(value)
-    if isinstance(value, bytes | bytearray | memoryview):
-        return base64.b64encode(bytes(value)).decode("ascii")
-    if isinstance(value, list | tuple):
-        return [_json_value(v) for v in value]
-    if isinstance(value, dict):
-        return {str(k): _json_value(v) for k, v in value.items()}
-    return str(value)
 
 
 def classify(exc: BaseException) -> ExecutionError:
@@ -237,7 +203,7 @@ class PostgresQueryExecutor:
                     if len(rows) == limits.max_rows:
                         truncated_by = "rows"
                         break
-                    row = [_json_value(value) for value in record]
+                    row = [json_value(value) for value in record]
                     row_bytes = len(json.dumps(row, separators=(",", ":"))) + 1
                     if size + row_bytes > limits.max_bytes:
                         truncated_by = "bytes"

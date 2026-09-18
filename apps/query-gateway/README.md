@@ -11,7 +11,8 @@ Phase A4). The only service that executes arbitrary or business SQL with custome
 | API | `POST /internal/v1/queries` only — no public route in Phase A4; contract `contracts/openapi/query-gateway.json` |
 | Health | `/health/live`; `/health/ready` (Postgres, identity-service, metadata-service required; Vault and result store reported) |
 | Dependencies | Postgres (`buvi_app`), identity-service (introspection, service tokens), metadata-service (query policy), Vault KV v2, MinIO/S3 (result handles), customer databases (egress-controlled) |
-| Decisions | [ADR 0005](../../docs/adr/0005-phase-a4-query-gateway.md) |
+| Engines | Postgres, MySQL 8 (Phase A8): validated and regenerated in the source's dialect; executors in `infrastructure/connectors/` |
+| Decisions | [ADR 0005](../../docs/adr/0005-phase-a4-query-gateway.md), [ADR 0011](../../docs/adr/0011-phase-a8-mysql-connector.md) (MySQL) |
 | Runbook | [`docs/runbooks/query-gateway.md`](../../docs/runbooks/query-gateway.md) |
 
 ## Request

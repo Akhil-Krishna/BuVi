@@ -156,6 +156,7 @@ class MetadataClient(_ServiceClient):
                 raise DataSourceUnknownError()
             return ContextSnapshot(
                 status=str(body["status"]),
+                engine=str(body.get("engine") or "postgres"),
                 tables=[
                     ContextTable(
                         id=str(t["id"]) if t.get("id") else None,

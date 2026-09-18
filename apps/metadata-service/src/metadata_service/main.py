@@ -23,6 +23,7 @@ from metadata_service.core.logging import configure_logging
 from metadata_service.dependencies import resolve_principal
 from metadata_service.infrastructure.audit.sink import IdentityAuditSink
 from metadata_service.infrastructure.connectors.base import CatalogConnector, ConnectorLimits
+from metadata_service.infrastructure.connectors.mysql import MySqlCatalogConnector
 from metadata_service.infrastructure.connectors.postgres import PostgresCatalogConnector
 from metadata_service.infrastructure.db.session import create_engine, create_session_factory
 from metadata_service.infrastructure.secrets.store import build_secret_store
@@ -76,16 +77,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     )
     app.state.egress = EgressPolicy.from_hosts(settings.connector_allowed_internal_hosts)
     if app.state.connectors is None:
+        limits = ConnectorLimits(
+            connect_timeout_seconds=settings.connector_connect_timeout_seconds,
+            statement_timeout_ms=settings.connector_statement_timeout_ms,
+            max_tables=settings.catalog_max_tables,
+            max_columns=settings.catalog_max_columns,
+        )
         app.state.connectors = {
-            "postgres": PostgresCatalogConnector(
-                egress=app.state.egress,
-                limits=ConnectorLimits(
-                    connect_timeout_seconds=settings.connector_connect_timeout_seconds,
-                    statement_timeout_ms=settings.connector_statement_timeout_ms,
-                    max_tables=settings.catalog_max_tables,
-                    max_columns=settings.catalog_max_columns,
-                ),
-            )
+            "postgres": PostgresCatalogConnector(egress=app.state.egress, limits=limits),
+            "mysql": MySqlCatalogConnector(egress=app.state.egress, limits=limits),
         }
     try:
         yield

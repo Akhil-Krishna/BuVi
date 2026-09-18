@@ -57,6 +57,8 @@ class ContextTable(BaseModel):
 class SchemaContext(BaseModel):
     data_source_id: str
     tables: list[ContextTable]
+    #: postgres | mysql -- the dialect the SQL generator writes and the metric check parses.
+    engine: str = "postgres"
 
 
 class ColumnStats(BaseModel):

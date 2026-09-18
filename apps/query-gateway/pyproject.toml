@@ -10,6 +10,8 @@ requires-python = ">=3.12,<3.13"
 dependencies = [
     "alembic>=1.20.0",
     "asyncpg>=0.31.0",
+    # MySQL connector (Phase A8); PyMySQL underneath.
+    "aiomysql>=0.2.0",
     "fastapi>=0.141.1",
     "httpx>=0.28.1",
     "minio>=7.2.20",

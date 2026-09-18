@@ -216,3 +216,24 @@ async def test_ungrounded_insight_falls_back_without_failing_the_run(
     assert state.grounding.insight_grounded is False
     stored = harness.services.artifacts[str(uuid.uuid5(ARTIFACT_NAMESPACE, run_id))]
     assert "37" not in stored["summary"] and stored["summary"].endswith("rows")
+
+
+async def test_a_mysql_source_gets_mysql_sql_and_the_metric_is_checked_in_mysql(
+    harness: Harness, platform_db: Any, tenant: uuid.UUID
+) -> None:
+    """Phase A8: the Flow is dialect-aware -- the generator is told the dialect, and the metric
+    check parses the (backtick-quoted) SQL as MySQL."""
+    harness.services.engine = "mysql"
+    who = harness.services.add_user(tenant, {"client"})
+    harness.services.add_data_source(tenant)
+    harness.services.add_metric(tenant, synonyms=["sales"])
+    run_id = await harness.start_run(who, MESSAGE)
+    assert (await harness.execute(who, run_id)).json()["status"] == "completed"
+    sql = _executed_sql(harness)
+    assert "DATE_FORMAT(t.order_date, '%Y-%m-01')" in sql and "date_trunc" not in sql
+    assert "sum(t.gross_amount) AS revenue" in sql
+    sql_prompt = harness.provider.users[harness.provider.calls.index("GeneratedSql")]
+    assert '<dialect>\n"mysql"' in sql_prompt
+    state = await _state(platform_db, run_id)
+    assert state.schema_context is not None and state.schema_context.engine == "mysql"
+    assert state.grounding.measures_from_metrics == 1

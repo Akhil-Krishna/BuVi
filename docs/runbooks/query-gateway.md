@@ -22,6 +22,13 @@ any `secret_ref mismatch` log line
 | `429 QUERY_CONCURRENCY_LIMITED` | Tenant hit `QUERY_GATEWAY_TENANT_MAX_CONCURRENT_QUERIES` (per replica) | Expected protection (Section 20). Raise only for that deployment with a record. |
 | `503 RESULT_STORE_UNAVAILABLE` | MinIO/S3 down or bucket policy | Restore object storage; the lifecycle rule is re-applied on first write after restart. |
 
+## MySQL data sources (Phase A8, ADR 0011)
+
+- Each MySQL session is read-only, with multi-statements and `LOCAL INFILE` off. `sql_mode` is pinned to MySQL 8's default: a server running `ANSI_QUOTES`/`NO_BACKSLASH_ESCAPES` does not change what executes. `max_execution_time` enforces the query timeout.
+- `QUERY_TIMEOUT` on MySQL means `max_execution_time` fired (error 3024).
+- `REJECTED_BY_DATABASE` means the read-only transaction or the user's grants refused the statement. Check that the credential is a SELECT-only user.
+- MariaDB is not supported as `mysql` (no `max_execution_time`).
+
 ## Security operations
 
 - **Audit query:** `SELECT created_at, requested_by, purpose, status, error_code, validation_result->>'reason'

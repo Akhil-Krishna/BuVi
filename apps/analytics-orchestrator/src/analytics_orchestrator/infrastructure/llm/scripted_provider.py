@@ -38,6 +38,8 @@ Override = (
     BaseModel | ProviderError | ProviderResponse[Any] | Callable[[Mapping[str, Any]], BaseModel]
 )
 _UNSAFE_TEXT = re.compile(r"[<>{}`\x00-\x1f]")
+#: Date bucketing in MySQL, which has no date_trunc (week/quarter fall back to month here).
+_MYSQL_BUCKETS = {"day": "%Y-%m-%d", "month": "%Y-%m-01", "year": "%Y-01-01"}
 _QUARTERS = {"q1": (1, 3), "q2": (4, 6), "q3": (7, 9), "q4": (10, 12)}
 
 
@@ -264,9 +266,12 @@ class ScriptedProvider:
             if measure.aggregation == "count_distinct"
             else f"{measure.aggregation}({column})"
         )
-        select_list = (
-            f"date_trunc('{grain}', t.{time_column}) AS {grain}, {aggregate} AS {measure.alias}"
+        bucket = (
+            f"CAST(DATE_FORMAT(t.{time_column}, '{_MYSQL_BUCKETS.get(grain, '%Y-%m-01')}') AS DATE)"
+            if payload.get("dialect") == "mysql"
+            else f"date_trunc('{grain}', t.{time_column})"
         )
+        select_list = f"{bucket} AS {grain}, {aggregate} AS {measure.alias}"
         return GeneratedSql(
             sql=f"SELECT {select_list} FROM {table} AS t{where} GROUP BY 1 ORDER BY 1"  # noqa: S608
         )
