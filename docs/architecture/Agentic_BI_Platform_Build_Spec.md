@@ -1160,9 +1160,12 @@ optional `Idempotency-Key` header. All responses use the error envelope in Secti
 | SQL | `POST /sql/validate` | `sql:execute` | dry validation, no execution |
 | SQL | `POST /sql/execute` | `sql:execute` + per-connection grant | proxies to query-gateway |
 | SQL | `GET /sql/history` | `sql:execute` (own) or `run:debug` | — |
-| MCP | `GET/POST /mcp/servers` | `mcp:manage` | registration = pending_approval |
-| MCP | `POST /mcp/servers/{id}/approve` | `org_admin`, step-up | — |
-| MCP | `POST /mcp/servers/{id}/tools/{tool}/invoke` | tool grant required | proxied, policy-checked |
+| MCP | `GET/POST /mcp/servers` | `mcp:manage` | registration = pending_approval, with a declared tool manifest; no network contact |
+| MCP | `GET /mcp/servers/{id}` | `mcp:manage` + resource-tenant check | declared tools and grants; never the auth token |
+| MCP | `POST /mcp/servers/{id}/approve` | `org_admin`, step-up | discovers tools and verifies the manifest against the live server |
+| MCP | `POST /mcp/servers/{id}/tools/{tool}/grants` | `org_admin` | grant a role or a user; read-class tools only until Phase A10 |
+| MCP | `DELETE /mcp/servers/{id}/tools/{tool}/grants/{grant_id}` | `org_admin` | revoke; audited |
+| MCP | `POST /mcp/servers/{id}/tools/{tool}/invoke` | tool grant required | proxied, policy-checked; output returned as untrusted, never stored |
 | Semantic | `GET/POST /semantic/metrics` | `semantic:manage` | create = `draft`; list filters by `status`, paginated |
 | Semantic | `GET /semantic/metrics/{id}` | `semantic:manage` + resource-tenant check | — |
 | Semantic | `POST /semantic/metrics/{id}/approve` | `semantic:manage` + resource-tenant check | `draft` -> `approved`; audited |
@@ -1467,6 +1470,28 @@ approved once; classify each capability independently.
 Every invocation goes through `mcp.invocations` (Section 8.7) with request payload, response
 status, and duration — including denied attempts, which are a security signal worth alerting on.
 
+**Classification and policy (v1).**
+- **Declared manifest.** A server is registered with a *declared* tool manifest: each tool the
+  tenant intends to use, with its class. The platform makes no network contact before approval,
+  because an unapproved endpoint is not yet an allowed destination (Section 15).
+- **Verified at approval.** Approval (an `org_admin` with step-up) discovers the server's tools
+  over MCP and verifies the manifest:
+  - every declared tool must exist;
+  - the server's own annotations may only make a class stricter: a tool marked
+    `readOnlyHint: false` cannot be declared read-class;
+  - undeclared tools are never reachable.
+- **Grants decide who may invoke.** Invoking always requires a grant to the caller's role or to
+  the caller, on top of an approved server and a non-`deny` tool (Section 9: "tool grant
+  required"). Read classes default to `require_grant`; `write`/`admin` default to `deny`. `allow`
+  stays in the schema but is not assigned in v1: Section 9's stricter rule wins over the "allow"
+  row above.
+- **Unknown tools.** A call naming an undeclared tool has no `tool_id` to record in
+  `mcp.invocations`, so it is recorded in the audit log.
+- **Output is untrusted.** It goes back to the caller marked as untrusted. Only a summary (status,
+  sizes) is stored.
+- **`external_read`.** The platform controls its own egress to the approved endpoint, not the
+  server's outbound fetches. `external_read` tools therefore need a grant like `read_data`.
+
 ---
 
 ## 15. SSRF and outbound-network control (closes a major loophole class)
@@ -1487,6 +1512,16 @@ MCP tool "external_read" calls, webhook delivery, data-source connectivity tests
   external content before it is shown to a user or fed to an agent.
 - Disable HTTP redirect-following by default for these fetches, or re-validate the redirect
   target against the same rules before following it.
+
+The application-level controls ship with the feature that fetches (for MCP, Phase A9):
+- resolution at request time;
+- a connection pinned to the checked address, with TLS still verified against the hostname;
+- HTTPS only, except explicitly allow-listed internal hosts;
+- no redirects;
+- time, size and content-type limits.
+
+The dedicated egress proxy and its NetworkPolicy are deployment infrastructure (Section 28),
+required by Phase C1.
 
 ---
 
@@ -2343,21 +2378,56 @@ mkdir -p apps web/next-app packages/python packages/ts infra/{docker,compose,kub
 
 ### Phase A9 — MCP Gateway (read-only tools first)
 
-- Scaffold per Section 4.1; implement DDL from Section 8.7.
-- Implement server registration (`pending_approval`), the SSRF controls from Section 15, tool
-  classification and default-policy enforcement from Section 14, and invocation proxying/audit.
-- Only `read_metadata`/`read_data`/`external_read` tool classes are enabled end-to-end in this
-  phase; `write`/`admin` classes are modeled in the schema but remain unreachable until Phase
-  A10's step-up confirmation flow exists.
-- **DoD:** an unapproved MCP server cannot be invoked; an approved server's read tool can be
-  invoked by a `developer` with a grant and is denied for a user without one (all proven over
-  HTTP with test tokens); every invocation (including denials) is recorded; SSRF test suite
-  (private-IP/redirect/DNS-rebinding attempts) is 100% blocked.
+- Scaffold `mcp-gateway` per Section 4.1 and implement the DDL from Section 8.7:
+  - RLS on every table (`mcp.tools` through its server);
+  - `mcp.invocations` append-only for the request role.
+- **Registration** (`mcp:manage`). A name, an HTTPS endpoint (no userinfo, query or fragment; an
+  IP literal must be public), an optional bearer token (Vault; only `auth_secret_ref` is stored),
+  and a declared tool manifest (Section 14). The server is created `pending_approval` without any
+  network contact. `developer` holds `mcp:manage` only once granted per user (Phase A10), so in
+  this phase `org_admin` registers servers.
+- **Approval** (`org_admin`, step-up) is in this phase: the DoD needs an approved server, and
+  step-up exists since Phase A1. Approval discovers the tools over MCP Streamable HTTP and
+  verifies the manifest (Section 14). On any mismatch or upstream failure the server stays
+  pending.
+- **Grants** (`org_admin`). Grant a read-class tool to a tenant role or a user, and revoke it.
+  Grants on `write`/`admin` tools are refused until Phase A10's per-invocation step-up
+  confirmation exists.
+- **Invocation proxying** (Section 9, `invoke`):
+  - Checks, in order: server approved, tool policy not `deny`, grant. Then call the tool with the
+    Section 15 controls applied at request time.
+  - Output is capped and returned marked untrusted.
+  - Every attempt on a declared tool, allowed or denied, is a row in `mcp.invocations`.
+  - A denial is also audited and published as `mcp.invocation.denied`.
+- **SSRF suite** (Section 15), all refused:
+  - private, loopback, link-local, CGNAT and metadata addresses, including encoded and
+    IPv4-mapped forms;
+  - hostnames resolving to them;
+  - non-HTTPS schemes and URLs with credentials;
+  - a redirect (never followed);
+  - DNS rebinding between approval and invocation;
+  - oversized and wrong-content-type responses.
+- **Proven against a real MCP server.** The protocol client is tested against the official MCP
+  SDK's Streamable HTTP server, in both its JSON and SSE response modes (Section 13.1's
+  live-instance rule, applied to protocols).
+- **Not in A9:**
+  - `write`/`admin` invocation (Phase A10);
+  - `disabled`/`rejected` transitions and the admin console (Phase A10);
+  - per-tenant MCP concurrency limits and the dedicated egress proxy (Phase C1);
+  - agent use of MCP output in the Flow.
+- **DoD** (all proven over HTTP with test tokens):
+  - an unapproved MCP server cannot be invoked;
+  - an approved server's read tool can be invoked by a `developer` with a grant, and is denied
+    for a user without one;
+  - a `write` tool is denied even on an approved server;
+  - every invocation, including denials, is recorded;
+  - the SSRF suite (private-IP, redirect and DNS-rebinding attempts) is 100% blocked.
 
 ### Phase A10 — Admin backend, step-up auth, quotas, WebAuthn (API only)
 
 - Implement every `(admin)`-area endpoint from Section 9 (`/admin/users`, `/admin/roles`,
-  `/admin/audit`, `/admin/webhooks`, connection approval, MCP approval).
+  `/admin/audit`, `/admin/webhooks`, connection approval), plus MCP server disable/reject.
+  MCP approval itself shipped in Phase A9.
 - Implement dashboard share links (`POST /dashboards/{id}/share-links`, step-up, tenant sharing
   policy for `dashboard:share`) and the token-gated `GET /share/{token}` snapshot, on the
   `dashboard.share_links` table created in Phase A6.
@@ -2487,6 +2557,10 @@ mkdir -p apps web/next-app packages/python packages/ts infra/{docker,compose,kub
   in `docs/runbooks/security-review-<date>.md`.
 - Complete Section 28 (Terraform environments, DR drill), Section 22.1 (SLO dashboards/alerts),
   Section 29 (data export/delete flows).
+- Outbound network hardening (Sections 15, 24, 28):
+  - mcp-gateway and notification-service egress goes through a dedicated egress proxy, with a
+    NetworkPolicy that gives them no other outbound path;
+  - MCP invocation gets per-tenant concurrency and per-minute limits.
 - Semantic-lookup caching (Section 20): cache semantic-service's approved-definition context and
   the metadata agent-context packet per tenant (and data source) with a TTL and explicit
   invalidation on metric approve/deprecate and catalog sync. Correctness never depends on the
