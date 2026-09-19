@@ -1455,7 +1455,8 @@ POST /internal/v1/queries          (called only by analytics-orchestrator's exec
    depth, never rely on the parser alone)
 -> cap rows/bytes; truncate + flag if exceeded, never silently drop rows without a flag
 -> store result handle in object storage with TTL (default 24h) + row-level audit record
--> emit query.completed event
+-> return the outcome to the caller (`query.completed` applies only to asynchronous execution,
+   which does not exist yet -- Section 18.1)
 ```
 
 The validator parses and regenerates SQL in the data source's dialect (Postgres, MySQL from
@@ -1695,7 +1696,7 @@ is.
 |---|---|---|---|
 | `analytics.run.requested` | analytics-orchestrator | worker-runtime | `{run_id, tenant_id, conversation_id}` |
 | `analytics.run.stage_changed` | analytics-orchestrator (Flow) | api-gateway (SSE bridge) | `AnalyticsRunEvent` (Section 11); carried on Redis pub/sub channel `analytics:run:{run_id}`, durable copy in `analytics.run_events` |
-| `query.completed` | query-gateway | analytics-orchestrator, notification-service | `{query_id, run_id, status, row_count}` — not produced yet: queries are synchronous, so nothing waits on one. Producer and notification arrive with async query/export execution (post-GA backlog) |
+| `query.completed` | query-gateway | analytics-orchestrator, notification-service | `{query_id, run_id, status, row_count}` — **not currently applicable**: every query path is request/response (the Flow's `POST /internal/v1/queries`, the public `/sql/execute`), so the caller already holds the outcome and nothing waits on this event. It becomes a requirement only with asynchronous execution (scheduled artifact refresh, exports), which must add producer and consumers in the same phase |
 | `metadata.sync.requested` | metadata-service, scheduler | worker-runtime | `{data_source_id, tenant_id}` |
 | `metadata.sync.completed` | worker-runtime (metadata-service while sync runs in-request, ADR 0004) | metadata-service, notification-service | `{data_source_id, data_source_name, status, tables_synced, user_id}` (`user_id` = who ran it, the notification recipient) |
 | `dashboard.tile.pinned` | dashboard-service | notification-service | `{dashboard_id, artifact_id, user_id}` |
@@ -2583,7 +2584,7 @@ flag). A10 completes authorization:
   - `mcp.invocation.denied` -> in-app and email to every active `org_admin`;
   - `metadata.sync.completed` -> in-app and email to whoever ran the sync;
   - `identity.role.changed` -> in-app and email to the affected user.
-  - `query.completed` has no producer yet (see 18.1).
+  - `query.completed` is not currently applicable: no query runs asynchronously (see 18.1).
   - Producers added in this phase: metadata-service (sync completion) and identity-service (role
     changes).
   - Recipients and addresses come from an identity-service internal directory endpoint.
