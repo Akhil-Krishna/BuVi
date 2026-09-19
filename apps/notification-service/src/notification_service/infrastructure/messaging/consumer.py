@@ -129,7 +129,15 @@ class TopicConsumer:
             with contextlib.suppress(asyncio.CancelledError):
                 await heartbeat
         if handled is None or handled.outcome is Outcome.RETRY:
-            await message.nak(delay=self._settings.retry_seconds)
+            if message.metadata.num_delivered >= self._settings.max_deliver:
+                # JetStream will not redeliver: the notification is lost -- never silently.
+                logger.error(
+                    "notification event abandoned: retries exhausted",
+                    extra={"context": {"subject": self.subject, "event_key": key}},
+                )
+                await message.term()
+            else:
+                await message.nak(delay=self._settings.retry_seconds)
         elif handled.outcome is Outcome.DROP:
             await message.term()
         else:

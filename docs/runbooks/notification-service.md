@@ -55,3 +55,8 @@
    - Give api-gateway the `notification-service:proxy` audience.
 2. Rollback: redeploy the previous image. Consumers resume from their durables.
    - `alembic downgrade -1` drops every notification and subscription (their Vault secrets remain). Use it only for a failed first deployment.
+
+## Abandoned events and truncated recipients
+
+- **`notification event abandoned: retries exhausted`** (ERROR, with `event_key`): the event failed on its last allowed delivery (`NOTIFICATION_MAX_DELIVER`, 10), so its notifications were never created. The stream still holds the message at that sequence.
+- **`recipient list truncated`** (ERROR): more than 5,000 users matched a role. The first 5,000 were notified; the rest were not. Directory paging is a Phase C1 item.

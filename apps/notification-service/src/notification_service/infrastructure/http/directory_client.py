@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import uuid
 
 import httpx
@@ -12,6 +13,8 @@ from notification_service.application.services.ports import (
 )
 from notification_service.core.config import SCOPE_DIRECTORY
 from platform_auth import IntrospectionClient, IntrospectionError
+
+logger = logging.getLogger(__name__)
 
 
 class IdentityDirectory:
@@ -41,9 +44,24 @@ class IdentityDirectory:
         if response.status_code != 200:
             raise DirectoryUnavailableError()
         try:
-            return [
+            body = response.json()
+            recipients = [
                 Recipient(uuid.UUID(u["id"]), str(u["email"]), str(u["status"]))
-                for u in response.json()["users"]
+                for u in body["users"]
             ]
         except (KeyError, TypeError, ValueError):
             raise DirectoryUnavailableError() from None
+        if body.get("truncated"):
+            # The capped list is delivered, never mistaken for complete: loud until the
+            # directory pages (Phase C1).
+            logger.error(
+                "recipient list truncated",
+                extra={
+                    "context": {
+                        "tenant_id": str(tenant_id),
+                        "role": role,
+                        "delivered_to": len(recipients),
+                    }
+                },
+            )
+        return recipients

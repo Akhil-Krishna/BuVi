@@ -114,6 +114,8 @@ class FakeIdentity:
     principals: dict[str, dict[str, Any]] = field(default_factory=dict)
     inactive: set[str] = field(default_factory=set)
     directory_down: bool = False
+    #: Answer as identity does when more users matched than one response carries.
+    directory_truncated: bool = False
     directory_calls: list[dict[str, Any]] = field(default_factory=list)
 
     def add_user(self, tenant_id: uuid.UUID, roles: set[str], *, fresh_mfa: bool = False) -> Caller:
@@ -172,7 +174,7 @@ class FakeIdentity:
                         "roles": sorted(p["roles"]),
                     }
                 )
-            return httpx.Response(200, json={"users": users})
+            return httpx.Response(200, json={"users": users, "truncated": self.directory_truncated})
         return httpx.Response(404)
 
 

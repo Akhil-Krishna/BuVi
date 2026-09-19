@@ -52,7 +52,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     consumer = RunConsumer(
         settings=settings,
         dispatcher=RunDispatcher(
-            orchestrator=orchestrator, retry_base_seconds=settings.retry_base_seconds
+            orchestrator=orchestrator,
+            retry_base_seconds=settings.retry_base_seconds,
+            max_deliveries=settings.max_deliver,
         ),
     )
     usage = UsageConsumer(

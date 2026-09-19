@@ -44,9 +44,25 @@ class RunExecutionPort(Protocol):
 
 
 class RunDispatcher:
-    def __init__(self, *, orchestrator: RunExecutionPort, retry_base_seconds: float) -> None:
+    def __init__(
+        self,
+        *,
+        orchestrator: RunExecutionPort,
+        retry_base_seconds: float,
+        max_deliveries: int | None = None,
+    ) -> None:
         self._orchestrator = orchestrator
         self._retry_base = retry_base_seconds
+        #: JetStream's `max_deliver`: a retry on the last delivery is never redelivered.
+        self._max_deliveries = max_deliveries
+
+    def _retry(self, delay: float, context: dict[str, object], delivery_count: int) -> Decision:
+        """A retry JetStream will not honour is an abandoned run: say so, loudly, with the id
+        an operator needs to re-publish it (runbook), instead of logging "will retry"."""
+        if self._max_deliveries is not None and delivery_count >= self._max_deliveries:
+            logger.error("run request abandoned: retries exhausted", extra={"context": context})
+            return Decision(Disposition.TERMINATE)
+        return Decision(Disposition.RETRY, delay)
 
     async def handle(self, data: bytes, *, delivery_count: int) -> Decision:
         try:
@@ -59,8 +75,8 @@ class RunDispatcher:
         try:
             status = await self._orchestrator.execute(message.tenant_id, message.run_id)
         except OrchestratorUnavailableError:
-            logger.warning("orchestrator unavailable; will retry", extra={"context": context})
-            return Decision(Disposition.RETRY, backoff)
+            logger.warning("orchestrator unavailable", extra={"context": context})
+            return self._retry(backoff, context, delivery_count)
         if status == 200:
             return Decision(Disposition.ACK)
         if status == 404:
@@ -68,10 +84,10 @@ class RunDispatcher:
             return Decision(Disposition.TERMINATE)
         if status == 409:
             # Another execution holds the run. Check back once it should have finished.
-            return Decision(Disposition.RETRY, max(backoff, 15.0))
+            return self._retry(max(backoff, 15.0), context, delivery_count)
         logger.error("run execution refused", extra={"context": {**context, "status": status}})
         return (
-            Decision(Disposition.RETRY, backoff)
+            self._retry(backoff, context, delivery_count)
             if status >= 500
             else Decision(Disposition.TERMINATE)
         )

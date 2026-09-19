@@ -80,3 +80,21 @@ async def test_retry_backoff_grows_and_is_capped() -> None:
         (await dispatcher.handle(_message(), delivery_count=n)).delay_seconds for n in (1, 2, 3, 10)
     ]
     assert delays == [5, 10, 20, 120]
+
+
+async def test_a_retry_on_the_last_delivery_is_reported_as_abandoned(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """JetStream never redelivers past max_deliver, so "will retry" there would be a lie: the run
+    would sit queued with no signal. The last retry is terminated and logged at ERROR."""
+    dispatcher = RunDispatcher(
+        orchestrator=FakeOrchestrator(OrchestratorUnavailableError()),
+        retry_base_seconds=1,
+        max_deliveries=5,
+    )
+    earlier = await dispatcher.handle(_message(), delivery_count=4)
+    assert earlier.disposition is Disposition.RETRY
+    with caplog.at_level("ERROR"):
+        last = await dispatcher.handle(_message(), delivery_count=5)
+    assert last.disposition is Disposition.TERMINATE
+    assert any(r.getMessage() == "run request abandoned: retries exhausted" for r in caplog.records)

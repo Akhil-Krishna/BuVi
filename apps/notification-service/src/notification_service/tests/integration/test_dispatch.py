@@ -189,3 +189,24 @@ async def test_a_failed_email_is_recorded_and_the_event_still_completes(
         assert (await h.dispatch("metadata.sync.completed", event)).outcome is Outcome.DONE
     statuses = {r[1]: r[3] for r in await _rows(platform_db, tenant)}
     assert statuses == {"in_app": "sent", "email": "failed"}
+
+
+async def test_a_truncated_recipient_list_is_delivered_and_reported(
+    harness: Harness, tenant: uuid.UUID, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Past the directory's page size the list is capped (paging is Phase C1): the listed admins
+    are still alerted, and the shortfall is an ERROR, never a silent partial delivery."""
+    admin = harness.identity.add_user(tenant, {"org_admin"})
+    harness.identity.directory_truncated = True
+    event = McpInvocationDenied(
+        tenant_id=tenant,
+        tool_id=uuid.uuid4(),
+        reason="admin_only",
+        invocation_id=uuid.uuid4(),
+        user_id=uuid.uuid4(),
+    )
+    with caplog.at_level("ERROR"):
+        handled = await harness.dispatch("mcp.invocation.denied", event)
+    assert handled.notifications == 2
+    assert [m.to for m in harness.email.sent] == [admin.email]
+    assert any(r.getMessage() == "recipient list truncated" for r in caplog.records)

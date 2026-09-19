@@ -46,3 +46,8 @@ The worker has no schema. Roll or roll back the image. A message a stopped worke
 - **Nothing is dropped for an outage:** while the orchestrator is unavailable, the whole batch is retried every `WORKER_USAGE_RETRY_SECONDS`. There is no delivery limit. Only a malformed message is terminated.
 - **A new durable starts at the beginning of the stream:** usage is billed, never skipped.
 - **Readiness** reports both consumers: `checks.queue` (runs) and `checks.usage`.
+
+## Abandoned runs
+
+- **Signal:** `run request abandoned: retries exhausted` (ERROR, with `run_id`). The message was on its last allowed delivery (`WORKER_MAX_DELIVER`), so JetStream will not redeliver it. The run stays `queued`.
+- **Action:** once the orchestrator is healthy, re-publish `analytics.run.requested` for that run id.
