@@ -48,6 +48,36 @@ PY
   )
 }
 
+NATS_URL="${NATS_URL:-nats://localhost:4222}"
+
+# notification-service's durable consumers outlive a run: left in place, they would replay every
+# event earlier flows published while the service was down. Deleted here, they are recreated at
+# DeliverPolicy.NEW when the service starts.
+reset_notification_consumers() {
+  (cd "$ROOT" && NATS_URL="$NATS_URL" uv run --package notification-service python - <<'PY'
+import asyncio
+import contextlib
+import os
+
+import nats
+
+from notification_service.domain.policies.routing import TOPICS
+
+
+async def main() -> None:
+    client = await nats.connect(os.environ["NATS_URL"], connect_timeout=3)
+    js = client.jetstream()
+    for subject, (stream, _) in TOPICS.items():
+        with contextlib.suppress(Exception):  # absent stream or consumer: nothing to reset
+            await js.delete_consumer(stream, f"notification-service-{subject.replace('.', '-')}")
+    await client.close()
+
+
+asyncio.run(main())
+PY
+  )
+}
+
 PIDS=()
 _stop_services() { for pid in "${PIDS[@]:-}"; do [ -n "$pid" ] && kill "$pid" 2>/dev/null || true; done; }
 trap _stop_services EXIT
@@ -59,6 +89,7 @@ reset_demo_state() {  # [--mysql]
   "$ROOT/scripts/seed-sample-sales.sh" >/dev/null
   if [ "${1:-}" = "--mysql" ]; then "$ROOT/scripts/seed-sample-sales-mysql.sh" >/dev/null; fi
   flush_redis
+  reset_notification_consumers
   docker exec -i "$PGCONTAINER" psql -U postgres -d agentic_bi -q -v ON_ERROR_STOP=1 <<SQL
 DELETE FROM identity.mfa_credentials
   WHERE user_id IN (SELECT id FROM identity.users WHERE email = 'admin@demo.example.com');
@@ -67,6 +98,10 @@ DELETE FROM metadata.data_sources WHERE name LIKE 'sample-sales-db%' OR name LIK
 DELETE FROM identity.tenant_policies;
 DELETE FROM identity.invitations WHERE email LIKE 'a10-%';
 DELETE FROM identity.users WHERE email LIKE 'a10-%';
+-- A11: a flow's webhooks would otherwise keep firing at the next flow's receiver (and count
+-- towards the per-tenant cap); its notifications would satisfy the next flow's checks.
+DELETE FROM notification.webhook_subscriptions;
+DELETE FROM notification.notifications;
 -- Demo members hold exactly their base role (A1 and A10 grant and revoke extra roles; a flow
 -- that fails in between would otherwise leave them).
 DELETE FROM identity.user_roles ur
@@ -96,6 +131,10 @@ SELECT 'demo admin has MFA' WHERE EXISTS (
     AND (u.mfa_enabled OR EXISTS (SELECT 1 FROM identity.mfa_credentials c WHERE c.user_id = u.id)))
 UNION ALL
 SELECT 'a10 users left' WHERE EXISTS (SELECT 1 FROM identity.users WHERE email LIKE 'a10-%')
+UNION ALL
+SELECT 'webhook subscriptions left' WHERE EXISTS (SELECT 1 FROM notification.webhook_subscriptions)
+UNION ALL
+SELECT 'notifications left' WHERE EXISTS (SELECT 1 FROM notification.notifications)
 UNION ALL
 SELECT 'demo data sources left' WHERE EXISTS (
   SELECT 1 FROM metadata.data_sources
@@ -132,6 +171,8 @@ _service() {
     # Plain HTTP to the local sample MCP server is allowed only because localhost is allow-listed
     # here (dev); staging/prod refuse loopback in this list at startup.
     mcp-gateway) echo "8009 mcp_gateway MCP_REQUIRE_GATEWAY_TOKEN=true MCP_LOG_LEVEL=DEBUG MCP_EGRESS_ALLOWED_INTERNAL_HOSTS=[\"localhost\"]" ;;
+    # Same dev-only exemption, for the flow's local webhook receiver.
+    notification-service) echo "8010 notification_service NOTIFICATION_REQUIRE_GATEWAY_TOKEN=true NOTIFICATION_LOG_LEVEL=DEBUG NOTIFICATION_EGRESS_ALLOWED_INTERNAL_HOSTS=[\"localhost\"]" ;;
     *) echo "unknown service: $1" >&2; return 1 ;;
   esac
 }

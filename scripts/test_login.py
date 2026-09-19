@@ -18,6 +18,7 @@ import quopri
 import re
 import sys
 import time
+import uuid
 
 import httpx
 import pyotp
@@ -184,14 +185,6 @@ def main() -> int:
         "gateway mints its own request id",
         rid.startswith("req_") and rid != "client-chosen-id-0001",
     )
-    # A route whose service is not built yet (notification-service, Phase A11). Move this check
-    # to another stub when A11 lands, as /dashboards had to move when A6 built dashboard-service.
-    stub = api("GET", "/api/v1/me/notifications", admin)
-    stub_code = stub.json().get("error", {}).get("code") if stub.content else None
-    check(
-        "stubbed backend answers 501 NOT_IMPLEMENTED after auth",
-        stub.status_code == 501 and stub_code == "NOT_IMPLEMENTED",
-    )
     anon = api("GET", "/api/v1/dashboards")
     check("unauthenticated catalog route answers 401", anon.status_code == 401)
 
@@ -201,6 +194,22 @@ def main() -> int:
     code = pyotp.TOTP(enroll.json()["secret"]).now()
     verify = api("POST", "/api/v1/auth/mfa/verify", admin, json={"code": code})
     check("org_admin: MFA verify 200", verify.status_code == 200, verify.text)
+
+    # The one route left without a backend (post-GA: subscriptions). It needs a step-up, so it is
+    # checked here; /dashboards (A6) and /me/notifications (A11) held this check before.
+    stub = api(
+        "POST",
+        "/api/v1/billing/subscription",
+        admin,
+        json={},
+        headers={"Idempotency-Key": f"a1-{uuid.uuid4()}"},
+    )
+    stub_code = stub.json().get("error", {}).get("code") if stub.content else None
+    check(
+        "stubbed backend answers 501 NOT_IMPLEMENTED after auth",
+        stub.status_code == 501 and stub_code == "NOT_IMPLEMENTED",
+        stub.text,
+    )
 
     user_ids: dict[str, str] = {}
     for role in ("developer", "client"):

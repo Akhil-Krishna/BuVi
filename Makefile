@@ -11,7 +11,8 @@ WEB := web/next-app
         web-build check up down migrate seed dev dev-gateway dev-metadata dev-query-gateway contracts contracts-check \
         dev-orchestrator dev-worker dev-visualization dev-dashboard dev-semantic test-login \
         test-data-sources test-query-gateway test-analytics-run test-dashboards test-semantics \
-        eval-groundedness seed-sample-mysql test-mysql-slice test-live dev-mcp test-mcp test-admin
+        eval-groundedness seed-sample-mysql test-mysql-slice test-live dev-mcp test-mcp test-admin \
+        dev-notification test-notifications
 
 help: ## List available targets
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) \
@@ -155,11 +156,18 @@ dev-mcp: ## Start mcp-gateway with reload on :8009
 	cd apps/mcp-gateway && uv run --package mcp-gateway \
 		uvicorn mcp_gateway.main:create_app --factory --reload --port 8009
 
+dev-notification: ## Start notification-service with reload on :8010
+	cd apps/notification-service && uv run --package notification-service \
+		uvicorn notification_service.main:create_app --factory --reload --port 8010
+
 test-mcp: ## Phase A9 scripted flow: register, approve, grant, invoke and deny MCP tools over HTTP
 	scripts/test-mcp.sh
 
 test-admin: ## Phase A10 scripted flow: step-up on every Section 7.3 operation, WebAuthn, policies, sharing, SQL grants
 	scripts/test-admin.sh
+
+test-notifications: ## Phase A11 scripted flow: in-app/email/webhook notifications, billing usage
+	scripts/test-notifications.sh
 
 test-live: ## Every scripted DoD flow in sequence; each resets demo state, so order does not matter
 	scripts/test-login.sh
@@ -171,6 +179,7 @@ test-live: ## Every scripted DoD flow in sequence; each resets demo state, so or
 	scripts/test-mysql-slice.sh
 	scripts/test-mcp.sh
 	scripts/test-admin.sh
+	scripts/test-notifications.sh
 
 eval-groundedness: ## Section 25 groundedness eval: metric usage and insight grounding per run
 	uv run --package analytics-orchestrator pytest -s -o addopts="" \
