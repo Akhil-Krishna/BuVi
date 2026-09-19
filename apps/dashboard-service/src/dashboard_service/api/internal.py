@@ -5,19 +5,26 @@
   (analytics-orchestrator). Idempotent on `artifact_id`: `201` when stored, `200` when this run's
   artifact already exists, `409 ARTIFACT_CONFLICT` for another run. The chart spec is validated by
   visualization-service before anything is written (`422 CHART_SPEC_INVALID`).
+* `POST /internal/v1/users/{user_id}/share-links/revoke?tenant_id=` -- the Section 6.7
+  deactivation cascade: revoke every live share link the user created;
+  `dashboard-service:user-lifecycle` (identity-service only). Idempotent; audited.
 """
 
 from __future__ import annotations
 
+import datetime as dt
+import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Request, Response, status
+from fastapi import APIRouter, Depends, Query, Request, Response, status
+from pydantic import BaseModel
 
 from dashboard_service.api.v1.schemas import ArtifactCreateRequest, ArtifactStoredResponse
 from dashboard_service.application.services.artifacts import ArtifactService, NewArtifact
-from dashboard_service.core.config import SCOPE_ARTIFACTS_WRITE
+from dashboard_service.core.config import SCOPE_ARTIFACTS_WRITE, SCOPE_USER_LIFECYCLE
 from dashboard_service.dependencies import get_app_settings
-from dashboard_service.domain.errors import ArtifactWriterNotAllowedError
+from dashboard_service.domain.errors import ArtifactWriterNotAllowedError, ForbiddenError
+from dashboard_service.infrastructure.audit.sink import AuditRecord
 from dashboard_service.infrastructure.db.repositories.dashboard_repository import (
     DashboardRepository,
 )
@@ -68,3 +75,38 @@ async def store_artifact(
     return ArtifactStoredResponse(
         artifact_id=artifact.id, version=artifact.version, created=created
     )
+
+
+class ShareLinksRevokedResponse(BaseModel):
+    revoked: int
+
+
+@router.post("/users/{user_id}/share-links/revoke", response_model=ShareLinksRevokedResponse)
+async def revoke_user_share_links(
+    request: Request,
+    user_id: uuid.UUID,
+    tenant_id: Annotated[uuid.UUID, Query()],
+    service: Annotated[ServiceIdentity, Depends(require_service_scope(SCOPE_USER_LIFECYCLE))],
+) -> ShareLinksRevokedResponse:
+    """A share link is bearer access that outlives its creator's session, so a deactivated
+    user's links must stop working with the account (Section 6.7). identity-service calls this
+    before committing the deactivation and fails the deactivation if it fails."""
+    if service.subject != "identity-service":
+        raise ForbiddenError()
+    state = request.app.state
+    now = dt.datetime.now(dt.UTC)
+    async with tenant_scope(state.session_factory, tenant_id) as db:
+        links = await DashboardRepository(db).revoke_share_links_created_by(tenant_id, user_id, now)
+        await db.commit()
+    if links:
+        await state.audit.record(
+            AuditRecord(
+                tenant_id=tenant_id,
+                actor_user_id=None,
+                event_type="dashboard.share_links.revoked_for_deactivated_user",
+                resource_type="user",
+                resource_id=str(user_id),
+                after_state={"share_link_ids": [str(link.id) for link in links]},
+            )
+        )
+    return ShareLinksRevokedResponse(revoked=len(links))

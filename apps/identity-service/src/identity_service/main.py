@@ -22,12 +22,13 @@ from fastapi import FastAPI
 from identity_service.api.internal import router as internal_router
 from identity_service.api.v1.health import router as health_router
 from identity_service.api.v1.router import api_router
-from identity_service.application.services.ports import IdentityEvents
+from identity_service.application.services.ports import IdentityEvents, UserLifecycle
 from identity_service.core.config import Settings, get_settings
 from identity_service.core.logging import configure_logging
 from identity_service.dependencies import resolve_principal
 from identity_service.infrastructure.db.session import create_engine, create_session_factory
 from identity_service.infrastructure.email.sender import EmailSender, SmtpEmailSender
+from identity_service.infrastructure.http.lifecycle import DashboardLifecycleClient
 from identity_service.infrastructure.messaging.nats_events import (
     JetStreamIdentityEvents,
     UnavailableIdentityEvents,
@@ -78,6 +79,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     if getattr(app.state, "email", None) is None:
         app.state.email = SmtpEmailSender(settings)
 
+    if getattr(app.state, "lifecycle", None) is None:
+        app.state.lifecycle = DashboardLifecycleClient(
+            base_url=settings.dashboard_url, http=http, issuer=app.state.service_token_issuer
+        )
+
     publisher: JetStreamIdentityEvents | None = None
     if getattr(app.state, "events", None) is None:
         app.state.events = UnavailableIdentityEvents()
@@ -111,6 +117,7 @@ def create_app(
     email: EmailSender | None = None,
     service_token_issuer: ServiceTokenIssuer | None = None,
     events: IdentityEvents | None = None,
+    lifecycle: UserLifecycle | None = None,
 ) -> FastAPI:
     """Build the application.
 
@@ -135,6 +142,7 @@ def create_app(
     app.state.oidc = oidc
     app.state.email = email
     app.state.events = events
+    app.state.lifecycle = lifecycle
 
     install_principal_resolver(app, resolve_principal)
 

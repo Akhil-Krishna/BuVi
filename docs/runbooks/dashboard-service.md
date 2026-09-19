@@ -44,3 +44,9 @@
 
 1. `alembic upgrade head` as `buvi_migrator`, then roll the deployment.
 2. Rollback: redeploy the previous image. `alembic downgrade -1` drops every artifact and dashboard; use it only for a failed first deployment.
+
+## Deactivated users (Section 6.7)
+
+- identity-service calls `POST /internal/v1/users/{id}/share-links/revoke?tenant_id=` (scope `dashboard-service:user-lifecycle`, subject `identity-service` only) when a user is deactivated.
+- Every live link the user created is revoked and audited as `dashboard.share_links.revoked_for_deactivated_user`.
+- If this route fails, the deactivation fails too, so an outage here blocks user removal. That is by design.

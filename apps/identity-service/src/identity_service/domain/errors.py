@@ -218,3 +218,11 @@ class WebAuthnNotEnrolledError(DomainError):
     code = "WEBAUTHN_NOT_ENROLLED"
     status_code = 409
     message = "Register a security key before requiring one for administrators."
+
+
+class CascadeUnavailableError(DomainError):
+    """A Section 6.7 deactivation cascade step could not run; nothing was committed."""
+
+    code = "UPSTREAM_UNAVAILABLE"
+    status_code = 503
+    message = "The user could not be deactivated completely. Nothing was changed; try again."

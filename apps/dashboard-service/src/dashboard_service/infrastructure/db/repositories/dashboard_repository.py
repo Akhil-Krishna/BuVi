@@ -172,6 +172,24 @@ class DashboardRepository:
             await self._session.flush()
         return link
 
+    async def revoke_share_links_created_by(
+        self, tenant_id: uuid.UUID, user_id: uuid.UUID, now: dt.datetime
+    ) -> list[ShareLink]:
+        """Every link this user created that still works (Section 6.7 cascade)."""
+        result = await self._session.execute(
+            select(ShareLink).where(
+                ShareLink.tenant_id == tenant_id,
+                ShareLink.created_by == user_id,
+                ShareLink.revoked_at.is_(None),
+                ShareLink.expires_at > now,
+            )
+        )
+        links = list(result.scalars().all())
+        for link in links:
+            link.revoked_at = now
+        await self._session.flush()
+        return links
+
     async def find_share_link(self, token_hash: str) -> ShareLink | None:
         """Only inside `share_lookup_scope`: the one lookup made before a tenant is known."""
         result = await self._session.execute(

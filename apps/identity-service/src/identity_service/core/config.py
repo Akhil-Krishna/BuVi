@@ -24,6 +24,9 @@ SCOPE_RESOLVE_PRINCIPAL = "identity-service:resolve-principal"
 #: Read a tenant's users (id, email, roles, status): notification recipients, seat counts (A11).
 SCOPE_DIRECTORY = "identity-service:directory"
 
+#: dashboard-service's deactivation cascade: revoke the user's share links (Section 6.7).
+SCOPE_DASHBOARD_LIFECYCLE = "dashboard-service:user-lifecycle"
+
 #: Section 18.1 subject; stream IDENTITY carries `identity.>`.
 ROLE_CHANGED_SUBJECT = "identity.role.changed"
 
@@ -174,6 +177,9 @@ class Settings(BaseSettings):
     db_pool_size: int = 10
     db_max_overflow: int = 5
     db_echo: bool = False
+
+    #: Deactivation cascade target (Section 6.7).
+    dashboard_url: str = "http://localhost:8007"
 
     # --- Events (Section 18.1; Phase A11) ---------------------------------
     nats_url: str = "nats://localhost:4222"

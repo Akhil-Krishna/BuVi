@@ -31,6 +31,12 @@ class UserNotActiveError(DomainError):
     message = "This account is not active."
 
 
+class ForbiddenError(DomainError):
+    code = "FORBIDDEN"
+    status_code = 403
+    message = "You do not have permission to perform this action."
+
+
 class ValidationFailedError(DomainError):
     code = "VALIDATION_FAILED"
     status_code = 422

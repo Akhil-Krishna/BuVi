@@ -398,6 +398,11 @@
       },
       "DirectoryResponse": {
         "properties": {
+          "truncated": {
+            "default": false,
+            "title": "Truncated",
+            "type": "boolean"
+          },
           "users": {
             "items": {
               "$ref": "#/components/schemas/DirectoryUser"
@@ -1031,6 +1036,34 @@
           "permissions"
         ],
         "title": "RoleResponse",
+        "type": "object"
+      },
+      "SeatsRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "tenant_id": {
+            "format": "uuid",
+            "title": "Tenant Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tenant_id"
+        ],
+        "title": "SeatsRequest",
+        "type": "object"
+      },
+      "SeatsResponse": {
+        "properties": {
+          "active_users": {
+            "title": "Active Users",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "active_users"
+        ],
+        "title": "SeatsResponse",
         "type": "object"
       },
       "SessionResponse": {
@@ -2476,6 +2509,48 @@
           }
         },
         "summary": "Record Audit Event",
+        "tags": [
+          "internal"
+        ]
+      }
+    },
+    "/internal/v1/directory/seats": {
+      "post": {
+        "description": "Billing seats: an exact `COUNT` of active users, never a capped list's length.",
+        "operationId": "directory_seats_internal_v1_directory_seats_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SeatsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SeatsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Directory Seats",
         "tags": [
           "internal"
         ]

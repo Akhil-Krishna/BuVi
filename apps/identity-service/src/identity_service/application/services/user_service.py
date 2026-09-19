@@ -18,9 +18,11 @@ from dataclasses import dataclass
 
 from identity_service.application.services import audit_service as events
 from identity_service.application.services.audit_service import AuditService
+from identity_service.application.services.ports import CascadeFailedError, UserLifecycle
 from identity_service.application.services.session_service import SessionService
 from identity_service.core.config import Settings
 from identity_service.domain.errors import (
+    CascadeUnavailableError,
     NotFoundError,
     UserAlreadyExistsError,
 )
@@ -69,12 +71,14 @@ class UserService:
         audit: AuditService,
         email: EmailSender,
         settings: Settings,
+        lifecycle: UserLifecycle,
     ) -> None:
         self._repository = repository
         self._sessions = sessions
         self._audit = audit
         self._email = email
         self._settings = settings
+        self._lifecycle = lifecycle
 
     # --- invitations ------------------------------------------------------
 
@@ -217,6 +221,14 @@ class UserService:
             target_remains_org_admin=False,
         )
 
+        # Other services first, before any local change: if the cascade cannot run, nothing is
+        # committed and the admin retries (`503`). If a later local step fails instead, links are
+        # revoked but the user stays active -- over-revocation, the safe direction.
+        try:
+            revoked_links = await self._lifecycle.user_deactivated(tenant_id, target_user_id)
+        except CascadeFailedError:
+            raise CascadeUnavailableError() from None
+
         now = dt.datetime.now(dt.UTC)
         await self._repository.set_user_status(tenant_id, target_user_id, "deactivated")
         revoked_sessions = await self._sessions.revoke_all_for_user(tenant_id, target_user_id)
@@ -234,6 +246,7 @@ class UserService:
                 "status": "deactivated",
                 "sessions_revoked": revoked_sessions,
                 "api_keys_revoked": revoked_keys,
+                "share_links_revoked": revoked_links,
             },
             ip_address=ip_address,
         )

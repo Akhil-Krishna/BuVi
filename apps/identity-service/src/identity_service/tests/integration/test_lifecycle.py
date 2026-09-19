@@ -11,7 +11,12 @@ import pyotp
 import pytest
 
 from identity_service.infrastructure.email.sender import InMemoryEmailSender
-from identity_service.tests.conftest import Fixtures, RecordingEvents, StubOidcClient
+from identity_service.tests.conftest import (
+    FakeLifecycle,
+    Fixtures,
+    RecordingEvents,
+    StubOidcClient,
+)
 
 pytestmark = pytest.mark.integration
 
@@ -403,7 +408,7 @@ async def test_last_active_org_admin_cannot_be_removed(
 
 
 async def test_deleting_a_user_revokes_their_sessions_and_keys(
-    client: httpx.AsyncClient, fixtures: Fixtures, tenant: uuid.UUID
+    client: httpx.AsyncClient, fixtures: Fixtures, tenant: uuid.UUID, lifecycle: FakeLifecycle
 ) -> None:
     _, admin_session = await _admin(fixtures, tenant)
     target = await fixtures.create_user(
@@ -429,3 +434,34 @@ async def test_deleting_a_user_revokes_their_sessions_and_keys(
         await client.get("/api/v1/me/api-keys", headers={"Authorization": f"Bearer {secret}"})
     ).status_code == 401
     assert "user.deleted" in await fixtures.audit_event_types(tenant)
+    # Section 6.7: the cascade reached dashboard-service (the user's share links).
+    assert lifecycle.deactivated == [(tenant, target)]
+
+
+async def test_a_failed_cascade_deactivates_nothing(
+    client: httpx.AsyncClient, fixtures: Fixtures, tenant: uuid.UUID, lifecycle: FakeLifecycle
+) -> None:
+    """If a share link cannot be revoked, the deactivation must not commit half-done: the user,
+    their sessions and keys stay as they were, and the admin gets a retryable 503."""
+    _, admin_session = await _admin(fixtures, tenant)
+    target = await fixtures.create_user(
+        tenant_id=tenant, email="sharer@acme.example.com", roles=frozenset({"developer"})
+    )
+    target_session = await fixtures.create_session(tenant_id=tenant, user_id=target)
+    lifecycle.fail = True
+    refused = await client.delete(
+        f"/api/v1/admin/users/{target}", cookies={COOKIE: str(admin_session)}
+    )
+    assert refused.status_code == 503, refused.text
+    assert refused.json()["error"]["code"] == "UPSTREAM_UNAVAILABLE"
+    assert (
+        await client.get("/api/v1/auth/session", cookies={COOKIE: str(target_session)})
+    ).status_code == 200
+    assert "user.deleted" not in await fixtures.audit_event_types(tenant)
+
+    lifecycle.fail = False
+    lifecycle.revoked = 3
+    done = await client.delete(
+        f"/api/v1/admin/users/{target}", cookies={COOKIE: str(admin_session)}
+    )
+    assert done.status_code == 204

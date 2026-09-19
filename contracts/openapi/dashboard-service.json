@@ -648,6 +648,19 @@
         "title": "ShareLinkResponse",
         "type": "object"
       },
+      "ShareLinksRevokedResponse": {
+        "properties": {
+          "revoked": {
+            "title": "Revoked",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "revoked"
+        ],
+        "title": "ShareLinksRevokedResponse",
+        "type": "object"
+      },
       "SnapshotResponse": {
         "description": "A read-only dashboard for a link holder: charts and their data, nothing else.",
         "properties": {
@@ -1542,6 +1555,60 @@
           }
         },
         "summary": "Store Artifact",
+        "tags": [
+          "internal"
+        ]
+      }
+    },
+    "/internal/v1/users/{user_id}/share-links/revoke": {
+      "post": {
+        "description": "A share link is bearer access that outlives its creator's session, so a deactivated\nuser's links must stop working with the account (Section 6.7). identity-service calls this\nbefore committing the deactivation and fails the deactivation if it fails.",
+        "operationId": "revoke_user_share_links_internal_v1_users__user_id__share_links_revoke_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "User Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShareLinksRevokedResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Revoke User Share Links",
         "tags": [
           "internal"
         ]

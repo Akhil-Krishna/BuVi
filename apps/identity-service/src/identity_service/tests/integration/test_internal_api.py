@@ -536,3 +536,46 @@ async def test_directory_lists_a_tenants_users_by_id_or_role(
     )
     assert refused.status_code == 403
     assert (await client.post("/internal/v1/directory/users", json={})).status_code == 401
+
+
+async def test_seats_are_exact_while_the_recipient_list_says_when_it_is_capped(
+    app: FastAPI,
+    client: httpx.AsyncClient,
+    fixtures: Fixtures,
+    tenant: uuid.UUID,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Seats past the directory cap were undercounted (ADR 0014): seats now come from an exact
+    count, and a capped list is flagged `truncated` instead of passing as complete."""
+    from identity_service.api import internal
+
+    monkeypatch.setattr(internal, "MAX_DIRECTORY_USERS", 2)
+    for n in range(3):
+        await fixtures.create_user(
+            tenant_id=tenant, email=f"seat{n}@acme.example.com", roles=frozenset({"client"})
+        )
+    await fixtures.create_user(
+        tenant_id=tenant,
+        email="gone@acme.example.com",
+        roles=frozenset({"client"}),
+        status="deactivated",
+    )
+    headers = {SVC: f"Bearer {_service_token(app, 'analytics-orchestrator', SCOPE_DIRECTORY)}"}
+    seats = await client.post(
+        "/internal/v1/directory/seats", headers=headers, json={"tenant_id": str(tenant)}
+    )
+    assert seats.status_code == 200 and seats.json() == {"active_users": 3}
+    listed = (
+        await client.post(
+            "/internal/v1/directory/users", headers=headers, json={"tenant_id": str(tenant)}
+        )
+    ).json()
+    assert len(listed["users"]) == 2 and listed["truncated"] is True
+    by_role = (
+        await client.post(
+            "/internal/v1/directory/users",
+            headers=headers,
+            json={"tenant_id": str(tenant), "role": "org_admin"},
+        )
+    ).json()
+    assert by_role == {"users": [], "truncated": False}

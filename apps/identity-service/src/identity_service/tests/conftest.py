@@ -204,6 +204,28 @@ def events() -> RecordingEvents:
     return RecordingEvents()
 
 
+class FakeLifecycle:
+    """dashboard-service's side of the Section 6.7 cascade: records calls, or fails."""
+
+    def __init__(self) -> None:
+        self.deactivated: list[tuple[uuid.UUID, uuid.UUID]] = []
+        self.fail = False
+        self.revoked = 0
+
+    async def user_deactivated(self, tenant_id: uuid.UUID, user_id: uuid.UUID) -> int:
+        if self.fail:
+            from identity_service.application.services.ports import CascadeFailedError
+
+            raise CascadeFailedError()
+        self.deactivated.append((tenant_id, user_id))
+        return self.revoked
+
+
+@pytest.fixture
+def lifecycle() -> FakeLifecycle:
+    return FakeLifecycle()
+
+
 @pytest.fixture
 async def app(
     settings: Settings,
@@ -211,11 +233,17 @@ async def app(
     mailbox: InMemoryEmailSender,
     secrets: InMemorySecretStore,
     events: RecordingEvents,
+    lifecycle: FakeLifecycle,
 ) -> AsyncIterator[FastAPI]:
     from identity_service.main import create_app
 
     application = create_app(
-        settings=settings, secrets=secrets, oidc=oidc, email=mailbox, events=events
+        settings=settings,
+        secrets=secrets,
+        oidc=oidc,
+        email=mailbox,
+        events=events,
+        lifecycle=lifecycle,
     )
     async with application.router.lifespan_context(application):
         yield application

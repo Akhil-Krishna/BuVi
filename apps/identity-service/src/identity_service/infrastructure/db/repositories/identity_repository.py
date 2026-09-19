@@ -161,6 +161,15 @@ class IdentityRepository:
             roles.setdefault(user_id, set()).add(key)
         return [(u, frozenset(roles.get(u.id, ()))) for u in users]
 
+    async def count_active_users(self, tenant_id: uuid.UUID) -> int:
+        """Seats (Section 23): exact, no cap."""
+        count = await self._session.scalar(
+            select(func.count())
+            .select_from(User)
+            .where(User.tenant_id == tenant_id, User.status == "active")
+        )
+        return int(count or 0)
+
     async def count_active_org_admins(self, tenant_id: uuid.UUID) -> int:
         """Count active `org_admin` users, for the Section 2 last-admin rule."""
         statement = (

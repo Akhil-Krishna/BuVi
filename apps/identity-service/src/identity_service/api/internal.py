@@ -8,7 +8,9 @@
   service acting on that user's behalf without a live session (Section 13, ADR 0006); requires
   `identity-service:resolve-principal`. The result is never step-up capable.
 * `POST /internal/v1/directory/users` -- a tenant's users with email, roles and status, by id
-  and/or role (notification recipients, seat counts); requires `identity-service:directory`.
+  and/or role (notification recipients); at most `MAX_DIRECTORY_USERS`, with `truncated` set
+  when there were more. `POST /internal/v1/directory/seats` -- the exact count of active users
+  (billing seats). Both require `identity-service:directory`.
 * `POST /internal/v1/audit-events` -- append an audit event on behalf of another service
   (e.g. metadata-service `connection.*`, Sections 7.3 and 22); requires
   `identity-service:audit` and an event type inside the client's registered namespace.
@@ -107,6 +109,19 @@ class DirectoryUser(BaseModel):
 
 class DirectoryResponse(BaseModel):
     users: list[DirectoryUser]
+    #: More users matched than one response carries (keyset pagination: Phase C1). A caller
+    #: that needs every match must treat this as an error, never as the complete list.
+    truncated: bool = False
+
+
+class SeatsRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    tenant_id: uuid.UUID
+
+
+class SeatsResponse(BaseModel):
+    active_users: int
 
 
 class AuditEventRequest(BaseModel):
@@ -239,10 +254,13 @@ async def directory_users(
             payload.tenant_id,
             user_ids=frozenset(payload.user_ids) if payload.user_ids is not None else None,
             role=payload.role,
-            limit=MAX_DIRECTORY_USERS,
+            limit=MAX_DIRECTORY_USERS + 1,
         )
         await db.commit()
+    truncated = len(rows) > MAX_DIRECTORY_USERS
+    rows = rows[:MAX_DIRECTORY_USERS]
     return DirectoryResponse(
+        truncated=truncated,
         users=[
             DirectoryUser(
                 id=user.id,
@@ -252,8 +270,21 @@ async def directory_users(
                 roles=sorted(roles),
             )
             for user, roles in rows
-        ]
+        ],
     )
+
+
+@router.post("/directory/seats", response_model=SeatsResponse)
+async def directory_seats(
+    request: Request,
+    payload: SeatsRequest,
+    _service: Annotated[ServiceIdentity, Depends(require_service_scope(SCOPE_DIRECTORY))],
+) -> SeatsResponse:
+    """Billing seats: an exact `COUNT` of active users, never a capped list's length."""
+    async with tenant_scope(get_session_factory(request), payload.tenant_id) as db:
+        count = await IdentityRepository(db).count_active_users(payload.tenant_id)
+        await db.commit()
+    return SeatsResponse(active_users=count)
 
 
 @router.post("/principals/resolve", response_model=IntrospectResponse)

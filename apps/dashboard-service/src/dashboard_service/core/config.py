@@ -12,6 +12,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 SCOPE_PROXY = "dashboard-service:proxy"
 #: Store an artifact produced by a run (analytics-orchestrator's `persist_artifact`).
 SCOPE_ARTIFACTS_WRITE = "dashboard-service:artifacts"
+#: identity-service's user-deactivation cascade (Section 6.7): revoke the user's share links.
+SCOPE_USER_LIFECYCLE = "dashboard-service:user-lifecycle"
 SCOPE_VALIDATE = "visualization-service:validate"
 SCOPE_RESULTS = "query-gateway:results"
 SCOPE_AUDIT_WRITE = "identity-service:audit"

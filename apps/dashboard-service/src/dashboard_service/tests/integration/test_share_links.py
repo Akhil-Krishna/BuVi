@@ -212,3 +212,43 @@ async def test_an_org_admin_can_revoke_a_leaked_link_on_any_dashboard(
     # ...but an org_admin still cannot mint links on someone else's dashboard.
     fresh_admin = harness.identity.add_user(tenant, {"org_admin"}, fresh_mfa=True)
     assert (await _share(harness, fresh_admin, dashboard)).status_code == 404
+
+
+async def test_deactivating_a_user_revokes_every_link_they_created(
+    harness: Harness, tenant: uuid.UUID, other_tenant: uuid.UUID
+) -> None:
+    """Section 6.7: identity-service's deactivation cascade. A share link is bearer access, so it
+    must stop working with its creator's account -- other users' links are untouched."""
+    owner, dashboard, _ = await _pinned_dashboard(harness, tenant)
+    mine = [(await _share(harness, owner, dashboard)).json() for _ in range(2)]
+    colleague, their_dashboard, _ = await _pinned_dashboard(harness, tenant)
+    theirs = (await _share(harness, colleague, their_dashboard)).json()
+    path = f"/internal/v1/users/{owner.user_id}/share-links/revoke"
+    lifecycle = harness.service_headers("identity-service", "dashboard-service:user-lifecycle")
+
+    # Another tenant's cascade touches nothing here (RLS-bound to the tenant in the request).
+    foreign = await harness.client.post(
+        path, params={"tenant_id": str(other_tenant)}, headers=lifecycle
+    )
+    assert foreign.json() == {"revoked": 0}
+    done = await harness.client.post(path, params={"tenant_id": str(tenant)}, headers=lifecycle)
+    assert done.status_code == 200 and done.json() == {"revoked": 2}
+    again = await harness.client.post(path, params={"tenant_id": str(tenant)}, headers=lifecycle)
+    assert again.json() == {"revoked": 0}  # idempotent: identity may retry
+    for link in mine:
+        assert (await harness.client.get(f"/api/v1/share/{link['token']}")).status_code == 404
+    assert (await harness.client.get(f"/api/v1/share/{theirs['token']}")).status_code == 200
+    audit = harness.audit.events[-1]
+    assert audit.event_type == "dashboard.share_links.revoked_for_deactivated_user"
+    assert sorted(audit.after_state["share_link_ids"]) == sorted(link["id"] for link in mine)  # type: ignore[index]
+
+    # Only identity-service, with the lifecycle scope.
+    for headers in (
+        harness.service_headers("analytics-orchestrator", "dashboard-service:user-lifecycle"),
+        harness.service_headers("identity-service", "dashboard-service:artifacts"),
+        {},
+    ):
+        refused = await harness.client.post(
+            path, params={"tenant_id": str(tenant)}, headers=headers
+        )
+        assert refused.status_code in (401, 403), headers

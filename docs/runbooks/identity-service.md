@@ -50,3 +50,9 @@
 - **Role events:** a role change that actually changes something publishes `identity.role.changed` (stream `IDENTITY`). It is sent as a background task, after the response and so after the commit, so a rolled-back change is never announced.
 - **Best effort:** without NATS, login and admin work are unaffected; only the notification is lost. `IDENTITY_EVENTS_ENABLED=false` turns it off.
 - **Invitation email** stays here, not in notification-service (ADR 0014): it carries a one-time token.
+
+## Deactivation cascade (Section 6.7)
+
+- **Order:** `DELETE /admin/users/{id}` first revokes the user's share links in dashboard-service (`dashboard-service:user-lifecycle`), then deactivates the user and revokes their sessions and API keys.
+- **If dashboard-service is unreachable:** the call answers `503 UPSTREAM_UNAVAILABLE` and nothing changes. Restore dashboard-service and retry; the cascade is idempotent.
+- **Seats:** `POST /internal/v1/directory/seats` returns the exact active-user count. `directory/users` is capped at 5,000 with `truncated: true` (pagination is a Phase C1 item).

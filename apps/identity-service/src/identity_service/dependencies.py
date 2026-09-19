@@ -234,6 +234,7 @@ def build_user_service(request: Request, repository: IdentityRepository) -> User
         audit=build_audit_service(repository, request),
         email=get_email_sender(request),
         settings=get_app_settings(request),
+        lifecycle=request.app.state.lifecycle,
     )
 
 
