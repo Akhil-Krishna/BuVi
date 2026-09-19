@@ -152,3 +152,17 @@ class ResultStoreUnavailableError(DomainError):
     code = "RESULT_STORE_UNAVAILABLE"
     status_code = 503
     message = "The result store is unavailable. Retry later."
+
+
+class SqlGrantRequiredError(DomainError):
+    """Section 7.1: `sql:execute` needs a per-connection grant (all but `org_admin`)."""
+
+    code = "SQL_GRANT_REQUIRED"
+    status_code = 403
+    message = "You have not been granted SQL access to this data source."
+
+
+class InvalidCursorError(DomainError):
+    code = "INVALID_CURSOR"
+    status_code = 422
+    message = "The pagination cursor is invalid."

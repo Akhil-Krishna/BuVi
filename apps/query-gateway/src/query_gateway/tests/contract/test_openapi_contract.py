@@ -43,8 +43,9 @@ def test_export_matches_committed_contract() -> None:
 def test_query_endpoint_and_response_shape() -> None:
     spec = _generated()
     assert "/internal/v1/queries" in spec["paths"]
-    assert not any(path.startswith("/api/") for path in spec["paths"]), (
-        "no public route in Phase A4"
+    public = {path for path in spec["paths"] if path.startswith("/api/")}
+    assert public == {"/api/v1/sql/validate", "/api/v1/sql/execute", "/api/v1/sql/history"}, (
+        "the only public routes are Section 9's SQL API (Phase A10)"
     )
     schemas = spec["components"]["schemas"]
     for name in ("QueryResponse", "QueryColumnResponse"):

@@ -30,6 +30,10 @@ METADATA_AUDIENCE = "metadata-service"
 class PolicyLoader(Protocol):
     async def load(self, tenant_id: uuid.UUID, data_source_id: uuid.UUID) -> DataSourcePolicy: ...
 
+    async def has_sql_grant(
+        self, tenant_id: uuid.UUID, data_source_id: uuid.UUID, user_id: uuid.UUID
+    ) -> bool: ...
+
 
 def parse_policy(body: dict[str, Any]) -> DataSourcePolicy:
     return DataSourcePolicy(
@@ -106,6 +110,32 @@ class MetadataPolicyClient:
         if self._ttl > 0:
             self._cache[key] = (time.monotonic() + self._ttl, policy)
         return policy
+
+    async def has_sql_grant(
+        self, tenant_id: uuid.UUID, data_source_id: uuid.UUID, user_id: uuid.UUID
+    ) -> bool:
+        """Per-connection `sql:execute` grant (Section 7.1). Never cached: a revocation
+        applies to the next query."""
+        try:
+            token = await self._tokens.token_for(METADATA_AUDIENCE, frozenset({SCOPE_QUERY_POLICY}))
+        except (ServiceTokenError, httpx.HTTPError, KeyError, ValueError) as exc:
+            raise UpstreamUnavailableError() from exc
+        try:
+            response = await self._http.get(
+                f"{self._base}/internal/v1/data-sources/{data_source_id}/sql-grants/{user_id}",
+                params={"tenant_id": str(tenant_id)},
+                headers={SERVICE_AUTH_HEADER: f"Bearer {token}"},
+            )
+        except httpx.TimeoutException as exc:
+            raise UpstreamTimeoutError() from exc
+        except httpx.TransportError as exc:
+            raise UpstreamUnavailableError() from exc
+        if response.status_code != 200:
+            raise UpstreamUnavailableError()
+        try:
+            return response.json()["granted"] is True
+        except (KeyError, TypeError, ValueError) as exc:
+            raise UpstreamUnavailableError() from exc
 
     async def ready(self) -> bool:
         try:

@@ -172,10 +172,18 @@ class FakeServices:
     principals: dict[str, dict[str, Any]] = field(default_factory=dict)
     policies: dict[tuple[str, str], dict[str, Any]] = field(default_factory=dict)
     policy_requests: list[httpx.Request] = field(default_factory=list)
+    #: Per-connection SQL grants, (tenant, data source, user). Tests that are not about grants
+    #: leave `grant_all` on; grant tests switch it off.
+    sql_grants: set[tuple[str, str, str]] = field(default_factory=set)
+    grant_all: bool = True
+    grant_checks: int = 0
 
-    def add_user(self, tenant_id: uuid.UUID, roles: set[str]) -> Caller:
+    def add_user(self, tenant_id: uuid.UUID, roles: set[str], *, fresh_mfa: bool = True) -> Caller:
         token = f"sess-{uuid.uuid4().hex}"
         user_id = uuid.uuid4()
+        verified_at = dt.datetime.now(dt.UTC) - (
+            dt.timedelta(0) if fresh_mfa else dt.timedelta(minutes=10)
+        )
         self.principals[token] = Principal(
             user_id=str(user_id),
             tenant_id=str(tenant_id),
@@ -183,7 +191,7 @@ class FakeServices:
             auth_method="session",
             mfa_verified=True,
             session_id=f"s-{token}",
-            mfa_verified_at=dt.datetime.now(dt.UTC),
+            mfa_verified_at=verified_at,
             roles=frozenset(roles),
         ).to_dict()
         return Caller(token, user_id, tenant_id)
@@ -241,6 +249,11 @@ class FakeServices:
             if credential in self.principals:
                 return httpx.Response(200, json={"principal": self.principals[credential]})
             return httpx.Response(401, json={"error": {"code": "AUTHENTICATION_REQUIRED"}})
+        grant = re.fullmatch(r"/internal/v1/data-sources/([^/]+)/sql-grants/([^/]+)", path)
+        if grant:
+            self.grant_checks += 1
+            key = (request.url.params.get("tenant_id", ""), grant.group(1), grant.group(2))
+            return httpx.Response(200, json={"granted": self.grant_all or key in self.sql_grants})
         match = re.fullmatch(r"/internal/v1/data-sources/([^/]+)/query-policy", path)
         if match:
             self.policy_requests.append(request)
@@ -292,6 +305,7 @@ def make_settings(postgres: PostgresInfo, **overrides: Any) -> Settings:
         "result_store_use_memory_stub": True,
         "connector_allowed_internal_hosts": [postgres.host],
         "policy_cache_ttl_seconds": 0,
+        "redis_url": None,
         "log_level": "WARNING",
     }
     values.update(overrides)

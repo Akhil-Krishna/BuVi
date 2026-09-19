@@ -29,6 +29,13 @@ any `secret_ref mismatch` log line
 - `REJECTED_BY_DATABASE` means the read-only transaction or the user's grants refused the statement. Check that the credential is a SELECT-only user.
 - Only MySQL 8.0+ is accepted, checked from the server version on every new connection. MariaDB and TiDB are refused before any query runs (log line `data source is not a supported MySQL server`; the caller sees `DATA_SOURCE_UNAVAILABLE`). The fix is the right engine, not a workaround: MariaDB has no `max_execution_time`.
 
+## Public SQL API, grants and concurrency (Phase A10, ADR 0013)
+
+- **`/api/v1/sql/{validate,execute,history}`** is reached only through api-gateway, with the `query-gateway:proxy` scope and the user's own session. It uses purpose `sql_editor`, with the same validator, executor, audit and caps as the chat flow.
+- **`403 SQL_GRANT_REQUIRED`:** the caller is not an `org_admin` and has no per-connection grant on that data source. An `org_admin` adds one with `POST /data-sources/{id}/sql-grants` (metadata-service). The check is not cached, so a revocation applies to the next query.
+- **`403 STEP_UP_REQUIRED` on execute:** `max_rows` is above `QUERY_GATEWAY_EXPORT_STEP_UP_ROWS` (an export, Section 7.3) and the caller's step-up is not fresh.
+- **`429 QUERY_CONCURRENCY_LIMITED`** (with `Retry-After`): the tenant already has `QUERY_GATEWAY_TENANT_MAX_CONCURRENT_QUERIES` queries running, counted across all replicas through Redis leases (`qg:inflight:<tenant>`). A replica that dies frees its slots once the lease expires, after the maximum query timeout plus 60 seconds. If Redis is down, each replica enforces the cap alone (log line `query concurrency store unavailable`), so a tenant can run up to one cap per replica, but never an unlimited number.
+
 ## Security operations
 
 - **Audit query:** `SELECT created_at, requested_by, purpose, status, error_code, validation_result->>'reason'

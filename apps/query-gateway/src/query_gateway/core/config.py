@@ -11,6 +11,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 #: Section 6.3 / 13: the scope a caller needs on `POST /internal/v1/queries`.
 SCOPE_EXECUTE = "query-gateway:execute"
+#: The public `/api/v1/sql/*` routes, reached only through api-gateway (Phase A10).
+SCOPE_PROXY = "query-gateway:proxy"
 #: Read a stored `analytics_run` result behind its handle (dashboard-service, Section 13).
 SCOPE_RESULTS = "query-gateway:results"
 #: Scope this service needs to load a data source's query policy from metadata-service.
@@ -92,8 +94,14 @@ class Settings(BaseSettings):
     max_timeout_ms: int = Field(default=120_000, ge=100)
     max_result_bytes: int = Field(default=10 * 1024 * 1024, ge=1024)
     max_sql_length: int = Field(default=50_000, ge=100)
-    #: Section 20: one noisy tenant cannot starve another's queries.
+    #: Section 20: one noisy tenant cannot starve another's queries. Enforced across replicas
+    #: through Redis leases (Phase A10); per process if Redis is unreachable, never not at all.
     tenant_max_concurrent_queries: int = Field(default=4, ge=1)
+    #: None: per-process limiting only (tests, single-replica dev).
+    redis_url: str | None = "redis://localhost:6379/0"
+    #: Reading more rows than this is an export (Section 7.3): `/sql/execute` asking for more
+    #: needs a fresh step-up.
+    export_step_up_rows: int = Field(default=10_000, ge=1)
 
     @property
     def service_token_url(self) -> str:

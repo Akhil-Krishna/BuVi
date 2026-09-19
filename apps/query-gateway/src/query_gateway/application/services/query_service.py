@@ -5,7 +5,7 @@
     purpose: calling service may request it; user holds its permission  -> _authorize
     load connection policy (metadata-service, cached; tenant-bound)      -> _load_policy
     parse + AST allow-list + identifier allow-list                       -> SqlValidator
-    per-tenant concurrency cap                                           -> TenantConcurrencyLimiter
+    per-tenant concurrency cap                                           -> ConcurrencyLimiter
     fetch credential (Vault, pointer verified against tenant + source)   -> _credentials
     execute read-only with timeout, row and byte caps                    -> QueryExecutor
     store result handle with TTL                                         -> ResultStore
@@ -23,11 +23,12 @@ import logging
 import time
 import uuid
 from collections.abc import Mapping, Sequence
+from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
-from typing import Any, Final
+from typing import Any, Final, Protocol
 
-from platform_auth import Principal
-from platform_auth.permissions import PERM_CHAT_USE, PERM_SQL_EXECUTE
+from platform_auth import Principal, StepUpRequiredError
+from platform_auth.permissions import PERM_CHAT_USE, PERM_SQL_EXECUTE, ROLE_ORG_ADMIN
 from platform_secrets import SecretStore, SecretStoreError, vault_kv2_path
 from query_gateway.domain.errors import (
     DataSourceNotActiveError,
@@ -43,6 +44,7 @@ from query_gateway.domain.errors import (
     QueryValidationFailedError,
     ResultStoreUnavailableError,
     SecretStoreUnavailableError,
+    SqlGrantRequiredError,
     ValidationFailedError,
 )
 from query_gateway.domain.policies.sql_validator import SqlValidator, ValidationOutcome
@@ -54,7 +56,6 @@ from query_gateway.domain.value_objects.execution import (
     QueryResult,
 )
 from query_gateway.domain.value_objects.policy import DataSourcePolicy, Purpose
-from query_gateway.infrastructure.cache.tenant_concurrency import TenantConcurrencyLimiter
 from query_gateway.infrastructure.connectors.base import QueryExecutor
 from query_gateway.infrastructure.db.models import QueryExecution
 from query_gateway.infrastructure.db.repositories.query_repository import QueryRepository
@@ -63,7 +64,14 @@ from query_gateway.infrastructure.storage.base import ResultStore, ResultStoreEr
 
 logger = logging.getLogger(__name__)
 
+
 #: Which user permission each purpose requires.
+class ConcurrencyLimiter(Protocol):
+    """Section 20's per-tenant cap: a slot for the duration of one query, or a 429."""
+
+    def slot(self, tenant_id: uuid.UUID) -> AbstractAsyncContextManager[None]: ...
+
+
 PURPOSE_PERMISSION: Final[dict[Purpose, str]] = {
     Purpose.SQL_EDITOR: PERM_SQL_EXECUTE,
     Purpose.ANALYTICS_RUN: PERM_CHAT_USE,
@@ -77,6 +85,8 @@ class QueryLimits:
     default_timeout_ms: int
     max_timeout_ms: int
     max_result_bytes: int
+    #: SQL-editor reads above this many rows are exports (Section 7.3): step-up.
+    export_step_up_rows: int
 
 
 @dataclass(frozen=True)
@@ -129,7 +139,7 @@ class QueryService:
         secrets: SecretStore,
         executors: Mapping[str, QueryExecutor],
         results: ResultStore,
-        limiter: TenantConcurrencyLimiter,
+        limiter: ConcurrencyLimiter,
         validator: SqlValidator,
         limits: QueryLimits,
         purpose_callers: Mapping[str, Sequence[str]],
@@ -236,6 +246,15 @@ class QueryService:
             raise EngineNotSupportedError()
         if policy.status != "active":
             raise DataSourceNotActiveError()
+        # Section 7.1: `sql:execute` "(per-connection grant)" for everyone but org_admin.
+        if (
+            command.purpose is Purpose.SQL_EDITOR
+            and not _grant_exempt(principal)
+            and not await self._policies.has_sql_grant(
+                tenant_id, policy.data_source_id, uuid.UUID(principal.user_id)
+            )
+        ):
+            raise SqlGrantRequiredError()
         return policy, executor
 
     async def validate(
@@ -279,6 +298,12 @@ class QueryService:
         self, principal: Principal, caller: str, command: QueryCommand
     ) -> QueryOutcome:
         limits = self._execution_limits(command)
+        if (
+            command.purpose is Purpose.SQL_EDITOR
+            and limits.max_rows > self._limits.export_step_up_rows
+            and not principal.step_up_is_fresh()
+        ):
+            raise StepUpRequiredError.for_principal(principal)
         policy, executor = await self._prepare(principal, caller, command)
         tenant_id = uuid.UUID(principal.tenant_id)
 
@@ -382,3 +407,7 @@ class QueryService:
             duration_ms=duration_ms,
             tables=validation.tables,
         )
+
+
+def _grant_exempt(principal: Principal) -> bool:
+    return ROLE_ORG_ADMIN in principal.roles or principal.is_platform_operator

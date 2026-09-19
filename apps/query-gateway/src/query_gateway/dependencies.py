@@ -90,6 +90,7 @@ def build_query_service(request: Request, repository: QueryRepository) -> QueryS
             default_timeout_ms=settings.default_timeout_ms,
             max_timeout_ms=settings.max_timeout_ms,
             max_result_bytes=settings.max_result_bytes,
+            export_step_up_rows=settings.export_step_up_rows,
         ),
         purpose_callers=settings.purpose_callers,
         vault_mount=settings.vault_mount,

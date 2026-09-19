@@ -13,6 +13,7 @@ from contextlib import asynccontextmanager
 
 import httpx
 from fastapi import FastAPI
+from redis.asyncio import Redis
 
 from platform_auth import (
     IntrospectionClient,
@@ -26,11 +27,15 @@ from platform_observability import RequestIdMiddleware, install_error_handlers
 from platform_secrets import InMemorySecretStore, SecretStore, VaultSecretStore
 from query_gateway.api.internal import router as internal_router
 from query_gateway.api.v1.health import router as health_router
+from query_gateway.api.v1.sql import router as sql_router
 from query_gateway.core.config import Settings, get_settings
 from query_gateway.core.logging import configure_logging
 from query_gateway.dependencies import resolve_principal
 from query_gateway.domain.policies.sql_validator import SqlValidator
-from query_gateway.infrastructure.cache.tenant_concurrency import TenantConcurrencyLimiter
+from query_gateway.infrastructure.cache.tenant_concurrency import (
+    RedisTenantConcurrencyLimiter,
+    TenantConcurrencyLimiter,
+)
 from query_gateway.infrastructure.connectors.base import QueryExecutor
 from query_gateway.infrastructure.connectors.mysql import MySqlQueryExecutor
 from query_gateway.infrastructure.connectors.postgres import PostgresQueryExecutor
@@ -116,7 +121,21 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 ("mysql", MySqlQueryExecutor),
             )
         }
-    app.state.limiter = TenantConcurrencyLimiter(settings.tenant_max_concurrent_queries)
+    redis = (
+        Redis.from_url(settings.redis_url, socket_connect_timeout=1, socket_timeout=1)
+        if settings.redis_url
+        else None
+    )
+    app.state.limiter = (
+        RedisTenantConcurrencyLimiter(
+            redis,
+            limit=settings.tenant_max_concurrent_queries,
+            # Outlasts the longest allowed query, its client slack and the result upload.
+            lease_seconds=settings.max_timeout_ms / 1000 + 60,
+        )
+        if redis is not None
+        else TenantConcurrencyLimiter(settings.tenant_max_concurrent_queries)
+    )
     app.state.validator = SqlValidator(max_length=settings.max_sql_length)
     try:
         yield
@@ -124,6 +143,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         if owned_executors:
             for executor in app.state.executors.values():
                 await executor.close()
+        if redis is not None:
+            await redis.aclose()
         await http.aclose()
         await engine.dispose()
 
@@ -160,6 +181,7 @@ def create_app(
     install_error_handlers(app)
     app.include_router(health_router)
     app.include_router(internal_router)
+    app.include_router(sql_router)
     return app
 
 

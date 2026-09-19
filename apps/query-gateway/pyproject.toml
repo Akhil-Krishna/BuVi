@@ -24,6 +24,7 @@ dependencies = [
     "sqlalchemy[asyncio]>=2.0.52",
     "sqlglot>=30.18.0,<31",
     "uvicorn>=0.52.4",
+    "redis>=8.1.0",
 ]
 
 [project.scripts]
