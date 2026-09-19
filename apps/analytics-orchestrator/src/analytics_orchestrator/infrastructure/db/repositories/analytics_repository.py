@@ -8,9 +8,16 @@ import uuid
 from typing import Any
 
 from sqlalchemy import func, select
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from analytics_orchestrator.infrastructure.db.models import Conversation, Message, Run, RunEvent
+from analytics_orchestrator.infrastructure.db.models import (
+    Conversation,
+    Message,
+    Run,
+    RunEvent,
+    UsageRecord,
+)
 
 
 class AnalyticsRepository:
@@ -158,3 +165,34 @@ class AnalyticsRepository:
             .order_by(RunEvent.seq)
         )
         return list(result.scalars().all())
+
+    # --- Usage (Section 23; Phase A11) ---------------------------------------------------
+
+    async def add_usage(self, records: list[dict[str, Any]]) -> int:
+        """Insert usage rows; an event already stored (redelivery) is skipped. Returns how many
+        were new."""
+        if not records:
+            return 0
+        statement = (
+            insert(UsageRecord)
+            .values(records)
+            .on_conflict_do_nothing(index_elements=[UsageRecord.event_id])
+            .returning(UsageRecord.event_id)
+        )
+        result = await self._session.execute(statement)
+        return len(result.all())
+
+    async def usage_totals(
+        self, tenant_id: uuid.UUID, start: dt.datetime, end: dt.datetime
+    ) -> list[tuple[str, str | None, int]]:
+        """(metric, stage, sum) over `[start, end)`."""
+        result = await self._session.execute(
+            select(UsageRecord.metric, UsageRecord.stage, func.sum(UsageRecord.quantity))
+            .where(
+                UsageRecord.tenant_id == tenant_id,
+                UsageRecord.occurred_at >= start,
+                UsageRecord.occurred_at < end,
+            )
+            .group_by(UsageRecord.metric, UsageRecord.stage)
+        )
+        return [(metric, stage, int(total)) for metric, stage, total in result.all()]

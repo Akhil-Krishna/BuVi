@@ -91,6 +91,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.introspection = IntrospectionClient(
         base_url=settings.identity_url, http=http, tokens=tokens
     )
+    app.state.identity = IdentityClient(base_url=settings.identity_url, http=http, tokens=tokens)
     if app.state.service_token_verifier is None:
         install_service_token_verifier(
             app,
@@ -140,7 +141,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         lock=run_lock(engine),
         flow=CrewAiFlowRunner(),
         router=router,
-        identity=IdentityClient(base_url=settings.identity_url, http=http, tokens=tokens),
+        identity=app.state.identity,
         metadata=MetadataClient(base_url=settings.metadata_url, http=http, tokens=tokens),
         queries=QueryGatewayClient(base_url=settings.query_gateway_url, http=http, tokens=tokens),
         charts=VisualizationClient(base_url=settings.visualization_url, http=http, tokens=tokens),

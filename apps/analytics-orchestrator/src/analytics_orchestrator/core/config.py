@@ -18,6 +18,10 @@ SCOPE_RESOLVE_PRINCIPAL = "identity-service:resolve-principal"
 SCOPE_CHART_VALIDATE = "visualization-service:validate"
 SCOPE_ARTIFACTS_WRITE = "dashboard-service:artifacts"
 SCOPE_SEMANTIC_CONTEXT = "semantic-service:context"
+#: worker-runtime writes aggregated `billing.usage.recorded` events (Phase A11).
+SCOPE_USAGE_WRITE = "analytics-orchestrator:usage"
+#: Seat count for `/billing/usage` (Phase A11).
+SCOPE_DIRECTORY = "identity-service:directory"
 
 RUN_REQUESTED_SUBJECT = "analytics.run.requested"
 BILLING_USAGE_SUBJECT = "billing.usage.recorded"

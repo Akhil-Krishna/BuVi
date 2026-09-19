@@ -313,6 +313,24 @@ class FakeServices:
                         200, json={"principal": {**principal, "auth_method": "service_jwt"}}
                     )
             return httpx.Response(404, json={"error": {"code": "NOT_FOUND"}})
+        if path == "/internal/v1/directory/users":
+            assert (
+                request.headers["x-service-authorization"]
+                == "Bearer svc:identity-service:identity-service:directory"
+            )
+            tenant = json.loads(request.content)["tenant_id"]
+            users = [
+                {
+                    "id": p["user_id"],
+                    "email": f"{p['user_id']}@example.com",
+                    "display_name": None,
+                    "status": "deactivated" if p["user_id"] in self.inactive_users else "active",
+                    "roles": sorted(p.get("roles", [])),
+                }
+                for p in self.principals.values()
+                if p["tenant_id"] == tenant
+            ]
+            return httpx.Response(200, json={"users": users})
         if path.startswith("/internal/v1/data-sources"):
             if self.metadata_down:
                 return httpx.Response(503)

@@ -50,7 +50,12 @@ class JetStreamPublisher:
         )
 
     async def record(self, event: BillingUsageRecorded) -> None:
-        await self._js.publish(BILLING_USAGE_SUBJECT, event.model_dump_json().encode(), timeout=3.0)
+        await self._js.publish(
+            BILLING_USAGE_SUBJECT,
+            event.model_dump_json().encode(),
+            timeout=3.0,
+            headers={"Nats-Msg-Id": str(event.event_id)},
+        )
 
     @property
     def connected(self) -> bool:

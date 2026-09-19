@@ -122,3 +122,23 @@ class RunEvent(Base):
     created_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=_NOW
     )
+
+
+class UsageRecord(Base):
+    """One `billing.usage.recorded` event (Phase A11). `event_id` is the producer's id."""
+
+    __tablename__ = "usage_records"
+    __table_args__ = (
+        CheckConstraint("quantity >= 0", name="ck_usage_records_quantity"),
+        Index("idx_usage_records_tenant_time", "tenant_id", "occurred_at"),
+        {"schema": SCHEMA},
+    )
+
+    event_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    metric: Mapped[str] = mapped_column(Text, nullable=False)
+    quantity: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    model: Mapped[str | None] = mapped_column(Text)
+    stage: Mapped[str | None] = mapped_column(Text)
+    run_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    occurred_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), nullable=False)

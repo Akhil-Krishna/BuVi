@@ -34,6 +34,7 @@ from analytics_orchestrator.core.config import (
     SCOPE_ARTIFACTS_WRITE,
     SCOPE_CHART_VALIDATE,
     SCOPE_CONTEXT,
+    SCOPE_DIRECTORY,
     SCOPE_QUERY_EXECUTE,
     SCOPE_RESOLVE_PRINCIPAL,
     SCOPE_SEMANTIC_CONTEXT,
@@ -121,6 +122,22 @@ class IdentityClient(_ServiceClient):
         if principal.tenant_id != str(tenant_id) or principal.user_id != str(user_id):
             raise DependencyUnavailableError()
         return principal
+
+    async def active_seats(self, tenant_id: uuid.UUID) -> int:
+        """Active users in the tenant: the seat count `/billing/usage` reports (Section 23)."""
+        response = await self._request(
+            "POST",
+            "/internal/v1/directory/users",
+            SCOPE_DIRECTORY,
+            json={"tenant_id": str(tenant_id)},
+        )
+        if response.status_code != 200:
+            raise DependencyUnavailableError()
+        try:
+            users = response.json()["users"]
+            return sum(1 for user in users if user["status"] == "active")
+        except (KeyError, TypeError, ValueError):
+            raise DependencyUnavailableError() from None
 
 
 class MetadataClient(_ServiceClient):

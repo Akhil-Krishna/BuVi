@@ -1,6 +1,102 @@
 {
   "components": {
     "schemas": {
+      "BillingUsageRecorded": {
+        "additionalProperties": false,
+        "description": "`billing.usage.recorded`: one metered quantity (Section 23).\n\n1.1 (Phase A11): `event_id` (the aggregator's idempotency key, so a redelivered message is\ncounted once), `occurred_at`, and `query_execution_ms` from query-gateway, which has no model.",
+        "properties": {
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          },
+          "metric": {
+            "enum": [
+              "llm_input_tokens",
+              "llm_output_tokens",
+              "query_execution_ms"
+            ],
+            "title": "Metric",
+            "type": "string"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "quantity": {
+            "minimum": 0.0,
+            "title": "Quantity",
+            "type": "integer"
+          },
+          "request_id": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Request Id"
+          },
+          "run_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Id"
+          },
+          "schema_version": {
+            "default": "1.1",
+            "pattern": "^\\d+\\.\\d+$",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "stage": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stage"
+          },
+          "tenant_id": {
+            "format": "uuid",
+            "title": "Tenant Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tenant_id",
+          "metric",
+          "quantity"
+        ],
+        "title": "BillingUsageRecorded",
+        "type": "object"
+      },
       "ConversationCreateRequest": {
         "additionalProperties": false,
         "properties": {
@@ -93,6 +189,37 @@
           "service"
         ],
         "title": "HealthResponse",
+        "type": "object"
+      },
+      "LlmTokenUsage": {
+        "properties": {
+          "by_stage": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "By Stage",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input",
+            "type": "integer"
+          },
+          "output": {
+            "title": "Output",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "input",
+          "output",
+          "total",
+          "by_stage"
+        ],
+        "title": "LlmTokenUsage",
         "type": "object"
       },
       "MessageCreateRequest": {
@@ -254,6 +381,77 @@
         "title": "TokenQuota",
         "type": "object"
       },
+      "UsageRecordsRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "records": {
+            "items": {
+              "$ref": "#/components/schemas/BillingUsageRecorded"
+            },
+            "maxItems": 500,
+            "minItems": 1,
+            "title": "Records",
+            "type": "array"
+          }
+        },
+        "required": [
+          "records"
+        ],
+        "title": "UsageRecordsRequest",
+        "type": "object"
+      },
+      "UsageRecordsResponse": {
+        "properties": {
+          "duplicates": {
+            "title": "Duplicates",
+            "type": "integer"
+          },
+          "stored": {
+            "title": "Stored",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "stored",
+          "duplicates"
+        ],
+        "title": "UsageRecordsResponse",
+        "type": "object"
+      },
+      "UsageResponse": {
+        "properties": {
+          "end": {
+            "format": "date",
+            "title": "End",
+            "type": "string"
+          },
+          "llm_tokens": {
+            "$ref": "#/components/schemas/LlmTokenUsage"
+          },
+          "query_minutes": {
+            "title": "Query Minutes",
+            "type": "number"
+          },
+          "seats": {
+            "title": "Seats",
+            "type": "integer"
+          },
+          "start": {
+            "format": "date",
+            "title": "Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "start",
+          "end",
+          "llm_tokens",
+          "query_minutes",
+          "seats"
+        ],
+        "title": "UsageResponse",
+        "type": "object"
+      },
       "ValidationError": {
         "properties": {
           "ctx": {
@@ -319,6 +517,74 @@
           }
         },
         "summary": "Quotas",
+        "tags": [
+          "billing"
+        ]
+      }
+    },
+    "/api/v1/billing/usage": {
+      "get": {
+        "description": "Default period: the current UTC month to date.",
+        "operationId": "usage_api_v1_billing_usage_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "start",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Start"
+            }
+          },
+          {
+            "in": "query",
+            "name": "end",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "End"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UsageResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Usage",
         "tags": [
           "billing"
         ]
@@ -518,6 +784,48 @@
         "summary": "Ready",
         "tags": [
           "health"
+        ]
+      }
+    },
+    "/internal/v1/billing/usage-records": {
+      "post": {
+        "description": "Each tenant's records are written under that tenant's RLS binding. A record whose\n`event_id` is already stored (a redelivered message) is skipped, not counted twice.",
+        "operationId": "store_usage_records_internal_v1_billing_usage_records_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UsageRecordsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UsageRecordsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Store Usage Records",
+        "tags": [
+          "internal"
         ]
       }
     },

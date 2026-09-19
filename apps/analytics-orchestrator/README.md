@@ -43,3 +43,7 @@ make dev-orchestrator dev-worker          # :8004 and :8005 (needs make up + mig
 uv run --package analytics-orchestrator pytest apps/analytics-orchestrator/src/analytics_orchestrator/tests
 make test-analytics-run                   # Phase A5 DoD against the real stack
 ```
+
+## Billing usage (Phase A11)
+
+`GET /api/v1/billing/usage` (`billing:read`) sums `analytics.usage_records` (tokens by stage, query minutes) over a UTC date range, and adds the live seat count from identity-service's directory. worker-runtime writes the records via `POST /internal/v1/billing/usage-records`.

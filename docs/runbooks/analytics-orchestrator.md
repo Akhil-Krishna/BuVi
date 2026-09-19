@@ -58,3 +58,13 @@
 
 1. `alembic upgrade head` as `buvi_migrator`, then roll the deployment. In-flight runs resume on the new pods.
 2. Rollback: redeploy the previous image. `alembic downgrade -1` drops all conversations and runs; use it only for a failed first deployment.
+
+## Usage (Phase A11)
+
+- **Storage:** `analytics.usage_records` holds one row per `billing.usage.recorded` event. The key is the producer's `event_id`. Rows are append-only for the app role and RLS-scoped by tenant.
+- **Writer:** worker-runtime only, via `POST /internal/v1/billing/usage-records`.
+- **`GET /billing/usage?start=&end=`** (`billing:read`):
+  - sums tokens (in total and by stage) and query minutes over inclusive UTC dates;
+  - defaults to the current month, and refuses a period longer than 366 days (`422`);
+  - adds seats (active users) read live from identity-service's directory, so a directory outage gives `502 UPSTREAM_UNAVAILABLE`.
+- **Usage events** now carry an `event_id`, also used as the JetStream message id.
