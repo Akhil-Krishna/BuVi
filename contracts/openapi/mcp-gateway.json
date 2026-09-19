@@ -733,6 +733,93 @@
         ]
       }
     },
+    "/api/v1/mcp/servers/{server_id}/disable": {
+      "post": {
+        "description": "Stop every invocation now. No step-up: removing access never waits on MFA.",
+        "operationId": "disable_server_api_v1_mcp_servers__server_id__disable_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "server_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Server Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServerDetailResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Disable Server",
+        "tags": [
+          "mcp"
+        ]
+      }
+    },
+    "/api/v1/mcp/servers/{server_id}/reject": {
+      "post": {
+        "operationId": "reject_server_api_v1_mcp_servers__server_id__reject_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "server_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Server Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServerDetailResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reject Server",
+        "tags": [
+          "mcp"
+        ]
+      }
+    },
     "/api/v1/mcp/servers/{server_id}/tools/{tool}/grants": {
       "post": {
         "operationId": "grant_tool_api_v1_mcp_servers__server_id__tools__tool__grants_post",

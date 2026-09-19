@@ -142,6 +142,29 @@ async def approve_server(
     return _detail(await build_registry(request, repository).approve(principal, server_id))
 
 
+@router.post("/mcp/servers/{server_id}/disable", response_model=ServerDetailResponse)
+async def disable_server(
+    request: Request,
+    server_id: uuid.UUID,
+    principal: OrgAdmin,
+    _owns: OwnsServer,
+    repository: ScopedRepo,
+) -> ServerDetailResponse:
+    """Stop every invocation now. No step-up: removing access never waits on MFA."""
+    return _detail(await build_registry(request, repository).disable(principal, server_id))
+
+
+@router.post("/mcp/servers/{server_id}/reject", response_model=ServerDetailResponse)
+async def reject_server(
+    request: Request,
+    server_id: uuid.UUID,
+    principal: OrgAdmin,
+    _owns: OwnsServer,
+    repository: ScopedRepo,
+) -> ServerDetailResponse:
+    return _detail(await build_registry(request, repository).reject(principal, server_id))
+
+
 @router.post(
     "/mcp/servers/{server_id}/tools/{tool}/grants",
     response_model=GrantResponse,

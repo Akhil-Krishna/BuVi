@@ -15,7 +15,7 @@
 
 1. **Register** (`mcp:manage`). An HTTPS endpoint and the declared tool manifest (name and class for each tool). The server is not contacted. An optional bearer token goes to Vault at `mcp/<tenant>/<server>`, and the row keeps only that reference.
 2. **Approve** (`org_admin` with fresh MFA). The gateway discovers the tools over MCP. Every declared tool must exist, and none declared read-class may be marked `readOnlyHint: false`. The approval audit event lists any undeclared tools the server offers; they are never reachable.
-3. **Grant** (`org_admin`). Read-class tools go to a tenant role or a user. `write`/`admin` tools are refused until Phase A10.
+3. **Grant** (`org_admin`). Tools go to a tenant role or a user; a grant on a `write`/`admin` tool needs a fresh step-up.
 4. **Invoke** (grantee). Checks run in order: approved server, tool policy, grant. The call is then made under the Section 15 controls. Each attempt produces one `mcp.invocations` row plus one audit event (`mcp.tool.invoked` or `mcp.tool.denied`).
 
 ## Common incidents
@@ -33,9 +33,18 @@
 ## Operations
 
 - **Who invoked what:** `SELECT created_at, invoked_by, response_status, response_summary FROM mcp.invocations WHERE tool_id = '<tool>' ORDER BY created_at DESC;` Run as `buvi_migrator`, or as the app role with `app.tenant_id` set. The request role cannot update or delete these rows.
-- **Revoke access now:** `DELETE /api/v1/mcp/servers/{id}/tools/{tool}/grants/{grant_id}`. Disabling a whole server is Phase A10; until then, revoke its grants.
+- **Revoke access now:** revoke one grant with `DELETE /api/v1/mcp/servers/{id}/tools/{tool}/grants/{grant_id}`, or stop the whole server with `POST /api/v1/mcp/servers/{id}/disable` (below).
 - **Internal MCP servers** (e.g. a sidecar) need their hostname in `MCP_EGRESS_ALLOWED_INTERNAL_HOSTS` (a JSON list), recorded as an approved exception. Those hosts skip the public-address rule and may use plain HTTP. Startup refuses loopback there in staging/prod.
 - **Egress:** in production, mcp-gateway's outbound traffic must go through the dedicated egress proxy with its NetworkPolicy (Section 15, a Phase C1 item). The application controls do not replace it.
+
+## Disable, reject and write tools (Phase A10, ADR 0013)
+
+- **Stop a server now:** `POST /mcp/servers/{id}/disable` (`org_admin`, no step-up: removing access never waits on MFA). Invocations are then refused with `MCP_SERVER_NOT_APPROVED`. To re-enable, approve it again: that needs step-up and re-verifies the live server.
+- **Reject a registration:** `POST /mcp/servers/{id}/reject`. Rejection is final; to try again, register the server anew.
+- **Write and admin tools:**
+  - a grant on one needs a fresh step-up;
+  - every invocation needs a fresh step-up, and a stale one is recorded as `denied: step_up_required` and published;
+  - an `admin` tool also requires the caller to be an `org_admin` (`MCP_TOOL_ADMIN_ONLY`).
 
 ## Deploy / rollback
 

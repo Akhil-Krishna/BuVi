@@ -1,7 +1,8 @@
 """Tool invocation: policy, proxying and the security record (Sections 8.7, 14, 15, 21).
 
-Order for a declared tool: server approved -> tool policy not `deny` -> a grant for the caller
--> the call, under the Section 15 request-time controls. Every attempt, allowed or denied,
+Order for a declared tool: server approved -> tool policy -> a grant for the caller -> for an
+`admin` tool, an `org_admin` caller -> for `write`/`admin`, a fresh step-up (Phase A10) -> the
+call, under the Section 15 request-time controls. Every attempt, allowed or denied,
 becomes one `mcp.invocations` row and one audit event. A denial is also published as
 `mcp.invocation.denied`. A tool that was never declared has no `tool_id` for that table, so the
 attempt is audited only.
@@ -36,7 +37,7 @@ from mcp_gateway.infrastructure.db.models import Server, Tool
 from mcp_gateway.infrastructure.db.repositories.mcp_repository import McpRepository
 from mcp_gateway.infrastructure.mcp.client import ToolResult
 from mcp_gateway.infrastructure.mcp.egress import DestinationNotAllowedError, UpstreamFailure
-from platform_auth import Principal
+from platform_auth import Principal, StepUpRequiredError
 from platform_contracts import McpInvocationDenied
 from platform_egress import EgressPolicy
 from platform_observability import request_id_var
@@ -89,10 +90,12 @@ class InvocationService:
         grants = await self._repo.grants([tool.id])
         reason = denial(
             server_status=server.status,
+            tool_class=tool.tool_class,
             policy=tool.default_policy,
             grants=[GrantRef(g.grantee_role, g.grantee_user_id) for g in grants],
             user_id=user_id,
             roles=principal.roles,
+            step_up_fresh=principal.step_up_is_fresh(),
         )
         payload = {"tool": tool_name, "arguments": arguments}
         if reason is not None:
@@ -167,6 +170,9 @@ class InvocationService:
                 "mcp denial event not published",
                 extra={"context": {"reason": reason, "error_type": type(error).__name__}},
             )
+        if reason == "step_up_required":
+            # The same refusal every Section 7.3 operation gives, so clients prompt alike.
+            raise StepUpRequiredError.for_principal(principal)
         raise InvocationDeniedError(reason)
 
     async def _record(

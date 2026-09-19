@@ -18,26 +18,28 @@ from mcp_gateway.domain.errors import (
     NotFoundError,
     SecretStoreUnavailableError,
     ToolNotFoundError,
-    ToolNotGrantableError,
     UpstreamError,
 )
 from mcp_gateway.domain.policies.endpoint import Endpoint, EndpointRejected, parse_endpoint
 from mcp_gateway.domain.policies.tool_policy import (
     default_policy,
-    is_grantable,
     manifest_problems,
+    needs_step_up,
     verification_problems,
 )
 from mcp_gateway.infrastructure.audit.sink import AuditRecord, AuditSink
 from mcp_gateway.infrastructure.db.models import Server, Tool, ToolGrant
 from mcp_gateway.infrastructure.db.repositories.mcp_repository import McpRepository
 from mcp_gateway.infrastructure.mcp.egress import DestinationNotAllowedError, UpstreamFailure
-from platform_auth import Principal
+from platform_auth import Principal, StepUpRequiredError
 from platform_auth.permissions import TENANT_ROLES
 from platform_egress import EgressPolicy
 from platform_secrets import SecretStore, SecretStoreError
 
 logger = logging.getLogger(__name__)
+
+#: Approval re-verifies the live server: from a new registration, or to re-enable one.
+APPROVABLE = ("pending_approval", "disabled")
 
 
 def secret_ref(tenant_id: uuid.UUID, server_id: uuid.UUID) -> str:
@@ -174,7 +176,8 @@ class ServerRegistry:
         server still being pending, so two concurrent approvals cannot both win.
         """
         before = await self.detail(server_id)
-        if before.server.status != "pending_approval":
+        previous = before.server.status
+        if previous not in APPROVABLE:
             raise InvalidTransitionError()
         endpoint = stored_endpoint(before.server, self._egress)
         token = await server_token(self._secrets, before.server)
@@ -190,13 +193,18 @@ class ServerRegistry:
         )
         if problems:
             raise ManifestMismatchError(problems=problems)
-        if not await self._repo.approve(server_id, uuid.UUID(principal.user_id)):
+        if not await self._repo.transition(
+            server_id,
+            from_statuses=(previous,),
+            to="approved",
+            approved_by=uuid.UUID(principal.user_id),
+        ):
             raise InvalidTransitionError()
         await self._record(
             principal,
             "mcp.server.approved",
             str(server_id),
-            before={"status": "pending_approval"},
+            before={"status": previous},
             after={
                 "status": "approved",
                 "tools": {t.tool_name: t.tool_class for t in before.tools},
@@ -204,6 +212,30 @@ class ServerRegistry:
                     {d.name for d in discovered} - {t.tool_name for t in before.tools}
                 )[:100],
             },
+        )
+        return await self.detail(server_id)
+
+    async def disable(self, principal: Principal, server_id: uuid.UUID) -> ServerDetail:
+        """`approved` -> `disabled`, effective at the next invocation. No step-up: removing
+        access must never wait on MFA. Re-enabling is an approval (step-up, re-verification)."""
+        return await self._move(principal, server_id, ("approved",), "disabled")
+
+    async def reject(self, principal: Principal, server_id: uuid.UUID) -> ServerDetail:
+        """`pending_approval` -> `rejected` (final; register again to retry)."""
+        return await self._move(principal, server_id, ("pending_approval",), "rejected")
+
+    async def _move(
+        self, principal: Principal, server_id: uuid.UUID, allowed: tuple[str, ...], to: str
+    ) -> ServerDetail:
+        before = await self.detail(server_id)
+        if not await self._repo.transition(server_id, from_statuses=allowed, to=to):
+            raise InvalidTransitionError()
+        await self._record(
+            principal,
+            f"mcp.server.{to}",
+            str(server_id),
+            before={"status": before.server.status},
+            after={"status": to},
         )
         return await self.detail(server_id)
 
@@ -221,8 +253,9 @@ class ServerRegistry:
         if grantee_role is not None and grantee_role not in TENANT_ROLES:
             raise GrantInvalidError(reason="unknown_role")
         tool = await self._tool(server_id, tool_name)
-        if not is_grantable(tool.tool_class):
-            raise ToolNotGrantableError()
+        if needs_step_up(tool.tool_class) and not principal.step_up_is_fresh():
+            # Section 7.3: "granting a write-capable MCP tool" is a step-up operation.
+            raise StepUpRequiredError.for_principal(principal)
         existing = await self._repo.grants([tool.id])
         if any(
             g.grantee_role == grantee_role and g.grantee_user_id == grantee_user_id

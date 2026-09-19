@@ -12,23 +12,18 @@ from mcp_gateway.domain.policies.tool_policy import (
     GrantRef,
     default_policy,
     denial,
-    is_grantable,
     manifest_problems,
+    needs_step_up,
     verification_problems,
 )
 
 USER = uuid.uuid4()
 
 
-def test_default_policies_and_grantability() -> None:
-    assert {c: default_policy(c) for c in ("read_metadata", "read_data", "external_read")} == {
-        "read_metadata": "require_grant",
-        "read_data": "require_grant",
-        "external_read": "require_grant",
-    }
-    assert default_policy("write") == default_policy("admin") == "deny"
-    assert is_grantable("external_read") and not is_grantable("write")
-    assert not is_grantable("admin")
+def test_every_class_needs_a_grant_and_write_admin_need_step_up() -> None:
+    classes = ("read_metadata", "read_data", "external_read", "write", "admin")
+    assert {c: default_policy(c) for c in classes} == dict.fromkeys(classes, "require_grant")
+    assert [c for c in classes if needs_step_up(c)] == ["write", "admin"]
 
 
 def test_manifest_problems() -> None:
@@ -62,30 +57,89 @@ def test_verification_only_ever_tightens() -> None:
     ]
 
 
+GRANTED = [GrantRef(None, USER)]
+
+
 @pytest.mark.parametrize(
-    ("status", "policy", "grants", "roles", "expected"),
+    ("status", "tool_class", "policy", "grants", "roles", "fresh", "expected"),
     [
-        ("pending_approval", "require_grant", [GrantRef(None, USER)], set(), "server_not_approved"),
-        ("disabled", "require_grant", [GrantRef(None, USER)], set(), "server_not_approved"),
-        ("approved", "deny", [GrantRef(None, USER)], set(), "tool_denied_by_policy"),
-        ("approved", "allow", [], set(), "tool_denied_by_policy"),  # reserved: not honoured
-        ("approved", "require_grant", [], {"developer"}, "not_granted"),
-        ("approved", "require_grant", [GrantRef(None, uuid.uuid4())], set(), "not_granted"),
-        ("approved", "require_grant", [GrantRef("client", None)], {"developer"}, "not_granted"),
-        ("approved", "require_grant", [GrantRef(None, USER)], set(), None),
-        ("approved", "require_grant", [GrantRef("developer", None)], {"developer"}, None),
+        (
+            "pending_approval",
+            "read_data",
+            "require_grant",
+            GRANTED,
+            set(),
+            True,
+            "server_not_approved",
+        ),
+        ("disabled", "read_data", "require_grant", GRANTED, set(), True, "server_not_approved"),
+        ("rejected", "read_data", "require_grant", GRANTED, set(), True, "server_not_approved"),
+        ("approved", "read_data", "deny", GRANTED, set(), True, "tool_denied_by_policy"),
+        ("approved", "read_data", "allow", [], set(), True, "tool_denied_by_policy"),  # reserved
+        ("approved", "read_data", "require_grant", [], {"developer"}, True, "not_granted"),
+        (
+            "approved",
+            "read_data",
+            "require_grant",
+            [GrantRef(None, uuid.uuid4())],
+            set(),
+            True,
+            "not_granted",
+        ),
+        (
+            "approved",
+            "read_data",
+            "require_grant",
+            [GrantRef("client", None)],
+            {"developer"},
+            True,
+            "not_granted",
+        ),
+        (
+            "approved",
+            "read_data",
+            "require_grant",
+            GRANTED,
+            set(),
+            False,
+            None,
+        ),  # reads: no step-up
+        (
+            "approved",
+            "read_data",
+            "require_grant",
+            [GrantRef("developer", None)],
+            {"developer"},
+            False,
+            None,
+        ),
+        # Grant first: a caller who could never invoke is not asked for MFA.
+        ("approved", "write", "require_grant", [], {"developer"}, False, "not_granted"),
+        ("approved", "write", "require_grant", GRANTED, {"developer"}, False, "step_up_required"),
+        ("approved", "write", "require_grant", GRANTED, {"developer"}, True, None),
+        ("approved", "admin", "require_grant", GRANTED, {"developer"}, True, "admin_only"),
+        ("approved", "admin", "require_grant", GRANTED, {"org_admin"}, False, "step_up_required"),
+        ("approved", "admin", "require_grant", GRANTED, {"org_admin"}, True, None),
     ],
 )
 def test_denial_order(
-    status: str, policy: str, grants: list[GrantRef], roles: set[str], expected: str | None
+    status: str,
+    tool_class: str,
+    policy: str,
+    grants: list[GrantRef],
+    roles: set[str],
+    fresh: bool,
+    expected: str | None,
 ) -> None:
     assert (
         denial(
             server_status=status,
+            tool_class=tool_class,
             policy=policy,
             grants=grants,
             user_id=USER,
             roles=frozenset(roles),
+            step_up_fresh=fresh,
         )
         == expected
     )

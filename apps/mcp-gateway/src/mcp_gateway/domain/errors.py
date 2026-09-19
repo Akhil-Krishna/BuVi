@@ -81,12 +81,6 @@ class GrantNotFoundError(DomainError):
     message = "Not found."
 
 
-class ToolNotGrantableError(DomainError):
-    code = "MCP_TOOL_NOT_GRANTABLE"
-    status_code = 409
-    message = "Write and admin tools cannot be granted until step-up confirmation exists."
-
-
 class GrantExistsError(DomainError):
     code = "MCP_GRANT_EXISTS"
     status_code = 409
@@ -119,12 +113,14 @@ DENIAL_CODES: dict[str, str] = {
     "server_not_approved": "MCP_SERVER_NOT_APPROVED",
     "tool_denied_by_policy": "MCP_TOOL_DENIED",
     "not_granted": "MCP_TOOL_NOT_GRANTED",
+    "admin_only": "MCP_TOOL_ADMIN_ONLY",
     "destination_not_allowed": "DESTINATION_NOT_ALLOWED",
 }
 DENIAL_MESSAGES: dict[str, str] = {
     "server_not_approved": "This MCP server is not approved.",
     "tool_denied_by_policy": "This tool may not be invoked.",
     "not_granted": "You have not been granted this tool.",
+    "admin_only": "Only an organization administrator may invoke this tool.",
     "destination_not_allowed": "The server's address is not an allowed destination.",
 }
 

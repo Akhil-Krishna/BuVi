@@ -44,12 +44,22 @@ class McpRepository:
         )
         return tenant_id
 
-    async def approve(self, server_id: uuid.UUID, approved_by: uuid.UUID) -> bool:
-        """`pending_approval` -> `approved`, only if still pending (a concurrent approval loses)."""
+    async def transition(
+        self,
+        server_id: uuid.UUID,
+        *,
+        from_statuses: tuple[str, ...],
+        to: str,
+        approved_by: uuid.UUID | None = None,
+    ) -> bool:
+        """Change status only from an allowed one: a concurrent change loses, never overwrites."""
+        values: dict[str, Any] = {"status": to}
+        if approved_by is not None:
+            values["approved_by"] = approved_by
         result = await self._db.execute(
             update(Server)
-            .where(Server.id == server_id, Server.status == "pending_approval")
-            .values(status="approved", approved_by=approved_by)
+            .where(Server.id == server_id, Server.status.in_(from_statuses))
+            .values(**values)
         )
         return bool(getattr(result, "rowcount", 0))
 

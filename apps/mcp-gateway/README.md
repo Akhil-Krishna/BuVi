@@ -7,7 +7,7 @@ Governed MCP integrations: server registry, tool classification and policy, and 
 | Owner | platform / integrations |
 | Schema | `mcp` (Section 8.7: `servers`, `tools`, `tool_grants`, `invocations`; RLS; `invocations` append-only for the request role) |
 | Port | 8009 |
-| Public API (via api-gateway) | `GET/POST /api/v1/mcp/servers` (`mcp:manage`), `GET /api/v1/mcp/servers/{id}` (`mcp:manage`), `POST …/{id}/approve` (`org_admin`, step-up), `POST …/{id}/tools/{tool}/grants` and `DELETE …/grants/{grant_id}` (`org_admin`), `POST …/{id}/tools/{tool}/invoke` (tool grant) |
+| Public API (via api-gateway) | `GET/POST /api/v1/mcp/servers` (`mcp:manage`), `GET /api/v1/mcp/servers/{id}` (`mcp:manage`), `POST …/{id}/approve` (`org_admin`, step-up), `POST …/{id}/disable` and `…/reject` (`org_admin`), `POST …/{id}/tools/{tool}/grants` and `DELETE …/grants/{grant_id}` (`org_admin`), `POST …/{id}/tools/{tool}/invoke` (tool grant) |
 | Events | `mcp.invocation.denied` on JetStream stream `MCP` (`contracts/events/mcp.invocation.denied.v1.json`) |
 | Contract | `contracts/openapi/mcp-gateway.json` |
 | Health | `/health/live`; `/health/ready` (Postgres; the event stream only degrades it) |
@@ -19,7 +19,7 @@ Governed MCP integrations: server registry, tool classification and policy, and 
 
 1. **Register.** Name, HTTPS endpoint, optional bearer token, and the tools the tenant will use, with their classes. The server is created `pending_approval`; nothing is contacted.
 2. **Approve** (`org_admin` + fresh MFA). The gateway discovers the live tools and checks the declared manifest: every declared tool exists, and none declared read-class is marked `readOnlyHint: false`. On any mismatch the server stays pending.
-3. **Grant.** Grant a read-class tool to a tenant role or to a user. Write and admin tools cannot be granted until Phase A10.
+3. **Grant.** Grant a tool to a tenant role or to a user. A grant on a write or admin tool needs a fresh step-up, and so does every invocation of one; an admin tool is for `org_admin`s only (Phase A10).
 4. **Invoke.** The checks run in order: server approved, tool not `deny`, caller granted. The call is then made under the outbound controls below. Every attempt is one `mcp.invocations` row plus an audit event; denials are also published. Output is returned marked `untrusted` and is never stored.
 
 ## Outbound controls (Section 15)

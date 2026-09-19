@@ -133,25 +133,87 @@ async def test_approval_verifies_the_declared_manifest(harness: Harness, tenant:
     assert approved.after_state is not None and "delete_order" in approved.after_state["tools"]
 
 
-async def test_write_tools_are_denied_and_not_grantable(
+async def test_write_and_admin_tools_need_grants_and_a_fresh_step_up(
     harness: Harness, tenant: uuid.UUID, platform_db: Any
 ) -> None:
-    """DoD: a `write` tool is denied even on an approved server (until Phase A10)."""
+    """Phase A10 DoD: granting and invoking a write tool are step-up operations (Section 7.3),
+    and an admin tool is for `org_admin` only (Section 14)."""
     admin, sid = await _approved(
-        harness, tenant, tools={"delete_order": "write", "search_docs": "read_metadata"}
+        harness, tenant, tools={"delete_order": "write", "lookup_order": "admin"}
     )
-    grant = await harness.grant(admin, sid, "delete_order", grantee_role="org_admin")
-    assert grant.status_code == 409 and grant.json()["error"]["code"] == "MCP_TOOL_NOT_GRANTABLE"
+    stale_admin = harness.identity.add_user(tenant, {"org_admin"})
+    refused = await harness.grant(stale_admin, sid, "delete_order", grantee_role="developer")
+    assert refused.status_code == 403 and refused.json()["error"]["code"] == "STEP_UP_REQUIRED"
+    assert (
+        await harness.grant(admin, sid, "delete_order", grantee_role="developer")
+    ).status_code == 201
+
     calls_before = list(harness.servers.calls)
-    denied = await harness.invoke(admin, sid, "delete_order", {"order_id": 1})
-    assert denied.status_code == 403 and denied.json()["error"]["code"] == "MCP_TOOL_DENIED"
+    stale_dev = harness.identity.add_user(tenant, {"developer"})
+    denied = await harness.invoke(stale_dev, sid, "delete_order", {"order_id": 1})
+    assert denied.status_code == 403 and denied.json()["error"]["code"] == "STEP_UP_REQUIRED"
     assert harness.servers.calls == calls_before  # the write never reached the server
-    status = await platform_db.fetchval(
-        "SELECT response_status || ':' || response_summary FROM mcp.invocations i "
-        "JOIN mcp.tools t ON t.id = i.tool_id WHERE t.server_id = $1",
+    fresh_dev = harness.identity.add_user(tenant, {"developer"}, fresh_mfa=True)
+    done = await harness.invoke(fresh_dev, sid, "delete_order", {"order_id": 1})
+    assert done.status_code == 200, done.text
+    assert harness.servers.calls[-1] == "delete_order"
+
+    await harness.grant(admin, sid, "lookup_order", grantee_role="developer")
+    await harness.grant(admin, sid, "lookup_order", grantee_role="org_admin")
+    not_admin = await harness.invoke(fresh_dev, sid, "lookup_order", {"order_id": 2})
+    assert not_admin.status_code == 403
+    assert not_admin.json()["error"]["code"] == "MCP_TOOL_ADMIN_ONLY"
+    by_admin = await harness.invoke(admin, sid, "lookup_order", {"order_id": 2})
+    assert by_admin.status_code == 200
+
+    rows = await platform_db.fetch(
+        "SELECT response_status, response_summary FROM mcp.invocations i "
+        "JOIN mcp.tools t ON t.id = i.tool_id WHERE t.server_id = $1 ORDER BY i.created_at",
         uuid.UUID(sid),
     )
-    assert status == "denied:tool_denied_by_policy"
+    assert [(r[0], r[1].split(":")[0]) for r in rows] == [
+        ("denied", "step_up_required"),
+        ("ok", "ok"),
+        ("denied", "admin_only"),
+        ("ok", "ok"),
+    ]
+    assert [e.reason for e in harness.events.denied] == ["step_up_required", "admin_only"]
+
+
+async def test_disable_reject_and_reapprove(
+    harness: Harness, tenant: uuid.UUID, platform_db: Any
+) -> None:
+    admin, sid = await _approved(harness, tenant)
+    await harness.grant(admin, sid, "search_docs", grantee_role="org_admin")
+    developer = harness.identity.add_user(tenant, {"developer"}, fresh_mfa=True)
+    assert (
+        await harness.client.post(f"{SERVERS}/{sid}/disable", headers=developer.headers)
+    ).status_code == 403
+
+    # Disabling needs no step-up: removing access must never wait on MFA.
+    stale_admin = harness.identity.add_user(tenant, {"org_admin"})
+    disabled = await harness.client.post(f"{SERVERS}/{sid}/disable", headers=stale_admin.headers)
+    assert disabled.status_code == 200 and disabled.json()["status"] == "disabled"
+    blocked = await harness.invoke(admin, sid, "search_docs", {"query": "a"})
+    assert blocked.status_code == 403
+    assert blocked.json()["error"]["code"] == "MCP_SERVER_NOT_APPROVED"
+    again = await harness.client.post(f"{SERVERS}/{sid}/disable", headers=admin.headers)
+    assert again.status_code == 409
+
+    # Re-enabling is an approval: step-up and a fresh check of the live server.
+    assert (await harness.approve(stale_admin, sid)).status_code == 403
+    reenabled = await harness.approve(admin, sid)
+    assert reenabled.status_code == 200 and reenabled.json()["status"] == "approved"
+    assert (await harness.invoke(admin, sid, "search_docs", {"query": "a"})).status_code == 200
+
+    pending = await harness.register(admin)
+    assert (
+        await harness.client.post(f"{SERVERS}/{pending['id']}/disable", headers=admin.headers)
+    ).status_code == 409
+    rejected = await harness.client.post(f"{SERVERS}/{pending['id']}/reject", headers=admin.headers)
+    assert rejected.status_code == 200 and rejected.json()["status"] == "rejected"
+    assert (await harness.approve(admin, pending["id"])).status_code == 409  # final
+    assert {"mcp.server.disabled", "mcp.server.rejected"} <= set(harness.audit.types())
 
 
 async def test_undeclared_tools_are_unreachable_and_audited(
