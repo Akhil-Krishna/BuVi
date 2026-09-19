@@ -41,6 +41,12 @@ sustained `DESTINATION_NOT_ALLOWED` or `AUTHENTICATION_FAILED` spikes from one t
 - `UNSUPPORTED_SERVER`: the server is not MySQL 8.0+ (for example MariaDB, TiDB or MySQL 5.7). The server's version is checked on connect, before any catalog query runs. There is no override.
 - Dev: `make seed-sample-mysql` (compose service `sample-sales-mysql`, port 3307).
 
+## Per-connection SQL grants (Phase A10, ADR 0013)
+
+- `GET/POST /data-sources/{id}/sql-grants` and `DELETE …/{grant_id}` (`org_admin`). A grant lets one user run SQL-editor queries on one data source; an `org_admin` needs none. Changes are audited as `connection.sql_grant_added` and `connection.sql_grant_revoked`.
+- query-gateway asks `GET /internal/v1/data-sources/{id}/sql-grants/{user_id}` on every SQL-editor query and never caches the answer.
+- Deleting a data source deletes its grants.
+
 ## Deploy / rollback
 
 1. `alembic upgrade head` as `buvi_migrator` (separate job, Section 26), then roll the deployment.

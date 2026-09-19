@@ -183,3 +183,30 @@ class Relationship(Base):
     relationship_type: Mapped[str] = mapped_column(
         Text, nullable=False, server_default=text("'fk'")
     )
+
+
+class DataSourceGrant(Base):
+    """A per-connection `sql:execute` grant (Section 7.1; Phase A10). `org_admin` needs none."""
+
+    __tablename__ = "data_source_grants"
+    __table_args__ = (
+        UniqueConstraint(
+            "data_source_id", "user_id", name="data_source_grants_data_source_id_user_id_key"
+        ),
+        {"schema": SCHEMA},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=_GEN_UUID
+    )
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    data_source_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey(f"{SCHEMA}.data_sources.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    granted_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    granted_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=_NOW
+    )

@@ -16,6 +16,7 @@ import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, Request
+from pydantic import BaseModel
 
 from metadata_service.api.v1.schemas import (
     ActiveDataSource,
@@ -67,6 +68,26 @@ async def query_policy(
         last_sync_at=data_source.last_sync_at,
         tables=[QueryPolicyTable.from_catalog(table, columns) for table, columns in catalog],
     )
+
+
+class SqlGrantCheck(BaseModel):
+    granted: bool
+
+
+@router.get("/data-sources/{data_source_id}/sql-grants/{user_id}", response_model=SqlGrantCheck)
+async def sql_grant_check(
+    request: Request,
+    data_source_id: uuid.UUID,
+    user_id: uuid.UUID,
+    tenant_id: Annotated[uuid.UUID, Query()],
+    _service: Annotated[ServiceIdentity, Depends(require_service_scope(SCOPE_QUERY_POLICY))],
+) -> SqlGrantCheck:
+    """Whether a user may run SQL-editor queries on this data source (Section 7.1). Never
+    cached by the caller, so a revocation applies to the next query."""
+    async with tenant_scope(get_session_factory(request), tenant_id) as db:
+        granted = await MetadataRepository(db).has_sql_grant(tenant_id, data_source_id, user_id)
+        await db.commit()
+    return SqlGrantCheck(granted=granted)
 
 
 ContextScope = Annotated[ServiceIdentity, Depends(require_service_scope(SCOPE_CONTEXT))]

@@ -25,6 +25,7 @@ from metadata_service.infrastructure.db.models import (
     CatalogColumn,
     CatalogTable,
     DataSource,
+    DataSourceGrant,
     Relationship,
     SchemaSnapshot,
 )
@@ -466,3 +467,68 @@ class MetadataRepository:
         await self._session.flush()
         await self._session.refresh(snapshot)
         return snapshot
+
+    # --- per-connection SQL grants (Section 7.1; Phase A10) -------------------------------
+
+    async def list_sql_grants(
+        self, tenant_id: uuid.UUID, data_source_id: uuid.UUID
+    ) -> list[DataSourceGrant]:
+        result = await self._session.execute(
+            select(DataSourceGrant)
+            .where(
+                DataSourceGrant.tenant_id == tenant_id,
+                DataSourceGrant.data_source_id == data_source_id,
+            )
+            .order_by(DataSourceGrant.granted_at, DataSourceGrant.id)
+        )
+        return list(result.scalars().all())
+
+    async def add_sql_grant(self, grant: DataSourceGrant) -> DataSourceGrant | None:
+        """Insert, or None when the user already holds a grant on this data source."""
+        inserted = await self._session.execute(
+            insert(DataSourceGrant)
+            .values(
+                tenant_id=grant.tenant_id,
+                data_source_id=grant.data_source_id,
+                user_id=grant.user_id,
+                granted_by=grant.granted_by,
+            )
+            .on_conflict_do_nothing(constraint="data_source_grants_data_source_id_user_id_key")
+            .returning(DataSourceGrant.id)
+        )
+        grant_id = inserted.scalar_one_or_none()
+        if grant_id is None:
+            return None
+        row = await self._session.get(DataSourceGrant, grant_id)
+        return row
+
+    async def delete_sql_grant(
+        self, tenant_id: uuid.UUID, data_source_id: uuid.UUID, grant_id: uuid.UUID
+    ) -> DataSourceGrant | None:
+        grant = (
+            await self._session.execute(
+                select(DataSourceGrant).where(
+                    DataSourceGrant.tenant_id == tenant_id,
+                    DataSourceGrant.data_source_id == data_source_id,
+                    DataSourceGrant.id == grant_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if grant is not None:
+            await self._session.delete(grant)
+            await self._session.flush()
+        return grant
+
+    async def has_sql_grant(
+        self, tenant_id: uuid.UUID, data_source_id: uuid.UUID, user_id: uuid.UUID
+    ) -> bool:
+        result = await self._session.execute(
+            select(func.count())
+            .select_from(DataSourceGrant)
+            .where(
+                DataSourceGrant.tenant_id == tenant_id,
+                DataSourceGrant.data_source_id == data_source_id,
+                DataSourceGrant.user_id == user_id,
+            )
+        )
+        return bool(result.scalar_one())

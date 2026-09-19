@@ -891,6 +891,82 @@
         "title": "RelationshipResponse",
         "type": "object"
       },
+      "SqlGrantCheck": {
+        "properties": {
+          "granted": {
+            "title": "Granted",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "granted"
+        ],
+        "title": "SqlGrantCheck",
+        "type": "object"
+      },
+      "SqlGrantListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SqlGrantResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "SqlGrantListResponse",
+        "type": "object"
+      },
+      "SqlGrantRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "user_id": {
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id"
+        ],
+        "title": "SqlGrantRequest",
+        "type": "object"
+      },
+      "SqlGrantResponse": {
+        "properties": {
+          "granted_at": {
+            "format": "date-time",
+            "title": "Granted At",
+            "type": "string"
+          },
+          "granted_by": {
+            "format": "uuid",
+            "title": "Granted By",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "user_id": {
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "user_id",
+          "granted_by",
+          "granted_at"
+        ],
+        "title": "SqlGrantResponse",
+        "type": "object"
+      },
       "SyncResponse": {
         "description": "The `metadata.sync.completed` payload (Section 18.1), returned synchronously.",
         "properties": {
@@ -1382,6 +1458,146 @@
         ]
       }
     },
+    "/api/v1/data-sources/{data_source_id}/sql-grants": {
+      "get": {
+        "operationId": "list_sql_grants_api_v1_data_sources__data_source_id__sql_grants_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "data_source_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Data Source Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SqlGrantListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Sql Grants",
+        "tags": [
+          "sql-grants"
+        ]
+      },
+      "post": {
+        "operationId": "add_sql_grant_api_v1_data_sources__data_source_id__sql_grants_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "data_source_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Data Source Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SqlGrantRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SqlGrantResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Add Sql Grant",
+        "tags": [
+          "sql-grants"
+        ]
+      }
+    },
+    "/api/v1/data-sources/{data_source_id}/sql-grants/{grant_id}": {
+      "delete": {
+        "operationId": "revoke_sql_grant_api_v1_data_sources__data_source_id__sql_grants__grant_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "data_source_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Data Source Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "grant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Grant Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Revoke Sql Grant",
+        "tags": [
+          "sql-grants"
+        ]
+      }
+    },
     "/api/v1/data-sources/{data_source_id}/sync": {
       "post": {
         "description": "Introspect and populate the catalog (Phase A3: synchronous for the MVP).",
@@ -1823,6 +2039,70 @@
           }
         },
         "summary": "Query Policy",
+        "tags": [
+          "internal"
+        ]
+      }
+    },
+    "/internal/v1/data-sources/{data_source_id}/sql-grants/{user_id}": {
+      "get": {
+        "description": "Whether a user may run SQL-editor queries on this data source (Section 7.1). Never\ncached by the caller, so a revocation applies to the next query.",
+        "operationId": "sql_grant_check_internal_v1_data_sources__data_source_id__sql_grants__user_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "data_source_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Data Source Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "User Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SqlGrantCheck"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Sql Grant Check",
         "tags": [
           "internal"
         ]

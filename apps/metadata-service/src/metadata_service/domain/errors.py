@@ -91,3 +91,15 @@ class InvalidCursorError(DomainError):
     code = "INVALID_CURSOR"
     status_code = 422
     message = "The pagination cursor is invalid."
+
+
+class ForbiddenError(DomainError):
+    code = "FORBIDDEN"
+    status_code = 403
+    message = "You do not have permission to perform this action."
+
+
+class SqlGrantExistsError(DomainError):
+    code = "SQL_GRANT_EXISTS"
+    status_code = 409
+    message = "This user already has SQL access to the data source."

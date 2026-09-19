@@ -253,6 +253,6 @@ async def test_setting_credentials_requires_fresh_step_up(
     who = identity.add(tenant_id=tenant, roles={"developer"}, mfa_age=mfa_age)
     response = await flows.set_secret(who, seeded.ours["id"], password="Replaced-Pa55word-01")
     assert response.status_code == 403
-    assert response.json()["error"]["code"] == "FORBIDDEN"
+    assert response.json()["error"]["code"] == "STEP_UP_REQUIRED"
     assert "max_age=300" in response.headers["www-authenticate"]
     assert await secrets.read(ref) == stored
