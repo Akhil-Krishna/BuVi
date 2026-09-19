@@ -83,4 +83,7 @@
   | worker-runtime | 19 |
 
 - **Contracts and client:** every OpenAPI document validates; the contract diff reports no breaking changes; `gen-client.sh --check` passes.
-- **CI:** the new `backend-e2e` and `api-client` jobs are the gate. See the push that closes this phase.
+- **CI:** all 18 jobs green, including `backend e2e (Track A exit gate)` and `api-client`, on the commit that follows the fixes below.
+- **Found only in CI:**
+  - A1's invitation single-use check saw `429` instead of `400`. The runner's faster logins spent the accept route's auth-tier bucket (10 per IP) within one burst. The check now honours `Retry-After` once, as a real client would; the rate-limit checks still call directly. Found through the new failure annotations, since the job logs need repo rights and annotations do not.
+  - `npm audit` failed in two jobs. npm 10 calls a retired endpoint that now answers `400`, and npm's bulk advisory endpoint was briefly down for maintenance. The audits now run with npm 11 (bulk advisories) and report 0 vulnerabilities.
