@@ -1,0 +1,39 @@
+[project]
+name = "notification-service"
+version = "0.1.0"
+description = "In-app, email and signed-webhook notifications from platform events (Sections 8.8, 15, 18.1)"
+readme = "README.md"
+authors = [
+    { name = "Akhil Krishna", email = "akhilmavannoor@gmail.com" }
+]
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "alembic>=1.20.0",
+    "asyncpg>=0.31.0",
+    "fastapi>=0.141.1",
+    "httpx>=0.28.1",
+    "nats-py>=2.16.0",
+    "platform-auth",
+    "platform-contracts",
+    "platform-egress",
+    "platform-observability",
+    "platform-secrets",
+    "pydantic-settings>=2.15.0",
+    "pydantic>=2.12.5",
+    "sqlalchemy[asyncio]>=2.0.52",
+    "uvicorn>=0.52.4",
+]
+
+[project.scripts]
+notification-service = "notification_service.main:run"
+
+[build-system]
+requires = ["uv_build>=0.12.13,<0.13.0"]
+build-backend = "uv_build"
+
+[tool.uv.sources]
+platform-auth = { workspace = true }
+platform-contracts = { workspace = true }
+platform-egress = { workspace = true }
+platform-observability = { workspace = true }
+platform-secrets = { workspace = true }
