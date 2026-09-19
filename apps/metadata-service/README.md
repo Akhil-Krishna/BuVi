@@ -56,3 +56,7 @@ make test-data-sources                 # Phase A3 scripted end-to-end flow
 Tests: `uv run --package metadata-service pytest apps/metadata-service/src/metadata_service/tests`
 (integration tests start one Postgres container that serves as both the platform database and a
 customer database).
+
+## Events (Phase A11)
+
+Each sync publishes `metadata.sync.completed` (stream `METADATA`, `contracts/events/metadata.sync.completed.v1.json`) after it commits; notification-service tells whoever ran it.

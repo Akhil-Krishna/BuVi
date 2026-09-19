@@ -15,6 +15,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 #: Scope api-gateway needs to proxy to this service (Section 6.3).
 SCOPE_PROXY = "metadata-service:proxy"
+#: Section 18.1 subject; stream METADATA carries `metadata.>` (Phase A11).
+SYNC_COMPLETED_SUBJECT = "metadata.sync.completed"
 #: Scope this service needs to record audit events in identity-service (ADR 0004).
 SCOPE_AUDIT_WRITE = "identity-service:audit"
 #: Scope query-gateway needs to load a data source's query policy (Section 13, ADR 0005).
@@ -37,6 +39,12 @@ class Settings(BaseSettings):
     environment: Literal["dev", "test", "staging", "prod"] = "dev"
     service_name: str = "metadata-service"
     log_level: str = "INFO"
+
+    # --- Events (Section 18.1; Phase A11) --------------------------------------------
+    nats_url: str = "nats://localhost:4222"
+    events_stream: str = "METADATA"
+    #: Off in tests that do not run NATS; sync works without it (the event is best effort).
+    events_enabled: bool = True
 
     # --- Database (Section 19: request path is `buvi_app`, which cannot bypass RLS) ---
     database_dsn: PostgresDsn = Field(

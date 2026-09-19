@@ -10,6 +10,7 @@ inside the request and returns the `metadata.sync.completed` payload shape direc
 from __future__ import annotations
 
 import datetime as dt
+import logging
 import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -20,6 +21,7 @@ from metadata_service.application.services.data_source_service import (
     load_connection_target,
     tenant_of,
 )
+from metadata_service.application.services.ports import MetadataEvents
 from metadata_service.domain.errors import NotFoundError
 from metadata_service.domain.value_objects.connection import (
     STATUS_ACTIVE,
@@ -38,7 +40,11 @@ from metadata_service.infrastructure.db.repositories.metadata_repository import 
     MetadataRepository,
 )
 from platform_auth import Principal
+from platform_contracts import MetadataSyncCompleted
+from platform_observability import request_id_var
 from platform_secrets import SecretStore
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -61,10 +67,12 @@ class CatalogSyncService:
         repository: MetadataRepository,
         secrets: SecretStore,
         connectors: Mapping[str, CatalogConnector],
+        events: MetadataEvents,
     ) -> None:
         self._repository = repository
         self._secrets = secrets
         self._connectors = connectors
+        self._events = events
 
     async def _lock(self, tenant_id: uuid.UUID, data_source_id: uuid.UUID) -> DataSource:
         data_source = await self._repository.get_data_source(
@@ -91,6 +99,7 @@ class CatalogSyncService:
             if locked.status != STATUS_DISABLED:
                 locked = await self._repository.set_status(locked, status=STATUS_ERROR)
             await self._repository.commit()
+            await self._announce(principal, locked, succeeded=False, tables=0)
             return SyncOutcome(
                 data_source=locked,
                 ok=False,
@@ -115,6 +124,7 @@ class CatalogSyncService:
             synced_at=snapshot.snapshot_at,
         )
         await self._repository.commit()
+        await self._announce(principal, locked, succeeded=True, tables=counts.tables)
         return SyncOutcome(
             data_source=locked,
             ok=True,
@@ -126,3 +136,31 @@ class CatalogSyncService:
             snapshot_id=snapshot.id,
             synced_at=snapshot.snapshot_at,
         )
+
+    async def _announce(
+        self, principal: Principal, data_source: DataSource, *, succeeded: bool, tables: int
+    ) -> None:
+        """`metadata.sync.completed`, after the commit. Best effort: a lost event costs the
+        notification, never the sync."""
+        try:
+            await self._events.sync_completed(
+                MetadataSyncCompleted(
+                    tenant_id=data_source.tenant_id,
+                    data_source_id=data_source.id,
+                    data_source_name=data_source.name,
+                    status="succeeded" if succeeded else "failed",
+                    tables_synced=tables,
+                    user_id=uuid.UUID(principal.user_id),
+                    request_id=request_id_var.get(),
+                )
+            )
+        except Exception as error:
+            logger.warning(
+                "metadata.sync.completed not published",
+                extra={
+                    "context": {
+                        "data_source_id": str(data_source.id),
+                        "error_type": type(error).__name__,
+                    }
+                },
+            )

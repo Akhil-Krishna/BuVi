@@ -192,4 +192,5 @@ def build_catalog_sync_service(
         repository=repository,
         secrets=get_secret_store(request),
         connectors=get_connectors(request),
+        events=request.app.state.events,
     )

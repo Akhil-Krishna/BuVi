@@ -9,6 +9,7 @@ catalog and catalog sync (Sections 3, 8.2, 13.1). Reached only through api-gatew
 
 from __future__ import annotations
 
+import logging
 from collections.abc import AsyncIterator, Mapping
 from contextlib import asynccontextmanager
 
@@ -18,6 +19,7 @@ from fastapi import FastAPI
 from metadata_service.api.internal import router as internal_router
 from metadata_service.api.v1.health import router as health_router
 from metadata_service.api.v1.router import api_router
+from metadata_service.application.services.ports import MetadataEvents
 from metadata_service.core.config import Settings, get_settings
 from metadata_service.core.logging import configure_logging
 from metadata_service.dependencies import resolve_principal
@@ -26,6 +28,10 @@ from metadata_service.infrastructure.connectors.base import CatalogConnector, Co
 from metadata_service.infrastructure.connectors.mysql import MySqlCatalogConnector
 from metadata_service.infrastructure.connectors.postgres import PostgresCatalogConnector
 from metadata_service.infrastructure.db.session import create_engine, create_session_factory
+from metadata_service.infrastructure.messaging.nats_events import (
+    JetStreamMetadataEvents,
+    UnavailableMetadataEvents,
+)
 from metadata_service.infrastructure.secrets.store import build_secret_store
 from platform_auth import (
     IntrospectionClient,
@@ -37,6 +43,8 @@ from platform_auth import (
 from platform_egress import EgressPolicy
 from platform_observability import RequestIdMiddleware, install_error_handlers
 from platform_secrets import SecretStore
+
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
@@ -87,9 +95,26 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             "postgres": PostgresCatalogConnector(egress=app.state.egress, limits=limits),
             "mysql": MySqlCatalogConnector(egress=app.state.egress, limits=limits),
         }
+    publisher: JetStreamMetadataEvents | None = None
+    if app.state.events is None:
+        app.state.events = UnavailableMetadataEvents()
+        if settings.events_enabled:
+            try:
+                publisher = await JetStreamMetadataEvents.connect(
+                    settings.nats_url, stream=settings.events_stream
+                )
+                app.state.events = publisher
+            except Exception as error:
+                # Sync still works; only its notification is lost.
+                logger.warning(
+                    "metadata event stream unavailable",
+                    extra={"context": {"error_type": type(error).__name__}},
+                )
     try:
         yield
     finally:
+        if publisher is not None:
+            await publisher.close()
         await http.aclose()
         await engine.dispose()
 
@@ -101,6 +126,7 @@ def create_app(
     http_transport: httpx.AsyncBaseTransport | None = None,
     service_token_verifier: ServiceTokenVerifier | None = None,
     connectors: Mapping[str, CatalogConnector] | None = None,
+    events: MetadataEvents | None = None,
 ) -> FastAPI:
     """Build the application. Tests inject a fake identity-service transport, an
     in-memory secret store and a local service-token verifier; production passes none."""
@@ -120,6 +146,7 @@ def create_app(
     app.state.secrets = secrets
     app.state.http_transport = http_transport
     app.state.connectors = connectors
+    app.state.events = events
     app.state.service_token_verifier = service_token_verifier
     if service_token_verifier is not None:
         install_service_token_verifier(app, service_token_verifier)

@@ -37,6 +37,7 @@ from fastapi import FastAPI
 from metadata_service.core.config import Settings
 from platform_auth import Principal, ServiceTokenIssuer, ServiceTokenVerifier
 from platform_auth.permissions import permissions_for_roles
+from platform_contracts import MetadataSyncCompleted
 from platform_observability.logging import JsonFormatter
 from platform_secrets import InMemorySecretStore, SecretStore
 
@@ -303,6 +304,7 @@ def make_settings(postgres: PostgresInfo, **overrides: Any) -> Settings:
         "connector_allowed_internal_hosts": [postgres.host],
         "connector_connect_timeout_seconds": 5.0,
         "log_level": "WARNING",
+        "events_enabled": False,
     }
     values.update(overrides)
     return Settings(**values)
@@ -313,18 +315,35 @@ def settings(postgres: PostgresInfo) -> Settings:
     return make_settings(postgres)
 
 
+class RecordingEvents:
+    """The Section 18.1 events the app published, in order."""
+
+    def __init__(self) -> None:
+        self.sync_completed_events: list[MetadataSyncCompleted] = []
+
+    async def sync_completed(self, event: MetadataSyncCompleted) -> None:
+        self.sync_completed_events.append(event)
+
+
+@pytest.fixture
+def events() -> RecordingEvents:
+    return RecordingEvents()
+
+
 @asynccontextmanager
 async def running_app(
     settings: Settings,
     identity: FakeIdentity,
     secrets: SecretStore,
     issuer: ServiceTokenIssuer,
+    events: RecordingEvents | None = None,
 ) -> AsyncIterator[tuple[FastAPI, httpx.AsyncClient]]:
     from metadata_service.main import create_app
 
     app = create_app(
         settings=settings,
         secrets=secrets,
+        events=events or RecordingEvents(),
         http_transport=httpx.MockTransport(identity.handler),
         service_token_verifier=ServiceTokenVerifier(
             issuer="identity-service", audience="metadata-service", keyset=issuer.jwks()
@@ -345,8 +364,12 @@ async def client(
     identity: FakeIdentity,
     secrets: InMemorySecretStore,
     gateway_issuer: ServiceTokenIssuer,
+    events: RecordingEvents,
 ) -> AsyncIterator[httpx.AsyncClient]:
-    async with running_app(settings, identity, secrets, gateway_issuer) as (_, http_client):
+    async with running_app(settings, identity, secrets, gateway_issuer, events) as (
+        _,
+        http_client,
+    ):
         yield http_client
 
 

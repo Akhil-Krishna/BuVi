@@ -52,3 +52,8 @@ sustained `DESTINATION_NOT_ALLOWED` or `AUTHENTICATION_FAILED` spikes from one t
 1. `alembic upgrade head` as `buvi_migrator` (separate job, Section 26), then roll the deployment.
 2. Rollback: redeploy the previous image. `alembic downgrade -1` drops every `metadata` table; run it
    only for a failed first deployment with no tenant data.
+
+## Sync events (Phase A11)
+
+- **What:** each sync, successful or failed, publishes `metadata.sync.completed` (stream `METADATA`) after the result is committed. notification-service tells whoever ran it.
+- **Best effort:** without NATS the sync still works; only its notification is lost, logged as `metadata.sync.completed not published`. `METADATA_EVENTS_ENABLED=false` turns it off.

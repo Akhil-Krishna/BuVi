@@ -19,6 +19,7 @@ from metadata_service.tests.conftest import (
     FakeIdentity,
     Flows,
     PostgresInfo,
+    RecordingEvents,
     make_settings,
     running_app,
 )
@@ -39,6 +40,7 @@ async def test_role_adds_tests_syncs_and_browses_a_postgres_data_source(
     secrets: InMemorySecretStore,
     flows: Flows,
     tenant: uuid.UUID,
+    events: RecordingEvents,
 ) -> None:
     who = identity.add(tenant_id=tenant, roles={role})
 
@@ -78,6 +80,18 @@ async def test_role_adds_tests_syncs_and_browses_a_postgres_data_source(
     assert (sync["tables_synced"], sync["relationships_synced"]) == (5, 3)
     assert sync["columns_synced"] == 16
     assert sync["status"] == "active" and sync["snapshot_id"]
+    # Section 18.1 `metadata.sync.completed`, for notification-service (Phase A11).
+    [event] = events.sync_completed_events
+    assert (event.tenant_id, str(event.data_source_id), event.user_id) == (
+        tenant,
+        source_id,
+        who.user_id,
+    )
+    assert (event.status, event.tables_synced, event.data_source_name) == (
+        "succeeded",
+        5,
+        source["name"],
+    )
 
     read = (await client.get(f"/api/v1/data-sources/{source_id}", headers=who.headers)).json()
     assert read["status"] == "active" and read["last_sync_at"] is not None
@@ -367,6 +381,7 @@ async def test_connection_failures_return_sanitized_diagnostics(
     create: dict[str, Any],
     secret: dict[str, Any],
     code: str,
+    events: RecordingEvents,
 ) -> None:
     who = identity.add(tenant_id=tenant, roles={"developer"})
     source = await flows.create(who, **create)
@@ -382,6 +397,7 @@ async def test_connection_failures_return_sanitized_diagnostics(
     assert synced.status_code == 200
     assert (synced.json()["ok"], synced.json()["code"]) == (False, code)
     assert synced.json()["message"] == result["message"]
+    assert [(e.status, e.tables_synced) for e in events.sync_completed_events] == [("failed", 0)]
 
     leaks = [READER_USER, "no_such_role", "Wr0ng-Pa55word", f"{postgres.host}:", CUSTOMER_DB]
     for text in (tested.text, synced.text):
