@@ -73,7 +73,7 @@ async def change_policies(
             raise WebAuthnNotEnrolledError()
     if after != before:
         await repository.save_policies(tenant_id, after, updated_by=uuid.UUID(principal.user_id))
-        await build_audit_service(repository).record(
+        await build_audit_service(repository, request).record(
             event_type=events.EVENT_POLICIES_CHANGED,
             tenant_id=tenant_id,
             actor_user_id=uuid.UUID(principal.user_id),

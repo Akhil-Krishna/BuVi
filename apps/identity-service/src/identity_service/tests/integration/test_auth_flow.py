@@ -358,3 +358,36 @@ async def test_session_row_id_is_not_a_credential(
 async def test_oversized_session_cookie_is_refused(client: httpx.AsyncClient) -> None:
     response = await client.get("/api/v1/auth/session", cookies={SESSION_COOKIE: "a" * 4096})
     assert response.status_code == 401
+
+
+async def test_a_refused_login_is_audited_despite_the_rollback(
+    client: httpx.AsyncClient, fixtures: Fixtures, oidc: StubOidcClient
+) -> None:
+    """Regression (found in Phase A10): `auth.login_failed` was written in the refused
+    callback's transaction and rolled back with it, so a suspended user's login attempts left
+    no audit trail."""
+    tenant_id = await fixtures.create_tenant("login-suspended")
+    await fixtures.create_user(
+        tenant_id=tenant_id,
+        email="suspended@acme.example.com",
+        roles=frozenset({"client"}),
+        idp_subject="idp-suspended-1",
+        status="suspended",
+    )
+    oidc.identity = type(oidc.identity)(
+        subject="idp-suspended-1",
+        email="suspended@acme.example.com",
+        display_name="Suspended",
+        tenant_slug="login-suspended",
+        roles=frozenset({"client"}),
+        raw_claims={},
+    )
+    state, txn = await _begin_login(client)
+    response = await client.get(
+        "/api/v1/auth/callback",
+        params={"code": "authz-code", "state": state},
+        cookies={TXN_COOKIE: txn},
+    )
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "USER_NOT_ACTIVE"
+    assert "auth.login_failed" in await fixtures.audit_event_types(tenant_id)

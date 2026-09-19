@@ -47,6 +47,14 @@ EVENT_ROLE_CHANGED: Final = "user.role_changed"
 EVENT_API_KEY_CREATED: Final = "api_key.created"
 EVENT_API_KEY_REVOKED: Final = "api_key.revoked"
 
+# Events about a refusal. The refusal rolls its request back, so these may only be written by
+# `record_failure`, in their own transaction; `record` refuses them (a Phase A10 bug lost them).
+REFUSAL_EVENTS: Final = frozenset({EVENT_LOGIN_FAILED, EVENT_MFA_VERIFICATION_FAILED})
+
+
+class AuditWiringError(RuntimeError):
+    """A programming error: a refusal event on a path that would roll it back."""
+
 
 class AuditService:
     """Append-only writer for `identity.audit_events`."""
@@ -61,15 +69,22 @@ class AuditService:
         """Record an event about a refusal, in its own transaction, so it survives the
         rollback the refusal causes (a failed MFA check, a refused login)."""
         if self._independent is None:
-            await self.record(**event)
-            return
+            # No silent fallback to the request transaction: that is the bug this prevents.
+            raise AuditWiringError("record_failure needs IndependentWrites")
 
         async def write(repository: IdentityRepository) -> None:
-            await AuditService(repository).record(**event)
+            await AuditService(repository)._append(**event)
 
         await self._independent.run(event["tenant_id"], write)
 
-    async def record(
+    async def record(self, *, event_type: str, **event: Any) -> None:
+        """Append one audit event, with secret-shaped fields redacted, in the request's
+        transaction (so it commits only if the request does)."""
+        if event_type in REFUSAL_EVENTS:
+            raise AuditWiringError(f"{event_type} must be written with record_failure")
+        await self._append(event_type=event_type, **event)
+
+    async def _append(
         self,
         *,
         event_type: str,
@@ -83,7 +98,6 @@ class AuditService:
         after_state: dict[str, Any] | None = None,
         ip_address: str | None = None,
     ) -> None:
-        """Append one audit event, with secret-shaped fields redacted."""
         event = AuditEvent(
             tenant_id=tenant_id,
             actor_user_id=actor_user_id,

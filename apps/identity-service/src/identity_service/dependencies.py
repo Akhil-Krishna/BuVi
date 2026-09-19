@@ -198,13 +198,10 @@ async def get_repository(
 # --- Service factories ---------------------------------------------------------
 
 
-def build_audit_service(
-    repository: IdentityRepository, request: Request | None = None
-) -> AuditService:
-    """With `request`, refusal events are written in their own transaction (they must
-    survive the rollback of the request that was refused)."""
-    independent = IndependentWrites(get_session_factory(request)) if request is not None else None
-    return AuditService(repository, independent)
+def build_audit_service(repository: IdentityRepository, request: Request) -> AuditService:
+    """Refusal events are written in their own transaction (they must survive the rollback
+    of the request that was refused), so every request-built audit service can write them."""
+    return AuditService(repository, IndependentWrites(get_session_factory(request)))
 
 
 def build_session_service(request: Request, repository: IdentityRepository) -> SessionService:
@@ -229,7 +226,7 @@ def build_user_service(request: Request, repository: IdentityRepository) -> User
     return UserService(
         repository=repository,
         sessions=build_session_service(request, repository),
-        audit=build_audit_service(repository),
+        audit=build_audit_service(repository, request),
         email=get_email_sender(request),
         settings=get_app_settings(request),
     )
@@ -255,7 +252,7 @@ def build_mfa_service(request: Request, repository: IdentityRepository) -> MfaSe
 def build_api_key_service(request: Request, repository: IdentityRepository) -> ApiKeyService:
     return ApiKeyService(
         repository=repository,
-        audit=build_audit_service(repository),
+        audit=build_audit_service(repository, request),
         settings=get_app_settings(request),
     )
 
