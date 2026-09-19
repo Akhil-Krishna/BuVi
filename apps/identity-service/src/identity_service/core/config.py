@@ -233,6 +233,10 @@ class Settings(BaseSettings):
     # --- MFA (Section 6.6) ----------------------------------------------
     totp_issuer: str = "BuVi"
     totp_valid_window: int = 1
+    #: Section 24: per-account limit on MFA guesses, independent of the gateway's per-IP bucket.
+    #: Counted from the durable `auth.mfa_verification_failed` audit events.
+    mfa_max_failures: int = 5
+    mfa_failure_window_seconds: int = 900
     #: WebAuthn relying party (Phase A10). The RP ID is the registrable domain the browser
     #: app is served from; credentials are bound to it and to these exact origins.
     webauthn_rp_id: str = "localhost"

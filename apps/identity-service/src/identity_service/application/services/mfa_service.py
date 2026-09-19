@@ -30,6 +30,7 @@ from identity_service.domain.errors import (
     MfaAlreadyEnrolledError,
     MfaChallengeRequiredError,
     MfaNotEnrolledError,
+    MfaTooManyAttemptsError,
     MfaVerificationFailedError,
     NotFoundError,
 )
@@ -145,6 +146,7 @@ class MfaService:
     async def verify_totp(self, *, user: User, code: str) -> dt.datetime:
         """Verify a TOTP code, confirming enrollment on first success. Returns the time the
         Section 7.3 step-up window starts."""
+        await self._throttle(user)
         credential = await self._repository.get_mfa_credential(user.tenant_id, user.id)
         if credential is None:
             raise MfaNotEnrolledError()
@@ -350,6 +352,22 @@ class MfaService:
         await self._repository.set_webauthn_challenge(
             session_row.id, f"{purpose}{bytes_to_base64url(challenge)}", expires
         )
+
+    async def _throttle(self, user: User) -> None:
+        """Section 24: a per-account guess limit. The gateway's auth tier limits per IP; an
+        attacker holding a session could spread TOTP guesses across addresses. The count comes
+        from the durable failure audit events (committed even when the request rolls back), so
+        it holds across replicas and restarts."""
+        window = self._settings.mfa_failure_window_seconds
+        since = dt.datetime.now(dt.UTC) - dt.timedelta(seconds=window)
+        failures = await self._repository.count_audit_events(
+            user.tenant_id,
+            actor_user_id=user.id,
+            event_type=events.EVENT_MFA_VERIFICATION_FAILED,
+            since=since,
+        )
+        if failures >= self._settings.mfa_max_failures:
+            raise MfaTooManyAttemptsError(headers={"Retry-After": str(window)})
 
     async def _failure(self, user: User, after: dict[str, Any] | None = None) -> None:
         """A failed check is audited even though the request that failed rolls back."""

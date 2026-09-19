@@ -427,3 +427,33 @@ async def test_a_failed_totp_code_is_audited_despite_the_rollback(
     refused = await client.post("/api/v1/auth/mfa/verify", json={"code": wrong}, cookies=cookies)
     assert refused.status_code == 401
     assert "auth.mfa_verification_failed" in await fixtures.audit_event_types(tenant)
+
+
+async def test_mfa_guesses_are_limited_per_account_not_only_per_ip(
+    client: httpx.AsyncClient, fixtures: Fixtures, tenant: uuid.UUID
+) -> None:
+    """Section 24: after 5 failed checks in the window even a correct code is refused (429 with
+    Retry-After), whatever address the guesses came from; another account is unaffected."""
+    _, cookies = await _user(fixtures, tenant, {"developer"})
+    secret = (await client.post("/api/v1/auth/mfa/enroll", cookies=cookies)).json()["secret"]
+    good = pyotp.TOTP(secret).now()
+    wrong = f"{(int(good) + 1) % 1_000_000:06d}"
+    for n in range(5):
+        refused = await client.post(
+            "/api/v1/auth/mfa/verify",
+            json={"code": wrong},
+            cookies=cookies,
+            headers={"X-Forwarded-For": f"198.51.100.{n}"},
+        )
+        assert refused.status_code == 401
+    locked = await client.post("/api/v1/auth/mfa/verify", json={"code": good}, cookies=cookies)
+    assert locked.status_code == 429, locked.text
+    assert locked.json()["error"]["code"] == "MFA_TOO_MANY_ATTEMPTS"
+    assert int(locked.headers["retry-after"]) > 0
+
+    _, other = await _user(fixtures, tenant, {"developer"})
+    other_secret = (await client.post("/api/v1/auth/mfa/enroll", cookies=other)).json()["secret"]
+    ok = await client.post(
+        "/api/v1/auth/mfa/verify", json={"code": pyotp.TOTP(other_secret).now()}, cookies=other
+    )
+    assert ok.status_code == 200

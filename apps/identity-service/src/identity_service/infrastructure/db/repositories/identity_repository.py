@@ -161,6 +161,21 @@ class IdentityRepository:
             roles.setdefault(user_id, set()).add(key)
         return [(u, frozenset(roles.get(u.id, ()))) for u in users]
 
+    async def count_audit_events(
+        self, tenant_id: uuid.UUID, *, actor_user_id: uuid.UUID, event_type: str, since: dt.datetime
+    ) -> int:
+        count = await self._session.scalar(
+            select(func.count())
+            .select_from(AuditEvent)
+            .where(
+                AuditEvent.tenant_id == tenant_id,
+                AuditEvent.actor_user_id == actor_user_id,
+                AuditEvent.event_type == event_type,
+                AuditEvent.created_at >= since,
+            )
+        )
+        return int(count or 0)
+
     async def count_active_users(self, tenant_id: uuid.UUID) -> int:
         """Seats (Section 23): exact, no cap."""
         count = await self._session.scalar(

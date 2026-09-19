@@ -226,3 +226,11 @@ class CascadeUnavailableError(DomainError):
     code = "UPSTREAM_UNAVAILABLE"
     status_code = 503
     message = "The user could not be deactivated completely. Nothing was changed; try again."
+
+
+class MfaTooManyAttemptsError(DomainError):
+    """Section 24: too many failed MFA checks for this account in the window."""
+
+    code = "MFA_TOO_MANY_ATTEMPTS"
+    status_code = 429
+    message = "Too many failed verification attempts. Wait before trying again."
