@@ -29,6 +29,7 @@ DASHBOARD: Final = "dashboard-service"
 SEMANTIC: Final = "semantic-service"
 MCP: Final = "mcp-gateway"
 QUERY: Final = "query-gateway"
+NOTIFICATION: Final = "notification-service"
 
 
 @dataclass(frozen=True)
@@ -99,6 +100,10 @@ def _query(method: str, path: str, summary: str, **kwargs: object) -> RouteSpec:
 
 def _mcp(method: str, path: str, summary: str, **kwargs: object) -> RouteSpec:
     return RouteSpec(method, path, summary, MCP, **kwargs)  # type: ignore[arg-type]
+
+
+def _notification(method: str, path: str, summary: str, **kwargs: object) -> RouteSpec:
+    return RouteSpec(method, path, summary, NOTIFICATION, **kwargs)  # type: ignore[arg-type]
 
 
 def _stub(
@@ -358,39 +363,44 @@ CATALOG: Final[tuple[RouteSpec, ...]] = (
     ),
     _semantic("GET", "/semantic/dimensions", "List dimensions", permission="semantic:manage"),
     _semantic("POST", "/semantic/dimensions", "Define a dimension", permission="semantic:manage"),
-    # --- Billing (Section 23): owning service not assigned by Section 3 (ADR 0003) ---------------
-    _stub(
-        "GET",
-        "/billing/usage",
-        "Usage: tokens, query minutes, seats",
-        None,
-        "A11",
-        permission="billing:read",
+    # --- Billing (Section 23): usage and quotas live with analytics-orchestrator (A10, A11) -----
+    _analytics(
+        "GET", "/billing/usage", "Usage: tokens, query minutes, seats", permission="billing:read"
     ),
     # The token budget lives in analytics-orchestrator's ModelRouter ledger (Section 23; A10).
     _analytics(
         "GET", "/billing/quotas", "Today's LLM token budget and use", permission="billing:read"
     ),
+    # Post-GA backlog: no payment provider or owning service yet (spec Section 31).
     _stub(
         "POST",
         "/billing/subscription",
         "Change subscription",
         None,
-        "A11",
+        "post-GA",
         permission="billing:manage",
         step_up=True,
     ),
     # --- Notifications, webhooks, guest share -----------------------------------------------------
-    _stub("GET", "/me/notifications", "The caller's notifications", "notification-service", "A11"),
-    _stub(
+    _notification("GET", "/me/notifications", "The caller's in-app notifications"),
+    _notification(
+        "POST", "/me/notifications/{id}/read", "Mark a notification read", idempotency="ignore"
+    ),
+    _notification(
         "POST",
         "/admin/webhooks",
         "Create a webhook (signing secret shown once)",
-        "notification-service",
-        "A11",
         role="org_admin",
         step_up=True,
         idempotency="no_store",
+    ),
+    _notification("GET", "/admin/webhooks", "List webhooks (never the secret)", role="org_admin"),
+    _notification(
+        "DELETE",
+        "/admin/webhooks/{id}",
+        "Disable a webhook and delete its secret",
+        role="org_admin",
+        step_up=True,
     ),
     _dashboard(
         "GET",

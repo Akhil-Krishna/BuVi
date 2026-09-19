@@ -1354,6 +1354,37 @@
         "title": "InvokeResponse",
         "type": "object"
       },
+      "LlmTokenUsage": {
+        "properties": {
+          "by_stage": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "By Stage",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input",
+            "type": "integer"
+          },
+          "output": {
+            "title": "Output",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "input",
+          "output",
+          "total",
+          "by_stage"
+        ],
+        "title": "LlmTokenUsage",
+        "type": "object"
+      },
       "LogoutResponse": {
         "properties": {
           "status": {
@@ -1857,6 +1888,98 @@
           "step_up_expires_at"
         ],
         "title": "MfaVerifyResponse",
+        "type": "object"
+      },
+      "NotificationListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/NotificationResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          },
+          "unread": {
+            "title": "Unread",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "unread",
+          "next_cursor"
+        ],
+        "title": "NotificationListResponse",
+        "type": "object"
+      },
+      "NotificationResponse": {
+        "properties": {
+          "body": {
+            "title": "Body",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "payload": {
+            "additionalProperties": true,
+            "title": "Payload",
+            "type": "object"
+          },
+          "read_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Read At"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "template_key": {
+            "title": "Template Key",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "template_key",
+          "title",
+          "body",
+          "payload",
+          "status",
+          "created_at",
+          "read_at"
+        ],
+        "title": "NotificationResponse",
         "type": "object"
       },
       "PinRequest": {
@@ -3504,6 +3627,40 @@
         "title": "ToolResponse",
         "type": "object"
       },
+      "UsageResponse": {
+        "properties": {
+          "end": {
+            "format": "date",
+            "title": "End",
+            "type": "string"
+          },
+          "llm_tokens": {
+            "$ref": "#/components/schemas/LlmTokenUsage"
+          },
+          "query_minutes": {
+            "title": "Query Minutes",
+            "type": "number"
+          },
+          "seats": {
+            "title": "Seats",
+            "type": "integer"
+          },
+          "start": {
+            "format": "date",
+            "title": "Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "start",
+          "end",
+          "llm_tokens",
+          "query_minutes",
+          "seats"
+        ],
+        "title": "UsageResponse",
+        "type": "object"
+      },
       "UserListResponse": {
         "properties": {
           "items": {
@@ -3684,6 +3841,141 @@
           "expires_at"
         ],
         "title": "UserSessionResponse",
+        "type": "object"
+      },
+      "WebhookCreateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "event_types": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 10,
+            "minItems": 1,
+            "title": "Event Types",
+            "type": "array"
+          },
+          "url": {
+            "maxLength": 2048,
+            "minLength": 1,
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url",
+          "event_types"
+        ],
+        "title": "WebhookCreateRequest",
+        "type": "object"
+      },
+      "WebhookCreatedResponse": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "format": "uuid",
+            "title": "Created By",
+            "type": "string"
+          },
+          "event_types": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Event Types",
+            "type": "array"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "signing_secret": {
+            "title": "Signing Secret",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "url",
+          "event_types",
+          "status",
+          "created_by",
+          "created_at",
+          "signing_secret"
+        ],
+        "title": "WebhookCreatedResponse",
+        "type": "object"
+      },
+      "WebhookListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/WebhookResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "WebhookListResponse",
+        "type": "object"
+      },
+      "WebhookResponse": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "format": "uuid",
+            "title": "Created By",
+            "type": "string"
+          },
+          "event_types": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Event Types",
+            "type": "array"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "url",
+          "event_types",
+          "status",
+          "created_by",
+          "created_at"
+        ],
+        "title": "WebhookResponse",
         "type": "object"
       }
     }
@@ -4796,6 +5088,79 @@
       }
     },
     "/api/v1/admin/webhooks": {
+      "get": {
+        "operationId": "get_admin_webhooks",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Rate limited"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Upstream unavailable"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Upstream timeout"
+          }
+        },
+        "summary": "List webhooks (never the secret)",
+        "tags": [
+          "notification-service"
+        ],
+        "x-auth": "session or API key, role org_admin",
+        "x-backend": "notification-service",
+        "x-rate-tier": "authenticated"
+      },
       "post": {
         "operationId": "post_admin_webhooks",
         "parameters": [
@@ -4811,11 +5176,23 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WebhookCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
-          "200": {
+          "201": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookCreatedResponse"
+                }
               }
             },
             "description": "Successful Response"
@@ -4860,7 +5237,7 @@
             },
             "description": "Rate limited"
           },
-          "501": {
+          "502": {
             "content": {
               "application/json": {
                 "schema": {
@@ -4868,7 +5245,17 @@
                 }
               }
             },
-            "description": "Backing service not available yet"
+            "description": "Upstream unavailable"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Upstream timeout"
           }
         },
         "summary": "Create a webhook (signing secret shown once)",
@@ -4876,7 +5263,104 @@
           "notification-service"
         ],
         "x-auth": "session or API key, role org_admin, step-up",
-        "x-available-in-phase": "A11",
+        "x-backend": "notification-service",
+        "x-rate-tier": "authenticated"
+      }
+    },
+    "/api/v1/admin/webhooks/{id}": {
+      "delete": {
+        "operationId": "delete_admin_webhooks_id",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Section 9: retries with the same key replay the first final response",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Idempotency-Key reused, in progress, or replay unavailable"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Rate limited"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Upstream unavailable"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Upstream timeout"
+          }
+        },
+        "summary": "Disable a webhook and delete its secret",
+        "tags": [
+          "notification-service"
+        ],
+        "x-auth": "session or API key, role org_admin, step-up",
         "x-backend": "notification-service",
         "x-rate-tier": "authenticated"
       }
@@ -5735,7 +6219,7 @@
           "unassigned"
         ],
         "x-auth": "session or API key, billing:manage, step-up",
-        "x-available-in-phase": "A11",
+        "x-available-in-phase": "post-GA",
         "x-rate-tier": "authenticated"
       }
     },
@@ -5747,7 +6231,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/UsageResponse"
+                }
               }
             },
             "description": "Successful Response"
@@ -5782,7 +6268,7 @@
             },
             "description": "Rate limited"
           },
-          "501": {
+          "502": {
             "content": {
               "application/json": {
                 "schema": {
@@ -5790,15 +6276,25 @@
                 }
               }
             },
-            "description": "Backing service not available yet"
+            "description": "Upstream unavailable"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Upstream timeout"
           }
         },
         "summary": "Usage: tokens, query minutes, seats",
         "tags": [
-          "unassigned"
+          "analytics-orchestrator"
         ],
         "x-auth": "session or API key, billing:read",
-        "x-available-in-phase": "A11",
+        "x-backend": "analytics-orchestrator",
         "x-rate-tier": "authenticated"
       }
     },
@@ -9254,7 +9750,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationListResponse"
+                }
               }
             },
             "description": "Successful Response"
@@ -9289,7 +9787,7 @@
             },
             "description": "Rate limited"
           },
-          "501": {
+          "502": {
             "content": {
               "application/json": {
                 "schema": {
@@ -9297,15 +9795,101 @@
                 }
               }
             },
-            "description": "Backing service not available yet"
+            "description": "Upstream unavailable"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Upstream timeout"
           }
         },
-        "summary": "The caller's notifications",
+        "summary": "The caller's in-app notifications",
         "tags": [
           "notification-service"
         ],
         "x-auth": "session or API key",
-        "x-available-in-phase": "A11",
+        "x-backend": "notification-service",
+        "x-rate-tier": "authenticated"
+      }
+    },
+    "/api/v1/me/notifications/{id}/read": {
+      "post": {
+        "operationId": "post_me_notifications_id_read",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Rate limited"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Upstream unavailable"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Upstream timeout"
+          }
+        },
+        "summary": "Mark a notification read",
+        "tags": [
+          "notification-service"
+        ],
+        "x-auth": "session or API key",
         "x-backend": "notification-service",
         "x-rate-tier": "authenticated"
       }

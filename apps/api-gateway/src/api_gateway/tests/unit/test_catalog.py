@@ -135,6 +135,7 @@ SECTION_7_3_ROUTES = {
     ("POST", "/dashboards/{id}/share-links"),  # exposing data outside a login
     ("POST", "/billing/subscription"),
     ("POST", "/admin/webhooks"),
+    ("DELETE", "/admin/webhooks/{id}"),  # disabling a webhook (Phase A11)
 }
 #: Step-up that depends on data only the owning service sees, so it is enforced there (and
 #: tested in that service): write/admin MCP tools, result reads above the export threshold,

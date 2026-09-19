@@ -32,6 +32,7 @@ class Settings(BaseSettings):
             "semantic-service": "http://localhost:8008",
             "mcp-gateway": "http://localhost:8009",
             "query-gateway": "http://localhost:8003",
+            "notification-service": "http://localhost:8010",
         }
     )
     upstream_connect_timeout_seconds: float = 3.0

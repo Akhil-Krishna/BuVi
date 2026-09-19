@@ -230,7 +230,7 @@ async def test_users_behind_one_address_do_not_share_the_public_bucket(
         for token in ("u1", "u2", "u1", "u2", "u1"):
             assert (
                 await client.get("/api/v1/me/notifications", cookies={COOKIE: token})
-            ).status_code == 501
+            ).status_code == 200
 
 
 async def test_authenticated_ip_guard_stops_a_flood_before_introspection(
@@ -260,12 +260,12 @@ async def test_user_bucket_limits_one_user_not_another(
         for _ in range(2):
             assert (
                 await client.get("/api/v1/me/notifications", cookies={COOKIE: "u1"})
-            ).status_code == 501
+            ).status_code == 200
         limited = await client.get("/api/v1/me/notifications", cookies={COOKIE: "u1"})
         assert limited.status_code == 429 and limited.json()["error"]["details"]["scope"] == "user"
         assert (
             await client.get("/api/v1/me/notifications", cookies={COOKIE: "u2"})
-        ).status_code == 501
+        ).status_code == 200
 
 
 async def test_tenant_bucket_caps_all_users_of_a_tenant(
@@ -278,7 +278,7 @@ async def test_tenant_bucket_caps_all_users_of_a_tenant(
         for token in ("u1", "u2", "u1"):
             assert (
                 await client.get("/api/v1/me/notifications", cookies={COOKIE: token})
-            ).status_code == 501
+            ).status_code == 200
         limited = await client.get("/api/v1/me/notifications", cookies={COOKIE: "u2"})
         assert (
             limited.status_code == 429 and limited.json()["error"]["details"]["scope"] == "tenant"
@@ -286,7 +286,7 @@ async def test_tenant_bucket_caps_all_users_of_a_tenant(
         # Another tenant is unaffected.
         assert (
             await client.get("/api/v1/me/notifications", cookies={COOKIE: "u3"})
-        ).status_code == 501
+        ).status_code == 200
 
 
 async def test_redis_outage_fails_open_and_reports_degraded(

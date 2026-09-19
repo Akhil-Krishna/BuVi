@@ -144,8 +144,7 @@ class DashboardService:
                 )
             )
         except Exception as error:
-            # The pin is committed; the notification is best-effort (its consumer,
-            # notification-service, arrives in Phase A11).
+            # The pin is committed; the notification (notification-service) is best effort.
             logger.warning(
                 "tile pinned event not published",
                 extra={"context": {"tile_id": str(tile.id), "error_type": type(error).__name__}},

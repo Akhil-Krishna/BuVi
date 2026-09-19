@@ -66,4 +66,5 @@ def test_every_mutating_non_public_route_accepts_a_key_and_secrets_are_never_sto
         ("POST", "/auth/mfa/verify"),
         ("POST", "/auth/mfa/challenge"),
         ("POST", "/invitations/{token}/accept"),
+        ("POST", "/me/notifications/{id}/read"),
     }
