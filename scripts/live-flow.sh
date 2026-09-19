@@ -60,6 +60,9 @@ DELETE FROM identity.mfa_credentials
   WHERE user_id IN (SELECT id FROM identity.users WHERE email = 'admin@demo.example.com');
 UPDATE identity.users SET mfa_enabled = false WHERE email = 'admin@demo.example.com';
 DELETE FROM metadata.data_sources WHERE name LIKE 'sample-sales-db%' OR name LIKE 'sample-sales-mysql%';
+DELETE FROM identity.tenant_policies;
+DELETE FROM identity.invitations WHERE email LIKE 'a10-%';
+DELETE FROM identity.users WHERE email LIKE 'a10-%';
 SQL
 }
 

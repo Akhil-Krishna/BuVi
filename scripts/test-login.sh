@@ -12,7 +12,7 @@ SERVICE_URL="${GATEWAY_URL:-http://localhost:8000}"
 "$ROOT/scripts/migrate-all.sh" >/dev/null
 "$ROOT/scripts/seed-demo-tenant.sh" >/dev/null
 
-echo "Resetting demo invitees, admin MFA, rate-limit buckets and MailHog"
+echo "Resetting demo invitees, admin MFA, tenant policies, rate-limit buckets and MailHog"
 # Empty token buckets: the burst checks must not depend on what ran just before.
 flush_redis
 docker exec -i "$PGCONTAINER" psql -U postgres -d agentic_bi -q -v ON_ERROR_STOP=1 <<'SQL'
@@ -21,6 +21,8 @@ DELETE FROM identity.users WHERE email IN ('client@demo.example.com', 'developer
 DELETE FROM identity.mfa_credentials
   WHERE user_id IN (SELECT id FROM identity.users WHERE email = 'admin@demo.example.com');
 UPDATE identity.users SET mfa_enabled = false WHERE email = 'admin@demo.example.com';
+-- The A10 flow turns on org_admin_requires_webauthn; this flow's admin has TOTP only.
+DELETE FROM identity.tenant_policies;
 SQL
 curl -sf -X DELETE "${MAILHOG_URL:-http://localhost:8025}/api/v1/messages" >/dev/null
 

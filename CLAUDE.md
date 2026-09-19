@@ -17,26 +17,27 @@ is genuinely missing, stop and ask, don't guess.
 
 > Update this line yourself after every completed phase, then commit it.
 
-**Phase A9 (MCP Gateway, read-only tools first) is complete -- mcp-gateway (port 8009, schema `mcp`, RLS,
-append-only `invocations`): registration with a declared tool manifest and no network contact; approval
-(`org_admin` + step-up) that discovers tools over MCP Streamable HTTP and verifies the manifest; read-class tool
-grants; invocation with approved -> policy -> grant checks, every attempt recorded and audited, denials published as
-`mcp.invocation.denied`, output returned as untrusted and never stored. Section 15 runs at request time: resolve and
-check, pin to the address with TLS verified against the hostname, no keep-alive, no redirects, capped JSON/SSE
-bodies. The client is tested against the official MCP SDK server in both response modes. Live: `make test-mcp`.
-Decisions: `docs/adr/0012-phase-a9-mcp-gateway.md` (A8: 0011, A7: 0010, A6: 0007, idempotency: 0008, A5: 0006).
-Next up: Phase A10 (Admin backend, step-up, quotas, WebAuthn -- API only). See Section 31 of the build spec.**
+**Phase A10 (Admin backend, step-up, quotas, WebAuthn -- API only) is complete -- step-up is judged by method
+(sessions record `totp`/`webauthn`; `Principal.webauthn_required`; one `STEP_UP_REQUIRED` refusal everywhere) and
+covers every Section 7.3 operation with an API (gateway flags pinned by a catalog test; data-dependent ones enforced
+in the owning service). WebAuthn enrollment and step-up (py_webauthn, session-bound single-use challenges, keys in
+Vault), MFA removal/admin reset, tenant policies (`identity.tenant_policies`: client sharing, developer MCP, org_admin
+WebAuthn), share links + public snapshot, MCP disable/reject and step-up write/admin tools, cluster-wide query
+concurrency (Redis leases) with `QUERY_CONCURRENCY_LIMITED`, `GET /billing/quotas`, and the public `/sql/*` API with
+per-connection grants. Live: `make test-admin`. Decisions: `docs/adr/0013-phase-a10-authorization-completion.md`
+(A9: 0012, A8: 0011, A7: 0010, A6: 0007, idempotency: 0008, A5: 0006).
+Next up: Phase A11 (Notification service, webhooks incl. `/admin/webhooks`, billing usage -- API only). See Section 31 of the build spec.**
 
 **Carried forward (do not drop):**
 - **Phase C1 hardening (required for C1's DoD):** semantic-lookup caching. Cache the approved-definition context and the metadata agent-context packet per tenant/data source with a TTL and invalidation on approve/deprecate/sync; correctness must not depend on the cache (spec Phase C1; ADR 0010).
-- **Post-GA backlog (not in Tracks A–C):** Snowflake/BigQuery/Redshift connectors (need vendor sandboxes in CI; spec "Post-GA backlog"; ADR 0011). Also: ratio metrics, metric filters, and multi-table metrics over approved `join_rules`, with join-rule management. Any extension must keep the metric-vs-SQL check exact (parsed), never presence-based (spec "Post-GA backlog"; ADR 0010).
+- **Post-GA backlog (not in Tracks A–C):** four-eyes semantic approval as a tenant policy (ADR 0013). Snowflake/BigQuery/Redshift connectors (need vendor sandboxes in CI; spec "Post-GA backlog"; ADR 0011). Also: ratio metrics, metric filters, and multi-table metrics over approved `join_rules`, with join-rule management. Any extension must keep the metric-vs-SQL check exact (parsed), never presence-based (spec "Post-GA backlog"; ADR 0010).
 - **Before Phase C1:** assign a phase to artifact refresh (re-executing expired results) and to artifact versioning (Section 16, which needs a lineage column); ADR 0007.
 - **Before Phase C1 starts (required):** test the `anthropic` model provider against the real API with a real key, and record the result in an ADR (spec Phase C1 entry requirement; ADR 0006).
 - **Before Phase C1 starts (required):** certificate-verified data-source TLS (`verify-full`) for Postgres and MySQL. Add a per-data-source CA bundle, and prove hostname-mismatch and untrusted-CA refusal against TLS-enabled instances in CI (spec Phase C1 entry requirement; ADR 0011).
 - **Phase C1 (required):** mcp-gateway/notification-service egress through a dedicated egress proxy with a
   NetworkPolicy, and per-tenant MCP invocation concurrency/rate limits (spec Sections 15, 24; ADR 0012).
-- **Phase A10:** MCP server disable/reject, write-tool invocation with per-invocation step-up confirmation, and
-  per-user `mcp:manage` for developers (spec Phase A10; ADR 0012).
+- **Phase A11:** `/admin/webhooks` moved here from A10; consider a `user.deactivated` event so dashboard-service can
+  revoke that user's share links (ADR 0013 gap).
 - **Every new connector engine:** meet the spec Section 13.1 standing rule. Prove its defenses and its server-identity check against a live instance in CI, never from documentation.
 - **Any crewai/chromadb version bump:** re-review the chromadb advisory ignores. CI's "Accepted-advisory expiry (ADR 0006)" step fails until you do.
 

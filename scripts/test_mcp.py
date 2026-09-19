@@ -170,14 +170,20 @@ def main() -> int:
         "POST", f"{base}/tools/delete_order/invoke", admin, json={"arguments": {"order_id": 1}}
     )
     check(
-        "write tool denied on an approved server (403 MCP_TOOL_DENIED)",
-        write.status_code == 403 and write.json()["error"]["code"] == "MCP_TOOL_DENIED",
+        "write tool without a grant denied (403 MCP_TOOL_NOT_GRANTED)",
+        write.status_code == 403 and write.json()["error"]["code"] == "MCP_TOOL_NOT_GRANTED",
         write.text,
     )
+    # Phase A10: a write tool is grantable and invocable, each with a fresh step-up (the
+    # admin's step-up is fresh here; the stale cases are in mcp-gateway's integration suite).
     write_grant = api(
         "POST", f"{base}/tools/delete_order/grants", admin, json={"grantee_role": "org_admin"}
     )
-    check("write tool not grantable (409)", write_grant.status_code == 409, write_grant.text)
+    check("write tool granted with step-up", write_grant.status_code == 201, write_grant.text)
+    written = api(
+        "POST", f"{base}/tools/delete_order/invoke", admin, json={"arguments": {"order_id": 1}}
+    )
+    check("granted write tool invoked with step-up", written.status_code == 200, written.text)
 
     print("every invocation recorded; denials audited and published")
     rows = psql(
@@ -187,7 +193,8 @@ def main() -> int:
     )
     check(
         "mcp.invocations has every attempt",
-        rows == "search_docs:denied,search_docs:ok,search_docs:denied,delete_order:denied",
+        rows
+        == "search_docs:denied,search_docs:ok,search_docs:denied,delete_order:denied,delete_order:ok",
         rows,
     )
     audit = api("GET", "/api/v1/admin/audit", admin, params={"limit": 200}).json().get("items", [])
@@ -203,6 +210,7 @@ def main() -> int:
                 "mcp.tool.invoked",
                 "mcp.tool.denied",
                 "mcp.tool.denied",
+                "mcp.tool.invoked",
             ]
         ),
         str(kinds),

@@ -99,20 +99,21 @@ def main() -> int:
             "client_id": "api-gateway",
             "client_secret": GATEWAY_CLIENT_SECRET,
             "audience": "query-gateway",
-            "scope": "query-gateway:execute",
+            # Phase A10: api-gateway reaches query-gateway only through the public SQL API.
+            "scope": "query-gateway:proxy",
         },
     )
     check(
-        "service token issued for query-gateway:execute",
+        "service token issued for query-gateway:proxy",
         token_response.status_code == 200,
         token_response.text,
     )
     service = {"X-Service-Authorization": f"Bearer {token_response.json().get('access_token', '')}"}
 
     def query(sql: str, headers: dict[str, str] | None = None, **extra: object) -> httpx.Response:
-        body = {"database_id": source_id, "sql": sql, "purpose": "sql_editor", **extra}
+        body = {"database_id": source_id, "sql": sql, **extra}
         response = httpx.post(
-            f"{QUERY_GATEWAY}/internal/v1/queries",
+            f"{QUERY_GATEWAY}/api/v1/sql/execute",
             json=body,
             timeout=60,
             headers={
@@ -148,7 +149,15 @@ def main() -> int:
         else ""
     )
     check("query_executions audit row written", row == "succeeded|10|sql_editor", row)
-    handle = body.get("result_handle", "")
+    # The public API never returns the handle; the audit row records it.
+    handle = (
+        psql(
+            "SELECT result_handle FROM query_gateway.query_executions WHERE id = :'id'::uuid",
+            id=str(uuid.UUID(query_id)),
+        )
+        if query_id
+        else ""
+    )
     check(
         "result handle in object storage",
         handle == f"s3://query-results/tenants/{tenant_id}/queries/{query_id}.json",
