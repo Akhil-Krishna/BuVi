@@ -951,6 +951,21 @@ CREATE TABLE analytics.run_events (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE (run_id, seq)
 );
+
+-- Phase A11: one row per `billing.usage.recorded` event, written by worker-runtime through
+-- analytics-orchestrator's internal API. The producer's event_id makes redelivery harmless.
+-- `/billing/usage` sums them per period.
+CREATE TABLE analytics.usage_records (
+    event_id UUID PRIMARY KEY,
+    tenant_id UUID NOT NULL,
+    metric TEXT NOT NULL,          -- llm_input_tokens | llm_output_tokens | query_execution_ms
+    quantity BIGINT NOT NULL CHECK (quantity >= 0),
+    model TEXT,
+    stage TEXT,
+    run_id UUID,
+    occurred_at TIMESTAMPTZ NOT NULL
+);
+CREATE INDEX idx_usage_records_tenant_time ON analytics.usage_records(tenant_id, occurred_at);
 ```
 
 ### 8.5 `query_gateway` schema (owner: query-gateway)
@@ -1092,10 +1107,14 @@ CREATE TABLE notification.notifications (
     template_key TEXT NOT NULL,
     payload JSONB NOT NULL,
     status TEXT NOT NULL DEFAULT 'queued' CHECK (status IN ('queued','sent','failed','read')),
+    event_key TEXT NOT NULL,            -- source event (stream:sequence); redelivery is a no-op
     sent_at TIMESTAMPTZ,
     read_at TIMESTAMPTZ,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (event_key, user_id, channel)
 );
+CREATE INDEX idx_notifications_inbox ON notification.notifications(tenant_id, user_id, created_at DESC)
+    WHERE channel = 'in_app';
 
 CREATE TABLE notification.webhook_subscriptions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -1104,9 +1123,14 @@ CREATE TABLE notification.webhook_subscriptions (
     event_types TEXT[] NOT NULL,
     signing_secret_ref TEXT NOT NULL,   -- HMAC signing secret, Vault-backed
     status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','disabled')),
+    created_by UUID NOT NULL,           -- Phase A11: webhook delivery rows are recorded against it
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 ```
+
+A webhook delivery is a `notifications` row with `channel = 'webhook'`, `user_id` = the
+subscription's `created_by`, `template_key` = the event type, and the subscription id, attempt
+count and failure reason in `payload`.
 
 ### 8.9 Entity ownership summary
 
@@ -1217,12 +1241,15 @@ optional `Idempotency-Key` header. All responses use the error envelope in Secti
 | Semantic | `POST /semantic/metrics/{id}/approve` | `semantic:manage` + resource-tenant check | `draft` -> `approved`; audited |
 | Semantic | `POST /semantic/metrics/{id}/deprecate` | `semantic:manage` + resource-tenant check | `approved` -> `deprecated`; audited |
 | Semantic | `GET/POST /semantic/dimensions` | `semantic:manage` | a named, catalogued non-PII column |
-| Billing | `GET /billing/usage` | `billing:read` | tokens, query minutes, seats |
+| Billing | `GET /billing/usage` | `billing:read` | `?start=&end=` (UTC dates, default this month, max 366 days): LLM input/output tokens (and by stage), query minutes, current seats (Phase A11) |
 | Billing | `GET /billing/quotas` | `billing:read` | today's LLM token budget: limit, used, remaining, reset time (Phase A10) |
 | Billing | `POST /billing/subscription` | `billing:manage`, step-up | — |
 | Audit | `GET /admin/audit` | `audit:read` | filter by actor/date/event_type |
-| Notifications | `GET /me/notifications` | session | — |
-| Webhooks | `POST /admin/webhooks` | `org_admin`, step-up | signing secret shown once |
+| Notifications | `GET /me/notifications` | session | the caller's in-app notifications, newest first; `?unread_only=`, cursor-paginated |
+| Notifications | `POST /me/notifications/{id}/read` | session + own notification | marks read; someone else's id is `404` (Phase A11) |
+| Webhooks | `POST /admin/webhooks` | `org_admin`, step-up | `{url, event_types}`; event types from the webhook allow-list, URL under Section 15; signing secret shown once |
+| Webhooks | `GET /admin/webhooks` | `org_admin` | never returns the secret (Phase A11) |
+| Webhooks | `DELETE /admin/webhooks/{id}` | `org_admin`, step-up | disables the subscription and deletes its secret (Phase A11) |
 | Guest share | `GET /share/{token}` **(public, token-gated)** | share-link token | read-only dashboard snapshot: names, chart specs and chart data only |
 
 ### 9.1 Representative request/response schemas
@@ -1567,6 +1594,10 @@ The application-level controls ship with the feature that fetches (for MCP, Phas
 - no redirects;
 - time, size and content-type limits.
 
+For webhooks (Phase A11) the same controls apply at delivery. The per-tenant allow-list is the
+set of subscriptions an `org_admin` created with a fresh step-up, which is the admin approval.
+The URL checks are shared with mcp-gateway through `platform-egress`.
+
 The dedicated egress proxy and its NetworkPolicy are deployment infrastructure (Section 28),
 required by Phase C1.
 
@@ -1664,13 +1695,13 @@ is.
 |---|---|---|---|
 | `analytics.run.requested` | analytics-orchestrator | worker-runtime | `{run_id, tenant_id, conversation_id}` |
 | `analytics.run.stage_changed` | analytics-orchestrator (Flow) | api-gateway (SSE bridge) | `AnalyticsRunEvent` (Section 11); carried on Redis pub/sub channel `analytics:run:{run_id}`, durable copy in `analytics.run_events` |
-| `query.completed` | query-gateway | analytics-orchestrator, notification-service | `{query_id, run_id, status, row_count}` |
+| `query.completed` | query-gateway | analytics-orchestrator, notification-service | `{query_id, run_id, status, row_count}` — not produced yet: queries are synchronous, so nothing waits on one. Producer and notification arrive with async query/export execution (post-GA backlog) |
 | `metadata.sync.requested` | metadata-service, scheduler | worker-runtime | `{data_source_id, tenant_id}` |
-| `metadata.sync.completed` | worker-runtime | metadata-service, notification-service | `{data_source_id, status, tables_synced}` |
+| `metadata.sync.completed` | worker-runtime (metadata-service while sync runs in-request, ADR 0004) | metadata-service, notification-service | `{data_source_id, data_source_name, status, tables_synced, user_id}` (`user_id` = who ran it, the notification recipient) |
 | `dashboard.tile.pinned` | dashboard-service | notification-service | `{dashboard_id, artifact_id, user_id}` |
 | `mcp.invocation.denied` | mcp-gateway | notification-service, audit | `{tool_id, tenant_id, reason}` (security signal) |
-| `identity.role.changed` | identity-service | audit, notification-service | `{user_id, role, granted_by}` |
-| `billing.usage.recorded` | multiple (query-gateway, analytics-orchestrator) | worker-runtime (aggregation) | `{tenant_id, metric, quantity}` |
+| `identity.role.changed` | identity-service | audit, notification-service | `{user_id, roles, granted, revoked, changed_by}` (one event per change; `roles` is the result) |
+| `billing.usage.recorded` | multiple (query-gateway, analytics-orchestrator) | worker-runtime (aggregation) | `{event_id, tenant_id, metric, quantity, occurred_at}` (+ `model`, `stage`, `run_id` for LLM usage) |
 
 Every event carries `tenant_id`, `request_id`/`run_id` for trace correlation, and a schema
 version. Consumers reject unknown major schema versions rather than guessing field meaning.
@@ -1786,6 +1817,10 @@ deletion, impersonation start/end, and all admin actions.
 - Track `billing.usage.recorded` events per tenant for: LLM tokens (by stage), query-gateway
   execution seconds, storage bytes, seats. Aggregate in worker-runtime for billing/usage
   dashboards (Section 9's `/billing/usage`).
+  - Phase A11: worker-runtime consumes the events and writes them through
+    analytics-orchestrator, which owns `analytics.usage_records` and serves `/billing/usage`.
+  - Seats are counted live from identity-service (active users), not metered as events.
+  - Storage bytes wait for artifact storage metering (post-GA backlog).
 - Support at least one fallback model/provider per stage for availability (e.g., primary +
   fallback), selected by the router on error/timeout, never mid-flow silently for cost reasons
   without a policy flag.
@@ -2542,11 +2577,32 @@ flag). A10 completes authorization:
 
 ### Phase A11 — Notification service, webhooks, billing usage (API only)
 
-- Scaffold `apps/notification-service`; implement DDL from Section 8.8; wire it as a consumer of
-  the topics in Section 18.1 that have `notification-service` listed.
-- Implement `POST /admin/webhooks` (moved from A10: notification-service owns webhooks) and
-  webhook delivery with HMAC signing and the SSRF controls from Section 15.
+- Scaffold `apps/notification-service` (port 8010); implement DDL from Section 8.8; wire it as a
+  consumer of the topics in Section 18.1 that have `notification-service` listed and a producer:
+  - `dashboard.tile.pinned` -> in-app to the pinner;
+  - `mcp.invocation.denied` -> in-app and email to every active `org_admin`;
+  - `metadata.sync.completed` -> in-app and email to whoever ran the sync;
+  - `identity.role.changed` -> in-app and email to the affected user.
+  - `query.completed` has no producer yet (see 18.1).
+  - Producers added in this phase: metadata-service (sync completion) and identity-service (role
+    changes).
+  - Recipients and addresses come from an identity-service internal directory endpoint.
+  - Consumers are durable JetStream pull consumers. Delivery is idempotent per source event
+    (`event_key`).
+- Implement `/me/notifications` (list, mark read) and `/admin/webhooks` (create, list, disable;
+  moved from A10: notification-service owns webhooks).
+  - Webhook delivery is HMAC-SHA256 signed: `X-Buvi-Signature: t=<unix>,v1=<hex>` over
+    `"<t>.<body>"`.
+  - It uses the Section 15 controls: URL rules at creation; resolution, address check and pinning
+    at delivery; no redirects; timeouts.
+  - Event types come from a webhook allow-list: `dashboard.tile.pinned`,
+    `metadata.sync.completed`, `mcp.invocation.denied`.
+  - There are three bounded attempts per delivery; each outcome is recorded.
 - Implement `/billing/usage` aggregation from `billing.usage.recorded` events (Section 23).
+  - query-gateway starts metering execution time.
+  - worker-runtime consumes the events and writes them through analytics-orchestrator
+    (`analytics.usage_records`).
+  - Seats are read live from identity-service.
 - **DoD:** a dashboard pin, a failed MCP invocation, and a sync completion each produce the
   correct in-app/email notification (MailHog inbox checked by test), provable over HTTP/queue
   inspection alone; a subscribed webhook receives a correctly signed payload for an allow-listed
