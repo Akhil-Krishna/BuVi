@@ -85,7 +85,22 @@
 - **Failed MFA checks were never audited** (a Phase A1 bug). The failure event was written in the refused request's transaction and rolled back with it. Login refusals had the same flaw.
   - Refusal events and the spending of a WebAuthn challenge now go through `IndependentWrites`: their own short transaction on their own connection.
   - Committing the request's session mid-request was not an option: identity binds its tenant with a session-level setting, so a mid-request commit would return a pooled connection still bound to the tenant.
-  - Regression tests cover both.
+  - Regression tests cover both: a refused TOTP code and a suspended user's refused login. Each fails if the event is written in the request's transaction.
+  - **Scope, established after the fix. It is narrower than "every denial audit since A1":**
+    - The only affected events were identity's `auth.mfa_verification_failed` (two branches) and `auth.login_failed` (the inactive-user branch; wrong passwords are refused by Keycloak and never reach identity).
+    - No earlier DoD, ADR or test claimed either event, so no earlier phase's sign-off rested on them. The claim that was actually wrong was Section 22's "MFA changes are audited", for failed checks.
+    - The other services that audit (metadata, semantic, dashboard, mcp-gateway) send events over HTTP to identity's internal endpoint, which commits in its own request. A rollback in the caller cannot erase them.
+    - The two services that keep their own refusal records commit them before raising: query-gateway's `rejected` rows (A4) and mcp-gateway's `denied` invocations (A9). Their integration tests read the rows back after the 4xx.
+  - **Guard against the class returning in identity** (one integration test covers one path, not the class):
+    - `AuditService.record` refuses the events in `REFUSAL_EVENTS`;
+    - `record_failure` raises instead of silently falling back to the request transaction;
+    - every request-built audit service now gets `IndependentWrites` (the user service previously got none).
+    - Unit tests pin all three. A new refusal event must be added to `REFUSAL_EVENTS`.
+  - **Residual, not fixed:** services on the HTTP sink send the event before their own commit. A commit that fails after the event is sent would leave an audit row for a change that did not happen. Most writes flush or commit first, so only a connection failure at commit time remains.
+- **A failed A10 run polluted later flows:** it left `org_admin_requires_webauthn` on, and A1 then failed with `STEP_UP_REQUIRED`. A1 ran its own partial reset rather than the shared one.
+  - Every live flow now calls `reset_demo_state`. It undoes all cross-flow state (policies, the admin's MFA, A10 users, demo data sources, and demo members' roles, which A1 and A10 change and a midway failure would leave) and then verifies the result with `assert_demo_baseline`.
+  - `tests/test_repo_structure.py` fails if a `scripts/test-*.sh` flow skips the reset or runs anything before it, or if `make test-live` omits a flow.
+  - Proven by seeding a leaked policy and leaked roles, then running `make test-live` green.
 - **A failed WebAuthn attempt left its challenge reusable** (the same rollback). It is now spent either way.
 - **Lockout from the WebAuthn policy:**
   - an admin with only TOTP could never enroll the key the policy now demanded;

@@ -3,7 +3,11 @@
 # Every flow starts from the same known state, so flows can run in any order:
 #   flush_redis        empty the Redis the services use (rate-limit buckets, sessions, ...)
 #   reset_demo_state   bootstrap + migrate + seed, empty Redis (rate-limit buckets, sessions,
-#                      idempotency records), admin MFA off, no demo data sources left behind
+#                      idempotency records), then undo every change a flow may leave behind and
+#                      verify the result (assert_demo_baseline). Every flow calls it first --
+#                      tests/test_repo_structure.py enforces that -- so a flow that fails midway
+#                      cannot change how the next one behaves. A flow that changes shared state
+#                      adds the undo here and the check to assert_demo_baseline.
 #   start_services     start services by name, logs in $LOGDIR, refusing ports already in use
 #                      (a flow inspects the logs of the processes it started, not someone else's)
 # Services are stopped when the flow exits.
@@ -55,7 +59,7 @@ reset_demo_state() {  # [--mysql]
   "$ROOT/scripts/seed-sample-sales.sh" >/dev/null
   if [ "${1:-}" = "--mysql" ]; then "$ROOT/scripts/seed-sample-sales-mysql.sh" >/dev/null; fi
   flush_redis
-  docker exec -i "$PGCONTAINER" psql -U postgres -d agentic_bi -q -v ON_ERROR_STOP=1 <<'SQL'
+  docker exec -i "$PGCONTAINER" psql -U postgres -d agentic_bi -q -v ON_ERROR_STOP=1 <<SQL
 DELETE FROM identity.mfa_credentials
   WHERE user_id IN (SELECT id FROM identity.users WHERE email = 'admin@demo.example.com');
 UPDATE identity.users SET mfa_enabled = false WHERE email = 'admin@demo.example.com';
@@ -63,7 +67,54 @@ DELETE FROM metadata.data_sources WHERE name LIKE 'sample-sales-db%' OR name LIK
 DELETE FROM identity.tenant_policies;
 DELETE FROM identity.invitations WHERE email LIKE 'a10-%';
 DELETE FROM identity.users WHERE email LIKE 'a10-%';
+-- Demo members hold exactly their base role (A1 and A10 grant and revoke extra roles; a flow
+-- that fails in between would otherwise leave them).
+DELETE FROM identity.user_roles ur
+  USING identity.users u, identity.roles r, (VALUES $DEMO_MEMBER_ROLES) AS m(email, role_key)
+  WHERE ur.user_id = u.id AND ur.role_id = r.id AND u.email = m.email AND r.key <> m.role_key;
+INSERT INTO identity.user_roles (user_id, role_id)
+  SELECT u.id, r.id
+  FROM (VALUES $DEMO_MEMBER_ROLES) AS m(email, role_key)
+  JOIN identity.users u ON u.email = m.email
+  JOIN identity.roles r ON r.tenant_id = u.tenant_id AND r.key = m.role_key
+  ON CONFLICT DO NOTHING;
 SQL
+  assert_demo_baseline
+}
+
+# email -> the one role that demo user holds between flows
+DEMO_MEMBER_ROLES="('admin@demo.example.com', 'org_admin'), ('developer@demo.example.com', 'developer'), ('client@demo.example.com', 'client')"
+
+assert_demo_baseline() {  # fail fast if the reset left any cross-flow state behind
+  local problems
+  problems=$(docker exec -i "$PGCONTAINER" psql -U postgres -d agentic_bi -qAt -v ON_ERROR_STOP=1 <<SQL
+SELECT 'tenant policies set' WHERE EXISTS (SELECT 1 FROM identity.tenant_policies)
+UNION ALL
+SELECT 'demo admin has MFA' WHERE EXISTS (
+  SELECT 1 FROM identity.users u
+  WHERE u.email = 'admin@demo.example.com'
+    AND (u.mfa_enabled OR EXISTS (SELECT 1 FROM identity.mfa_credentials c WHERE c.user_id = u.id)))
+UNION ALL
+SELECT 'a10 users left' WHERE EXISTS (SELECT 1 FROM identity.users WHERE email LIKE 'a10-%')
+UNION ALL
+SELECT 'demo data sources left' WHERE EXISTS (
+  SELECT 1 FROM metadata.data_sources
+  WHERE name LIKE 'sample-sales-db%' OR name LIKE 'sample-sales-mysql%')
+UNION ALL
+SELECT 'roles of ' || u.email || ': ' || string_agg(r.key, ',' ORDER BY r.key)
+  FROM (VALUES $DEMO_MEMBER_ROLES) AS m(email, role_key)
+  JOIN identity.users u ON u.email = m.email
+  JOIN identity.user_roles ur ON ur.user_id = u.id
+  JOIN identity.roles r ON r.id = ur.role_id
+  GROUP BY u.email, m.role_key
+  HAVING array_agg(r.key) <> ARRAY[m.role_key];
+SQL
+  )
+  if [ -n "$problems" ]; then
+    echo "error: demo state not at baseline after reset:" >&2
+    sed 's/^/  /' <<<"$problems" >&2
+    exit 1
+  fi
 }
 
 # name -> "port package module env..." (env is what the flows need beyond the defaults)

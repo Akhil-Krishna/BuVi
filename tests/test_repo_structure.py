@@ -113,3 +113,30 @@ def test_no_shared_utils_or_common_dumping_ground() -> None:
         if path.name in banned or path.parent.name in {"utils", "common"}
     ]
     assert not offenders, f"Section 37 forbids shared dumping grounds: {offenders}"
+
+
+LIVE_FLOWS = sorted((REPO_ROOT / "scripts").glob("test-*.sh"))
+
+
+@pytest.mark.parametrize("flow", LIVE_FLOWS, ids=lambda path: path.name)
+def test_every_live_flow_starts_from_the_shared_reset(flow: Path) -> None:
+    """A flow that fails midway must not change how the next one behaves (a failed A10 run once
+    left a tenant policy that broke A1): every flow runs `reset_demo_state` -- which undoes and
+    then verifies all cross-flow state -- before it starts a service or a check."""
+    lines = [line.strip() for line in flow.read_text().splitlines()]
+    assert any(line.startswith("source ") and "live-flow.sh" in line for line in lines), flow
+    resets = [i for i, line in enumerate(lines) if line.split(" ")[0] == "reset_demo_state"]
+    assert resets, f"{flow.name} does not call reset_demo_state"
+    first_action = next(
+        i
+        for i, line in enumerate(lines)
+        if line.startswith(("start_service", "uv run", "GATEWAY_URL="))
+    )
+    assert resets[0] < first_action, f"{flow.name} runs something before reset_demo_state"
+
+
+def test_every_live_flow_is_in_test_live() -> None:
+    makefile = (REPO_ROOT / "Makefile").read_text()
+    target = makefile.split("\ntest-live:", 1)[1].split("\n\n", 1)[0]
+    missing = [flow.name for flow in LIVE_FLOWS if f"scripts/{flow.name}" not in target]
+    assert not missing, f"make test-live does not run: {missing}"

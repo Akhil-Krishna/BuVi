@@ -1,28 +1,19 @@
 #!/usr/bin/env bash
-# Phase A1 DoD scripted flow. Needs `make up`. Idempotent: resets the demo
-# invitees and the admin's MFA first, starts identity-service if it is not
+# Phase A1 DoD scripted flow. Needs `make up`. Idempotent: runs the shared demo
+# reset and removes the invitees first, starts identity-service if it is not
 # already running, then runs scripts/test_login.py.
 set -euo pipefail
-source "$(dirname "$0")/live-flow.sh"  # flush_redis; this flow keeps its own service handling
+source "$(dirname "$0")/live-flow.sh"  # reset_demo_state; this flow keeps its own service handling
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PGCONTAINER="${PGCONTAINER:-buvi-dev-postgres-1}"
 SERVICE_URL="${GATEWAY_URL:-http://localhost:8000}"
 
-"$ROOT/scripts/keycloak-bootstrap.sh" >/dev/null
-"$ROOT/scripts/migrate-all.sh" >/dev/null
-"$ROOT/scripts/seed-demo-tenant.sh" >/dev/null
-
-echo "Resetting demo invitees, admin MFA, tenant policies, rate-limit buckets and MailHog"
-# Empty token buckets: the burst checks must not depend on what ran just before.
-flush_redis
+echo "Resetting demo state (shared reset), then the invitees this flow re-invites, and MailHog"
+reset_demo_state
+# A1 proves the invitation flow itself, so its invitees start from nothing.
 docker exec -i "$PGCONTAINER" psql -U postgres -d agentic_bi -q -v ON_ERROR_STOP=1 <<'SQL'
 DELETE FROM identity.invitations WHERE email IN ('client@demo.example.com', 'developer@demo.example.com');
 DELETE FROM identity.users WHERE email IN ('client@demo.example.com', 'developer@demo.example.com');
-DELETE FROM identity.mfa_credentials
-  WHERE user_id IN (SELECT id FROM identity.users WHERE email = 'admin@demo.example.com');
-UPDATE identity.users SET mfa_enabled = false WHERE email = 'admin@demo.example.com';
--- The A10 flow turns on org_admin_requires_webauthn; this flow's admin has TOTP only.
-DELETE FROM identity.tenant_policies;
 SQL
 curl -sf -X DELETE "${MAILHOG_URL:-http://localhost:8025}/api/v1/messages" >/dev/null
 
