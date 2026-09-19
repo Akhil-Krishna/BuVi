@@ -10,6 +10,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 RUN_REQUESTED_SUBJECT = "analytics.run.requested"
 SCOPE_EXECUTE = "analytics-orchestrator:execute"
+#: Section 18.1; stream BILLING, declared identically by its producers (Phase A11).
+BILLING_USAGE_SUBJECT = "billing.usage.recorded"
+SCOPE_USAGE_WRITE = "analytics-orchestrator:usage"
 
 
 class Settings(BaseSettings):
@@ -30,6 +33,13 @@ class Settings(BaseSettings):
     heartbeat_seconds: float = Field(default=15.0, gt=0)
     fetch_timeout_seconds: float = Field(default=5.0, gt=0)
     retry_base_seconds: float = Field(default=5.0, gt=0)
+
+    # --- Usage aggregation (Section 23; Phase A11) ---------------------------------------
+    billing_stream: str = "BILLING"
+    usage_durable_name: str = "worker-runtime-usage"
+    usage_batch_size: int = Field(default=100, ge=1, le=500)
+    usage_retry_seconds: float = Field(default=10.0, gt=0)
+    usage_ack_wait_seconds: float = Field(default=60.0, gt=0)
 
     orchestrator_url: str = "http://localhost:8004"
     execute_timeout_seconds: float = Field(default=330.0, gt=0)

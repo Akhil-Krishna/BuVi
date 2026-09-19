@@ -38,3 +38,11 @@ The worker is stateless, so run as many replicas as needed; they share the durab
 ## Deploy / rollback
 
 The worker has no schema. Roll or roll back the image. A message a stopped worker had in flight is redelivered after `ack_wait`.
+
+## Usage aggregation (Phase A11)
+
+- **Consumer:** a second durable consumer, `worker-runtime-usage`, reads `billing.usage.recorded` (stream `BILLING`) in batches of up to 100. It writes them to analytics-orchestrator (`POST /internal/v1/billing/usage-records`, scope `analytics-orchestrator:usage`) and acks each message only after the store succeeded.
+- **Duplicates:** the store is idempotent per `event_id`, so a redelivered batch is counted once.
+- **Nothing is dropped for an outage:** while the orchestrator is unavailable, the whole batch is retried every `WORKER_USAGE_RETRY_SECONDS`. There is no delivery limit. Only a malformed message is terminated.
+- **A new durable starts at the beginning of the stream:** usage is billed, never skipped.
+- **Readiness** reports both consumers: `checks.queue` (runs) and `checks.usage`.

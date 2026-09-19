@@ -1,4 +1,4 @@
-"""Probes (Section 28). Ready: connected to NATS with the consumer running."""
+"""Probes (Section 28). Ready: connected to NATS with both consumers running (runs, usage)."""
 
 from __future__ import annotations
 
@@ -21,12 +21,16 @@ async def live(request: Request) -> HealthResponse:
 
 @router.get("/health/ready", response_model=HealthResponse)
 async def ready(request: Request, response: Response) -> HealthResponse:
-    consumer = request.app.state.consumer
-    ok = consumer is not None and consumer.connected
+    state = request.app.state
+    checks = {
+        name: "ok" if consumer is not None and consumer.connected else "unavailable"
+        for name, consumer in (("queue", state.consumer), ("usage", state.usage_consumer))
+    }
+    ok = all(check == "ok" for check in checks.values())
     if not ok:
         response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
     return HealthResponse(
         status="ok" if ok else "unavailable",
-        service=request.app.state.settings.service_name,
-        checks={"queue": "ok" if ok else "unavailable"},
+        service=state.settings.service_name,
+        checks=checks,
     )

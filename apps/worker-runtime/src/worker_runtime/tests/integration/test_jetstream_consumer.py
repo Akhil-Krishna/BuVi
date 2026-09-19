@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import json
 import time
 import uuid
 from collections.abc import AsyncIterator, Callable, Iterator
@@ -15,8 +16,8 @@ import nats
 import pytest
 from fastapi import FastAPI
 
-from platform_contracts import RunRequested
-from worker_runtime.core.config import RUN_REQUESTED_SUBJECT, Settings
+from platform_contracts import BillingUsageRecorded, RunRequested
+from worker_runtime.core.config import BILLING_USAGE_SUBJECT, RUN_REQUESTED_SUBJECT, Settings
 from worker_runtime.main import create_app
 
 pytestmark = pytest.mark.integration
@@ -50,20 +51,34 @@ class Orchestrator:
         self.executions: list[str] = []
         self.status = 200
         self.block: asyncio.Event | None = None
+        self.usage: list[dict[str, object]] = []
+        self.usage_status = 200
 
     def handler(self, request: httpx.Request) -> httpx.Response:
         if request.url.path == "/internal/v1/oauth/token":
             form = dict(httpx.QueryParams(request.content.decode()))
-            assert (form["client_id"], form["audience"], form["scope"]) == (
+            assert (form["client_id"], form["audience"]) == (
                 "worker-runtime",
                 "analytics-orchestrator",
-                "analytics-orchestrator:execute",
             )
-            return httpx.Response(200, json={"access_token": "svc-token", "expires_in": 300})
+            return httpx.Response(
+                200, json={"access_token": f"svc:{form['scope']}", "expires_in": 300}
+            )
         if request.url.path.endswith("/execute"):
-            assert request.headers["x-service-authorization"] == "Bearer svc-token"
+            assert request.headers["x-service-authorization"] == (
+                "Bearer svc:analytics-orchestrator:execute"
+            )
             self.executions.append(request.url.path.split("/")[4])
             return httpx.Response(self.status, json={"status": "completed"})
+        if request.url.path == "/internal/v1/billing/usage-records":
+            assert request.headers["x-service-authorization"] == (
+                "Bearer svc:analytics-orchestrator:usage"
+            )
+            if self.usage_status != 200:
+                return httpx.Response(self.usage_status)
+            records = json.loads(request.content)["records"]
+            self.usage.extend(records)
+            return httpx.Response(200, json={"stored": len(records), "duplicates": 0})
         return httpx.Response(404)
 
 
@@ -99,6 +114,8 @@ def _settings(url: str, suffix: str, **overrides: object) -> Settings:
         nats_url=url,
         run_stream="ANALYTICS",
         durable_name=f"worker-{suffix}",
+        usage_durable_name=f"usage-{suffix}",
+        usage_retry_seconds=0.3,
         fetch_timeout_seconds=0.5,
         heartbeat_seconds=0.5,
         retry_base_seconds=0.2,
@@ -109,10 +126,11 @@ def _settings(url: str, suffix: str, **overrides: object) -> Settings:
 
 @pytest.fixture(autouse=True)
 async def _fresh_stream(nats_url: str) -> None:
-    """Each test starts with no ANALYTICS stream, so no leftover messages or consumers."""
+    """Each test starts with no streams, so no leftover messages or consumers."""
     client = await nats.connect(nats_url)
-    with contextlib.suppress(Exception):  # absent on the first test
-        await client.jetstream().delete_stream("ANALYTICS")
+    for stream in ("ANALYTICS", "BILLING"):
+        with contextlib.suppress(Exception):  # absent on the first test
+            await client.jetstream().delete_stream(stream)
     await client.close()
 
 
@@ -120,8 +138,8 @@ async def _fresh_stream(nats_url: str) -> None:
 async def _started(settings: Settings, orchestrator: Orchestrator) -> AsyncIterator[FastAPI]:
     app = create_app(settings=settings, http_transport=httpx.MockTransport(orchestrator.handler))
     async with app.router.lifespan_context(app):
-        consumer = app.state.consumer
-        await _wait_for(lambda: bool(consumer.connected))
+        consumer, usage = app.state.consumer, app.state.usage_consumer
+        await _wait_for(lambda: bool(consumer.connected and usage.connected))
         yield app
 
 
@@ -180,3 +198,39 @@ async def test_busy_run_is_retried_until_the_orchestrator_answers(nats_url: str)
         await _wait_for(lambda: consumer.handled >= 2, wait_seconds=30)
     assert len(orchestrator.executions) >= 2
     assert await _pending(nats_url, settings.run_stream, settings.durable_name) == (0, 0)
+
+
+async def _publish_usage(url: str, *bodies: bytes) -> None:
+    client = await nats.connect(url)
+    js = client.jetstream()
+    for body in bodies:
+        await js.publish(BILLING_USAGE_SUBJECT, body, stream="BILLING")
+    await client.close()
+
+
+def _usage(tenant: uuid.UUID, quantity: int) -> BillingUsageRecorded:
+    return BillingUsageRecorded(tenant_id=tenant, metric="query_execution_ms", quantity=quantity)
+
+
+async def test_usage_events_are_stored_then_acked_and_retried_while_the_store_is_down(
+    nats_url: str,
+) -> None:
+    """Phase A11: `billing.usage.recorded` -> analytics-orchestrator's usage store."""
+    orchestrator = Orchestrator()
+    orchestrator.usage_status = 503
+    settings = _settings(nats_url, "usage")
+    tenant = uuid.uuid4()
+    events = [_usage(tenant, 100), _usage(tenant, 250)]
+    async with _started(settings, orchestrator) as app:
+        usage = app.state.usage_consumer
+        await _publish_usage(
+            nats_url, *(e.model_dump_json().encode() for e in events), b"malformed"
+        )
+        await _wait_for(lambda: usage.handled >= 3)
+        assert orchestrator.usage == []  # store down: nothing acked, nothing lost
+        orchestrator.usage_status = 200
+        await _wait_for(lambda: len(orchestrator.usage) == 2, wait_seconds=20)
+    assert sorted(r["event_id"] for r in orchestrator.usage) == sorted(
+        str(e.event_id) for e in events
+    )
+    assert await _pending(nats_url, "BILLING", settings.usage_durable_name) == (0, 0)

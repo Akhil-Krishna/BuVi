@@ -18,3 +18,7 @@ last persisted step.
 Message handling: `200` → ack; `404` (unknown run or tenant) → terminate; `409 RUN_BUSY` → retry
 later; network error or `5xx` → retry with back-off, up to `max_deliver`; malformed or unknown
 major schema version → terminate (Section 18.1).
+
+## Usage aggregation (Phase A11)
+
+A second durable consumer reads `billing.usage.recorded` (stream `BILLING`) and stores each batch through analytics-orchestrator's `POST /internal/v1/billing/usage-records` (scope `analytics-orchestrator:usage`). Messages are acked only once stored; storage is idempotent per `event_id`. See the runbook.
