@@ -28,6 +28,7 @@ ANALYTICS: Final = "analytics-orchestrator"
 DASHBOARD: Final = "dashboard-service"
 SEMANTIC: Final = "semantic-service"
 MCP: Final = "mcp-gateway"
+QUERY: Final = "query-gateway"
 
 
 @dataclass(frozen=True)
@@ -92,6 +93,10 @@ def _semantic(method: str, path: str, summary: str, **kwargs: object) -> RouteSp
     return RouteSpec(method, path, summary, SEMANTIC, **kwargs)  # type: ignore[arg-type]
 
 
+def _query(method: str, path: str, summary: str, **kwargs: object) -> RouteSpec:
+    return RouteSpec(method, path, summary, QUERY, **kwargs)  # type: ignore[arg-type]
+
+
 def _mcp(method: str, path: str, summary: str, **kwargs: object) -> RouteSpec:
     return RouteSpec(method, path, summary, MCP, **kwargs)  # type: ignore[arg-type]
 
@@ -110,6 +115,16 @@ CATALOG: Final[tuple[RouteSpec, ...]] = (
     _identity("GET", "/auth/session", "Current principal, roles, tenant"),
     _identity("POST", "/auth/mfa/enroll", "Start TOTP/WebAuthn enrollment", idempotency="no_store"),
     _identity("POST", "/auth/mfa/verify", "Complete MFA", rate_tier="auth", idempotency="ignore"),
+    # Authenticated and guess-free (a challenge, not a code check): the per-user bucket covers
+    # it, so a WebAuthn step-up spends one auth-tier token (verify), not two.
+    _identity(
+        "POST",
+        "/auth/mfa/challenge",
+        "WebAuthn assertion options (single-use)",
+        idempotency="ignore",
+    ),
+    _identity("GET", "/me/mfa", "The caller's MFA factors"),
+    _identity("DELETE", "/me/mfa/{id}", "Remove one of the caller's factors", step_up=True),
     # --- Users, invitations, sessions, API keys (Sections 6.7-6.9) -------------------
     _identity("GET", "/admin/users", "Tenant-scoped user list", permission="user:manage"),
     _identity(
@@ -150,7 +165,29 @@ CATALOG: Final[tuple[RouteSpec, ...]] = (
         step_up=True,
     ),
     _identity(
-        "POST", "/me/api-keys", "Create an API key (secret shown once)", idempotency="no_store"
+        "POST",
+        "/admin/users/{id}/mfa/reset",
+        "Revoke all of a user's factors and sessions",
+        permission="user:manage",
+        step_up=True,
+    ),
+    _identity(
+        "GET", "/admin/roles", "Tenant roles and their permissions", permission="role:manage"
+    ),
+    _identity("GET", "/admin/policies", "Tenant policies", permission="policy:manage"),
+    _identity(
+        "PATCH",
+        "/admin/policies",
+        "Change tenant policies",
+        permission="policy:manage",
+        step_up=True,
+    ),
+    _identity(
+        "POST",
+        "/me/api-keys",
+        "Create an API key (secret shown once)",
+        step_up=True,
+        idempotency="no_store",
     ),
     _identity("DELETE", "/me/api-keys/{id}", "Revoke an API key"),
     _identity("GET", "/admin/audit", "Tenant audit events", permission="audit:read"),
@@ -199,15 +236,25 @@ CATALOG: Final[tuple[RouteSpec, ...]] = (
         "POST", "/dashboards/{id}/tiles", "Pin an artifact as a tile", permission="dashboard:pin"
     ),
     _dashboard("PATCH", "/tiles/{id}", "Update tile layout/overrides", permission="dashboard:pin"),
-    _stub(
+    _dashboard(
         "POST",
         "/dashboards/{id}/share-links",
-        "Create a time-boxed share link",
-        "dashboard-service",
-        "A10",
+        "Create a time-boxed share link (token shown once)",
         permission="dashboard:share",
         step_up=True,
         idempotency="no_store",
+    ),
+    _dashboard(
+        "GET",
+        "/dashboards/{id}/share-links",
+        "A dashboard's share links",
+        permission="dashboard:read",
+    ),
+    _dashboard(
+        "DELETE",
+        "/dashboards/{id}/share-links/{link_id}",
+        "Revoke a share link",
+        permission="dashboard:read",
     ),
     # --- Data sources (Sections 8.2, 13.1) --------------------------------------------------
     _metadata("GET", "/data-sources", "List data sources", permission="data:manage"),
@@ -238,30 +285,31 @@ CATALOG: Final[tuple[RouteSpec, ...]] = (
         "One table with columns and relationships",
         permission="catalog:read",
     ),
-    # --- SQL (Section 13) ----------------------------------------------------------------------
-    _stub(
-        "POST",
-        "/sql/validate",
-        "Dry SQL validation",
-        "query-gateway",
-        "A4",
-        permission="sql:execute",
+    _metadata(
+        "GET", "/data-sources/{id}/sql-grants", "Per-connection SQL grants", role="org_admin"
     ),
-    _stub(
+    _metadata(
+        "POST", "/data-sources/{id}/sql-grants", "Grant SQL on a connection", role="org_admin"
+    ),
+    _metadata(
+        "DELETE",
+        "/data-sources/{id}/sql-grants/{grant_id}",
+        "Revoke a per-connection SQL grant",
+        role="org_admin",
+    ),
+    # --- SQL (Section 13) ----------------------------------------------------------------------
+    _query("POST", "/sql/validate", "Dry SQL validation", permission="sql:execute"),
+    _query(
         "POST",
         "/sql/execute",
         "Execute validated SQL",
-        "query-gateway",
-        "A4",
         permission="sql:execute",
         idempotency="no_store",
     ),
-    _stub(
+    _query(
         "GET",
         "/sql/history",
         "Query history",
-        "query-gateway",
-        "A4",
         any_permission=frozenset({"sql:execute", "run:debug"}),
     ),
     # --- MCP (Sections 8.7, 14, 15) ---------------------------------------------------------------
@@ -275,6 +323,8 @@ CATALOG: Final[tuple[RouteSpec, ...]] = (
         role="org_admin",
         step_up=True,
     ),
+    _mcp("POST", "/mcp/servers/{id}/disable", "Disable an approved server", role="org_admin"),
+    _mcp("POST", "/mcp/servers/{id}/reject", "Reject a pending server", role="org_admin"),
     _mcp(
         "POST",
         "/mcp/servers/{id}/tools/{tool}/grants",
@@ -317,6 +367,10 @@ CATALOG: Final[tuple[RouteSpec, ...]] = (
         "A11",
         permission="billing:read",
     ),
+    # The token budget lives in analytics-orchestrator's ModelRouter ledger (Section 23; A10).
+    _analytics(
+        "GET", "/billing/quotas", "Today's LLM token budget and use", permission="billing:read"
+    ),
     _stub(
         "POST",
         "/billing/subscription",
@@ -338,12 +392,10 @@ CATALOG: Final[tuple[RouteSpec, ...]] = (
         step_up=True,
         idempotency="no_store",
     ),
-    _stub(
+    _dashboard(
         "GET",
         "/share/{token}",
         "Read-only dashboard snapshot",
-        "dashboard-service",
-        "A10",
         public=True,
         rate_tier="public",
     ),

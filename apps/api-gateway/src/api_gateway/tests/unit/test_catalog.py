@@ -117,3 +117,41 @@ def test_rate_limit_buckets_are_scoped_per_ip_user_and_tenant() -> None:
 def test_every_public_route_has_a_strict_ip_tier() -> None:
     """The generous authenticated-IP guard is only for routes that introspect a session."""
     assert all(r.rate_tier in ("auth", "public") for r in CATALOG if r.public)
+
+
+#: Section 7.3's sensitive operations, as routes. The gateway refuses each without a fresh
+#: step-up (Phase A10 DoD); the owning services check again behind it.
+SECTION_7_3_ROUTES = {
+    ("POST", "/data-sources/{id}/secret"),  # a connection's credentials
+    ("POST", "/mcp/servers/{id}/approve"),  # approving an MCP server
+    ("PATCH", "/admin/users/{id}/roles"),  # role changes
+    ("DELETE", "/admin/users/{id}"),  # user deletion
+    ("POST", "/admin/users/{id}/mfa/reset"),  # MFA on another user's account
+    ("DELETE", "/me/mfa/{id}"),  # removing a factor (Section 6.6)
+    ("POST", "/admin/users/{id}/sessions/revoke"),  # forced session revocation
+    ("POST", "/me/api-keys"),  # creating/rotating API keys
+    ("PATCH", "/admin/policies"),  # tenant policy (security posture)
+    ("POST", "/admin/invitations"),  # granting access
+    ("POST", "/dashboards/{id}/share-links"),  # exposing data outside a login
+    ("POST", "/billing/subscription"),
+    ("POST", "/admin/webhooks"),
+}
+#: Step-up that depends on data only the owning service sees, so it is enforced there (and
+#: tested in that service): write/admin MCP tools, result reads above the export threshold,
+#: and enrolling a second MFA factor.
+SERVICE_ENFORCED_STEP_UP = {
+    ("POST", "/mcp/servers/{id}/tools/{tool}/grants"),
+    ("POST", "/mcp/servers/{id}/tools/{tool}/invoke"),
+    ("POST", "/sql/execute"),
+    ("GET", "/artifacts/{id}/data"),
+    ("POST", "/auth/mfa/enroll"),
+}
+
+
+def test_every_section_7_3_operation_requires_step_up_at_the_gateway() -> None:
+    routes = {(r.method, r.path): r for r in CATALOG}
+    missing = {key for key in SECTION_7_3_ROUTES if not routes[key].step_up}
+    assert missing == set(), f"Section 7.3 routes without step-up: {sorted(missing)}"
+    assert all(key in routes for key in SERVICE_ENFORCED_STEP_UP)
+    # Nothing else is step-up by accident: the list above is the whole policy.
+    assert {k for k, r in routes.items() if r.step_up} == SECTION_7_3_ROUTES

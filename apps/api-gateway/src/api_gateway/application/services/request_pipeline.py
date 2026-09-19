@@ -25,12 +25,11 @@ from api_gateway.domain.errors import (
     ForbiddenError,
     PayloadTooLargeError,
     RateLimitedError,
-    StepUpRequiredError,
 )
 from api_gateway.domain.policies.rate_limit import Bucket, RateLimitPolicy
 from api_gateway.infrastructure.cache.rate_limiter import RateLimiter
 from api_gateway.infrastructure.http.identity_client import IdentityClient
-from platform_auth import STEP_UP_MAX_AGE, Principal
+from platform_auth import Principal, StepUpRequiredError
 
 BEARER = "Bearer "
 
@@ -104,10 +103,7 @@ async def authorize(
     if route.role and route.role not in principal.roles and not principal.is_platform_operator:
         raise ForbiddenError()
     if route.step_up and not principal.step_up_is_fresh():
-        max_age = int(STEP_UP_MAX_AGE.total_seconds())
-        raise StepUpRequiredError(
-            headers={"WWW-Authenticate": f'MFA realm="step-up", max_age={max_age}'}
-        )
+        raise StepUpRequiredError.for_principal(principal)
     return AuthorizedRequest(principal=principal, client_ip=client_ip)
 
 

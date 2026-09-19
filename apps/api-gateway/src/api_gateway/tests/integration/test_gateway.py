@@ -101,7 +101,7 @@ async def test_proxy_replaces_gateway_owned_headers_and_passes_cookies_through(
     response = await client.post(
         "/api/v1/me/api-keys?x=1",
         json={"name": "ci"},
-        cookies={COOKIE: "client"},
+        cookies={COOKIE: "super"},  # a fresh step-up: minting a key needs one (A10)
         headers={
             "X-Service-Authorization": "Bearer forged",
             "X-Forwarded-For": "6.6.6.6",
@@ -119,7 +119,7 @@ async def test_proxy_replaces_gateway_owned_headers_and_passes_cookies_through(
     assert sent.headers["x-forwarded-for"] == "127.0.0.1"
     assert sent.headers["x-request-id"].startswith("req_")
     assert sent.headers["idempotency-key"] == "idem-1"
-    assert "buvi_session=client" in sent.headers["cookie"]
+    assert "buvi_session=super" in sent.headers["cookie"]
     assert sent.content == b'{"name":"ci"}'
 
     assert response.headers.get_list("set-cookie") == ["first=1; HttpOnly", "second=2; HttpOnly"]
@@ -166,7 +166,7 @@ async def test_oversized_body_is_413(settings: Settings, upstreams: FakeUpstream
         settings.model_copy(update={"max_request_body_bytes": 16}), upstreams
     ):
         response = await client.post(
-            "/api/v1/me/api-keys", content=b"x" * 64, cookies={COOKIE: "client"}
+            "/api/v1/conversations", content=b"x" * 64, cookies={COOKIE: "client"}
         )
         assert response.status_code == 413
         assert response.json()["error"]["code"] == "PAYLOAD_TOO_LARGE"
@@ -196,7 +196,7 @@ async def test_burst_on_a_public_route_is_429_with_retry_after(
     )
     async for _, client in build_client(tight, upstreams):
         statuses = [(await client.get("/api/v1/share/t")).status_code for _ in range(5)]
-        assert statuses[:3] == [501, 501, 501]
+        assert statuses[:3] == [200, 200, 200]  # proxied: /share/{token} is live (A10)
         limited = await client.get("/api/v1/share/t")
         assert limited.status_code == 429
         error = limited.json()["error"]
@@ -216,7 +216,7 @@ async def test_auth_tier_is_independent_of_the_public_tier(
             307,
         ]
         assert (await client.get("/api/v1/auth/login")).status_code == 429
-        assert (await client.get("/api/v1/share/t")).status_code == 501
+        assert (await client.get("/api/v1/share/t")).status_code == 200
 
 
 async def test_users_behind_one_address_do_not_share_the_public_bucket(
@@ -247,7 +247,7 @@ async def test_authenticated_ip_guard_stops_a_flood_before_introspection(
             await client.get("/api/v1/me/notifications", cookies={COOKIE: "junk"})
         limited = await client.get("/api/v1/me/notifications", cookies={COOKIE: "u1"})
         assert limited.status_code == 429 and limited.json()["error"]["details"]["scope"] == "ip"
-        assert (await client.get("/api/v1/share/t")).status_code == 501  # separate bucket
+        assert (await client.get("/api/v1/share/t")).status_code == 200  # separate bucket
 
 
 async def test_user_bucket_limits_one_user_not_another(
@@ -294,7 +294,7 @@ async def test_redis_outage_fails_open_and_reports_degraded(
 ) -> None:
     broken = settings.model_copy(update={"redis_url": "redis://127.0.0.1:1/0"})
     async for _, client in build_client(broken, upstreams):
-        assert (await client.get("/api/v1/share/t")).status_code == 501
+        assert (await client.get("/api/v1/share/t")).status_code == 200
         ready = await client.get("/health/ready")
         assert ready.status_code == 200
         assert (

@@ -166,14 +166,15 @@ async def test_secret_and_cookie_responses_complete_without_storing_the_body(
 ) -> None:
     import redis as sync_redis
 
-    api_key = await client.post("/api/v1/me/api-keys", json={"name": "ci"}, headers=_auth())
+    # `super` has a fresh step-up: minting an API key requires one (Section 7.3, A10).
+    api_key = await client.post("/api/v1/me/api-keys", json={"name": "ci"}, headers=_auth("super"))
     assert api_key.status_code == 201
     stored: list[Any] = [
         sync_redis.Redis.from_url(redis_url).get(k)
         for k in sync_redis.Redis.from_url(redis_url).scan_iter("idem:*")
     ]
     assert len(stored) == 1 and b'"body": null' in stored[0]
-    retry = await client.post("/api/v1/me/api-keys", json={"name": "ci"}, headers=_auth())
+    retry = await client.post("/api/v1/me/api-keys", json={"name": "ci"}, headers=_auth("super"))
     assert retry.status_code == 409
     assert retry.json()["error"]["code"] == "IDEMPOTENT_REPLAY_UNAVAILABLE"
     assert sum(1 for r in upstreams.proxied if r.url.path == "/api/v1/me/api-keys") == 1

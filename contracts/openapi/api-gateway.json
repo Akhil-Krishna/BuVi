@@ -1600,49 +1600,241 @@
         "title": "MetricResponse",
         "type": "object"
       },
-      "MfaEnrollResponse": {
-        "description": "Returned once. The URI embeds the shared secret; do not log it.",
+      "MfaChallengeResponse": {
+        "description": "For `navigator.credentials.get({publicKey: options})`; single-use, short-lived.",
         "properties": {
-          "method": {
-            "const": "totp",
-            "default": "totp",
-            "title": "Method",
-            "type": "string"
-          },
-          "provisioning_uri": {
-            "title": "Provisioning Uri",
-            "type": "string"
-          },
-          "secret": {
-            "title": "Secret",
-            "type": "string"
+          "options": {
+            "additionalProperties": true,
+            "title": "Options",
+            "type": "object"
           }
         },
         "required": [
-          "secret",
-          "provisioning_uri"
+          "options"
+        ],
+        "title": "MfaChallengeResponse",
+        "type": "object"
+      },
+      "MfaEnrollRequest": {
+        "additionalProperties": false,
+        "description": "`totp` (the default, and the only method before Phase A10) or `webauthn`.",
+        "properties": {
+          "method": {
+            "default": "totp",
+            "enum": [
+              "totp",
+              "webauthn"
+            ],
+            "title": "Method",
+            "type": "string"
+          }
+        },
+        "title": "MfaEnrollRequest",
+        "type": "object"
+      },
+      "MfaEnrollResponse": {
+        "description": "Returned once. For TOTP the URI embeds the shared secret; do not log it. For WebAuthn,\n`options` goes to `navigator.credentials.create({publicKey: options})`.",
+        "properties": {
+          "method": {
+            "enum": [
+              "totp",
+              "webauthn"
+            ],
+            "title": "Method",
+            "type": "string"
+          },
+          "options": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Options"
+          },
+          "provisioning_uri": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provisioning Uri"
+          },
+          "secret": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Secret"
+          }
+        },
+        "required": [
+          "method"
         ],
         "title": "MfaEnrollResponse",
         "type": "object"
       },
-      "MfaVerifyRequest": {
+      "MfaFactorResponse": {
         "properties": {
-          "code": {
-            "maxLength": 10,
-            "minLength": 6,
-            "pattern": "^[0-9]+$",
-            "title": "Code",
+          "confirmed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmed At"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "last_used_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Used At"
+          },
+          "method": {
+            "enum": [
+              "totp",
+              "webauthn"
+            ],
+            "title": "Method",
             "type": "string"
           }
         },
         "required": [
-          "code"
+          "id",
+          "method",
+          "label",
+          "confirmed_at",
+          "last_used_at",
+          "created_at"
         ],
+        "title": "MfaFactorResponse",
+        "type": "object"
+      },
+      "MfaResetResponse": {
+        "properties": {
+          "factors_revoked": {
+            "title": "Factors Revoked",
+            "type": "integer"
+          },
+          "sessions_revoked": {
+            "title": "Sessions Revoked",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "factors_revoked",
+          "sessions_revoked"
+        ],
+        "title": "MfaResetResponse",
+        "type": "object"
+      },
+      "MfaVerifyRequest": {
+        "additionalProperties": false,
+        "description": "A TOTP `code`, or a WebAuthn `credential` (a registration or an assertion, whichever\nthe session's pending challenge was issued for).",
+        "properties": {
+          "code": {
+            "anyOf": [
+              {
+                "maxLength": 10,
+                "minLength": 6,
+                "pattern": "^[0-9]+$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code"
+          },
+          "credential": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Credential"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "method": {
+            "default": "totp",
+            "enum": [
+              "totp",
+              "webauthn"
+            ],
+            "title": "Method",
+            "type": "string"
+          }
+        },
         "title": "MfaVerifyRequest",
         "type": "object"
       },
       "MfaVerifyResponse": {
         "properties": {
+          "method": {
+            "enum": [
+              "totp",
+              "webauthn"
+            ],
+            "title": "Method",
+            "type": "string"
+          },
           "mfa_enabled": {
             "title": "Mfa Enabled",
             "type": "boolean"
@@ -1660,6 +1852,7 @@
         },
         "required": [
           "mfa_enabled",
+          "method",
           "verified_at",
           "step_up_expires_at"
         ],
@@ -1680,6 +1873,87 @@
           "artifact_id"
         ],
         "title": "PinRequest",
+        "type": "object"
+      },
+      "PoliciesPatchRequest": {
+        "additionalProperties": false,
+        "description": "Only the fields present change.",
+        "properties": {
+          "client_can_share_dashboards": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Client Can Share Dashboards"
+          },
+          "developer_can_manage_mcp": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Developer Can Manage Mcp"
+          },
+          "org_admin_requires_webauthn": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Org Admin Requires Webauthn"
+          }
+        },
+        "title": "PoliciesPatchRequest",
+        "type": "object"
+      },
+      "PoliciesResponse": {
+        "properties": {
+          "client_can_share_dashboards": {
+            "title": "Client Can Share Dashboards",
+            "type": "boolean"
+          },
+          "developer_can_manage_mcp": {
+            "title": "Developer Can Manage Mcp",
+            "type": "boolean"
+          },
+          "org_admin_requires_webauthn": {
+            "title": "Org Admin Requires Webauthn",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "client_can_share_dashboards",
+          "developer_can_manage_mcp",
+          "org_admin_requires_webauthn"
+        ],
+        "title": "PoliciesResponse",
+        "type": "object"
+      },
+      "QuotasResponse": {
+        "properties": {
+          "llm_tokens": {
+            "$ref": "#/components/schemas/TokenQuota"
+          },
+          "run_token_limit": {
+            "title": "Run Token Limit",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "llm_tokens",
+          "run_token_limit"
+        ],
+        "title": "QuotasResponse",
         "type": "object"
       },
       "RelationshipResponse": {
@@ -1767,6 +2041,27 @@
           "roles"
         ],
         "title": "RoleChangeResponse",
+        "type": "object"
+      },
+      "RoleResponse": {
+        "properties": {
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "permissions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Permissions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "key",
+          "permissions"
+        ],
+        "title": "RoleResponse",
         "type": "object"
       },
       "RunAcceptedResponse": {
@@ -2098,6 +2393,18 @@
             "title": "Step Up Fresh",
             "type": "boolean"
           },
+          "step_up_method": {
+            "anyOf": [
+              {
+                "const": "webauthn",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Step Up Method"
+          },
           "tenant_id": {
             "format": "uuid",
             "title": "Tenant Id",
@@ -2139,6 +2446,235 @@
         "title": "SessionsRevokedResponse",
         "type": "object"
       },
+      "ShareLinkCreateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "expires_in_hours": {
+            "anyOf": [
+              {
+                "maximum": 720.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires In Hours"
+          }
+        },
+        "title": "ShareLinkCreateRequest",
+        "type": "object"
+      },
+      "ShareLinkCreatedResponse": {
+        "properties": {
+          "active": {
+            "title": "Active",
+            "type": "boolean"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "format": "uuid",
+            "title": "Created By",
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "revoked_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revoked At"
+          },
+          "token": {
+            "title": "Token",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "created_by",
+          "created_at",
+          "expires_at",
+          "revoked_at",
+          "active",
+          "token",
+          "url"
+        ],
+        "title": "ShareLinkCreatedResponse",
+        "type": "object"
+      },
+      "ShareLinkListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ShareLinkResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "ShareLinkListResponse",
+        "type": "object"
+      },
+      "ShareLinkResponse": {
+        "description": "Never the token: it is shown once, at creation.",
+        "properties": {
+          "active": {
+            "title": "Active",
+            "type": "boolean"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "format": "uuid",
+            "title": "Created By",
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "revoked_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revoked At"
+          }
+        },
+        "required": [
+          "id",
+          "created_by",
+          "created_at",
+          "expires_at",
+          "revoked_at",
+          "active"
+        ],
+        "title": "ShareLinkResponse",
+        "type": "object"
+      },
+      "SnapshotResponse": {
+        "description": "A read-only dashboard for a link holder: charts and their data, nothing else.",
+        "properties": {
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "tiles": {
+            "items": {
+              "$ref": "#/components/schemas/SnapshotTileResponse"
+            },
+            "title": "Tiles",
+            "type": "array"
+          }
+        },
+        "required": [
+          "name",
+          "expires_at",
+          "tiles"
+        ],
+        "title": "SnapshotResponse",
+        "type": "object"
+      },
+      "SnapshotTileResponse": {
+        "properties": {
+          "chart_spec": {
+            "additionalProperties": true,
+            "title": "Chart Spec",
+            "type": "object"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data"
+          },
+          "data_status": {
+            "enum": [
+              "ok",
+              "expired",
+              "too_large"
+            ],
+            "title": "Data Status",
+            "type": "string"
+          },
+          "overrides": {
+            "additionalProperties": true,
+            "title": "Overrides",
+            "type": "object"
+          },
+          "position": {
+            "additionalProperties": true,
+            "title": "Position",
+            "type": "object"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "position",
+          "chart_spec",
+          "overrides",
+          "data",
+          "data_status"
+        ],
+        "title": "SnapshotTileResponse",
+        "type": "object"
+      },
       "SourceRefResponse": {
         "properties": {
           "data_source_id": {
@@ -2159,6 +2695,363 @@
           "tables"
         ],
         "title": "SourceRefResponse",
+        "type": "object"
+      },
+      "SqlColumn": {
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "type"
+        ],
+        "title": "SqlColumn",
+        "type": "object"
+      },
+      "SqlExecuteRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "database_id": {
+            "format": "uuid",
+            "title": "Database Id",
+            "type": "string"
+          },
+          "max_rows": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Rows"
+          },
+          "sql": {
+            "maxLength": 100000,
+            "minLength": 1,
+            "title": "Sql",
+            "type": "string"
+          },
+          "timeout_ms": {
+            "anyOf": [
+              {
+                "minimum": 100.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timeout Ms"
+          }
+        },
+        "required": [
+          "database_id",
+          "sql"
+        ],
+        "title": "SqlExecuteRequest",
+        "type": "object"
+      },
+      "SqlExecuteResponse": {
+        "properties": {
+          "columns": {
+            "items": {
+              "$ref": "#/components/schemas/SqlColumn"
+            },
+            "title": "Columns",
+            "type": "array"
+          },
+          "duration_ms": {
+            "title": "Duration Ms",
+            "type": "integer"
+          },
+          "query_id": {
+            "format": "uuid",
+            "title": "Query Id",
+            "type": "string"
+          },
+          "row_count": {
+            "title": "Row Count",
+            "type": "integer"
+          },
+          "rows": {
+            "items": {
+              "items": {},
+              "type": "array"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "tables": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Tables",
+            "type": "array"
+          },
+          "truncated": {
+            "title": "Truncated",
+            "type": "boolean"
+          },
+          "truncation_reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "rows",
+                  "bytes"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Truncation Reason"
+          }
+        },
+        "required": [
+          "query_id",
+          "columns",
+          "rows",
+          "row_count",
+          "truncated",
+          "truncation_reason",
+          "duration_ms",
+          "tables"
+        ],
+        "title": "SqlExecuteResponse",
+        "type": "object"
+      },
+      "SqlGrantListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SqlGrantResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "SqlGrantListResponse",
+        "type": "object"
+      },
+      "SqlGrantRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "user_id": {
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id"
+        ],
+        "title": "SqlGrantRequest",
+        "type": "object"
+      },
+      "SqlGrantResponse": {
+        "properties": {
+          "granted_at": {
+            "format": "date-time",
+            "title": "Granted At",
+            "type": "string"
+          },
+          "granted_by": {
+            "format": "uuid",
+            "title": "Granted By",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "user_id": {
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "user_id",
+          "granted_by",
+          "granted_at"
+        ],
+        "title": "SqlGrantResponse",
+        "type": "object"
+      },
+      "SqlHistoryItem": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "data_source_id": {
+            "format": "uuid",
+            "title": "Data Source Id",
+            "type": "string"
+          },
+          "duration_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Ms"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "requested_by": {
+            "title": "Requested By",
+            "type": "string"
+          },
+          "row_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Row Count"
+          },
+          "sql_text": {
+            "title": "Sql Text",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "data_source_id",
+          "requested_by",
+          "status",
+          "sql_text",
+          "row_count",
+          "duration_ms",
+          "error_code",
+          "created_at"
+        ],
+        "title": "SqlHistoryItem",
+        "type": "object"
+      },
+      "SqlHistoryResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SqlHistoryItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "SqlHistoryResponse",
+        "type": "object"
+      },
+      "SqlRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "database_id": {
+            "format": "uuid",
+            "title": "Database Id",
+            "type": "string"
+          },
+          "sql": {
+            "maxLength": 100000,
+            "minLength": 1,
+            "title": "Sql",
+            "type": "string"
+          }
+        },
+        "required": [
+          "database_id",
+          "sql"
+        ],
+        "title": "SqlRequest",
+        "type": "object"
+      },
+      "SqlValidateResponse": {
+        "properties": {
+          "query_id": {
+            "format": "uuid",
+            "title": "Query Id",
+            "type": "string"
+          },
+          "sql": {
+            "title": "Sql",
+            "type": "string"
+          },
+          "tables": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Tables",
+            "type": "array"
+          },
+          "valid": {
+            "const": true,
+            "title": "Valid",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "query_id",
+          "valid",
+          "sql",
+          "tables"
+        ],
+        "title": "SqlValidateResponse",
         "type": "object"
       },
       "SyncResponse": {
@@ -2525,6 +3418,41 @@
           }
         },
         "title": "TileUpdateRequest",
+        "type": "object"
+      },
+      "TokenQuota": {
+        "properties": {
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "period": {
+            "const": "day",
+            "title": "Period",
+            "type": "string"
+          },
+          "remaining": {
+            "title": "Remaining",
+            "type": "integer"
+          },
+          "resets_at": {
+            "format": "date-time",
+            "title": "Resets At",
+            "type": "string"
+          },
+          "used": {
+            "title": "Used",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "period",
+          "limit",
+          "used",
+          "remaining",
+          "resets_at"
+        ],
+        "title": "TokenQuota",
         "type": "object"
       },
       "ToolResponse": {
@@ -3027,6 +3955,265 @@
         "x-rate-tier": "authenticated"
       }
     },
+    "/api/v1/admin/policies": {
+      "get": {
+        "operationId": "get_admin_policies",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PoliciesResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Rate limited"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Upstream unavailable"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Upstream timeout"
+          }
+        },
+        "summary": "Tenant policies",
+        "tags": [
+          "identity-service"
+        ],
+        "x-auth": "session or API key, policy:manage",
+        "x-backend": "identity-service",
+        "x-rate-tier": "authenticated"
+      },
+      "patch": {
+        "operationId": "patch_admin_policies",
+        "parameters": [
+          {
+            "description": "Section 9: retries with the same key replay the first final response",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PoliciesPatchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PoliciesResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Idempotency-Key reused, in progress, or replay unavailable"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Rate limited"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Upstream unavailable"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Upstream timeout"
+          }
+        },
+        "summary": "Change tenant policies",
+        "tags": [
+          "identity-service"
+        ],
+        "x-auth": "session or API key, policy:manage, step-up",
+        "x-backend": "identity-service",
+        "x-rate-tier": "authenticated"
+      }
+    },
+    "/api/v1/admin/roles": {
+      "get": {
+        "operationId": "get_admin_roles",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/RoleResponse"
+                  },
+                  "title": "Response List Roles Api V1 Admin Roles Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Rate limited"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Upstream unavailable"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Upstream timeout"
+          }
+        },
+        "summary": "Tenant roles and their permissions",
+        "tags": [
+          "identity-service"
+        ],
+        "x-auth": "session or API key, role:manage",
+        "x-backend": "identity-service",
+        "x-rate-tier": "authenticated"
+      }
+    },
     "/api/v1/admin/users": {
       "get": {
         "operationId": "get_admin_users",
@@ -3280,6 +4467,111 @@
         "x-auth": "session or API key, user:manage",
         "x-backend": "identity-service",
         "x-beyond-section-9": "ADR 0002 item 8",
+        "x-rate-tier": "authenticated"
+      }
+    },
+    "/api/v1/admin/users/{id}/mfa/reset": {
+      "post": {
+        "operationId": "post_admin_users_id_mfa_reset",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Section 9: retries with the same key replay the first final response",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MfaResetResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Idempotency-Key reused, in progress, or replay unavailable"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Rate limited"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Upstream unavailable"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Upstream timeout"
+          }
+        },
+        "summary": "Revoke all of a user's factors and sessions",
+        "tags": [
+          "identity-service"
+        ],
+        "x-auth": "session or API key, user:manage, step-up",
+        "x-backend": "identity-service",
         "x-rate-tier": "authenticated"
       }
     },
@@ -3938,6 +5230,81 @@
         "x-rate-tier": "authenticated"
       }
     },
+    "/api/v1/auth/mfa/challenge": {
+      "post": {
+        "operationId": "post_auth_mfa_challenge",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MfaChallengeResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Rate limited"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Upstream unavailable"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Upstream timeout"
+          }
+        },
+        "summary": "WebAuthn assertion options (single-use)",
+        "tags": [
+          "identity-service"
+        ],
+        "x-auth": "session or API key",
+        "x-backend": "identity-service",
+        "x-rate-tier": "authenticated"
+      }
+    },
     "/api/v1/auth/mfa/enroll": {
       "post": {
         "operationId": "post_auth_mfa_enroll",
@@ -3954,6 +5321,23 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/MfaEnrollRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Payload"
+              }
+            }
+          }
+        },
         "responses": {
           "201": {
             "content": {
@@ -4192,6 +5576,81 @@
         ],
         "x-auth": "session or API key",
         "x-backend": "identity-service",
+        "x-rate-tier": "authenticated"
+      }
+    },
+    "/api/v1/billing/quotas": {
+      "get": {
+        "operationId": "get_billing_quotas",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuotasResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Rate limited"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Upstream unavailable"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Upstream timeout"
+          }
+        },
+        "summary": "Today's LLM token budget and use",
+        "tags": [
+          "analytics-orchestrator"
+        ],
+        "x-auth": "session or API key, billing:read",
+        "x-backend": "analytics-orchestrator",
         "x-rate-tier": "authenticated"
       }
     },
@@ -4830,6 +6289,88 @@
       }
     },
     "/api/v1/dashboards/{id}/share-links": {
+      "get": {
+        "operationId": "get_dashboards_id_share_links",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShareLinkListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Rate limited"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Upstream unavailable"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Upstream timeout"
+          }
+        },
+        "summary": "A dashboard's share links",
+        "tags": [
+          "dashboard-service"
+        ],
+        "x-auth": "session or API key, dashboard:read",
+        "x-backend": "dashboard-service",
+        "x-rate-tier": "authenticated"
+      },
       "post": {
         "operationId": "post_dashboards_id_share_links",
         "parameters": [
@@ -4853,11 +6394,30 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/ShareLinkCreateRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Payload"
+              }
+            }
+          }
+        },
         "responses": {
-          "200": {
+          "201": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/ShareLinkCreatedResponse"
+                }
               }
             },
             "description": "Successful Response"
@@ -4902,7 +6462,7 @@
             },
             "description": "Rate limited"
           },
-          "501": {
+          "502": {
             "content": {
               "application/json": {
                 "schema": {
@@ -4910,15 +6470,130 @@
                 }
               }
             },
-            "description": "Backing service not available yet"
+            "description": "Upstream unavailable"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Upstream timeout"
           }
         },
-        "summary": "Create a time-boxed share link",
+        "summary": "Create a time-boxed share link (token shown once)",
         "tags": [
           "dashboard-service"
         ],
         "x-auth": "session or API key, dashboard:share, step-up",
-        "x-available-in-phase": "A10",
+        "x-backend": "dashboard-service",
+        "x-rate-tier": "authenticated"
+      }
+    },
+    "/api/v1/dashboards/{id}/share-links/{link_id}": {
+      "delete": {
+        "operationId": "delete_dashboards_id_share_links_link_id",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "link_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Section 9: retries with the same key replay the first final response",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Idempotency-Key reused, in progress, or replay unavailable"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Rate limited"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Upstream unavailable"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Upstream timeout"
+          }
+        },
+        "summary": "Revoke a share link",
+        "tags": [
+          "dashboard-service"
+        ],
+        "x-auth": "session or API key, dashboard:read",
         "x-backend": "dashboard-service",
         "x-rate-tier": "authenticated"
       }
@@ -5413,6 +7088,309 @@
           "metadata-service"
         ],
         "x-auth": "session or API key, data:manage, step-up",
+        "x-backend": "metadata-service",
+        "x-rate-tier": "authenticated"
+      }
+    },
+    "/api/v1/data-sources/{id}/sql-grants": {
+      "get": {
+        "operationId": "get_data_sources_id_sql_grants",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SqlGrantListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Rate limited"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Upstream unavailable"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Upstream timeout"
+          }
+        },
+        "summary": "Per-connection SQL grants",
+        "tags": [
+          "metadata-service"
+        ],
+        "x-auth": "session or API key, role org_admin",
+        "x-backend": "metadata-service",
+        "x-rate-tier": "authenticated"
+      },
+      "post": {
+        "operationId": "post_data_sources_id_sql_grants",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Section 9: retries with the same key replay the first final response",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SqlGrantRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SqlGrantResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Idempotency-Key reused, in progress, or replay unavailable"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Rate limited"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Upstream unavailable"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Upstream timeout"
+          }
+        },
+        "summary": "Grant SQL on a connection",
+        "tags": [
+          "metadata-service"
+        ],
+        "x-auth": "session or API key, role org_admin",
+        "x-backend": "metadata-service",
+        "x-rate-tier": "authenticated"
+      }
+    },
+    "/api/v1/data-sources/{id}/sql-grants/{grant_id}": {
+      "delete": {
+        "operationId": "delete_data_sources_id_sql_grants_grant_id",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "grant_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Section 9: retries with the same key replay the first final response",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Idempotency-Key reused, in progress, or replay unavailable"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Rate limited"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Upstream unavailable"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Upstream timeout"
+          }
+        },
+        "summary": "Revoke a per-connection SQL grant",
+        "tags": [
+          "metadata-service"
+        ],
+        "x-auth": "session or API key, role org_admin",
         "x-backend": "metadata-service",
         "x-rate-tier": "authenticated"
       }
@@ -6242,6 +8220,216 @@
         "x-rate-tier": "authenticated"
       }
     },
+    "/api/v1/mcp/servers/{id}/disable": {
+      "post": {
+        "operationId": "post_mcp_servers_id_disable",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Section 9: retries with the same key replay the first final response",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServerDetailResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Idempotency-Key reused, in progress, or replay unavailable"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Rate limited"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Upstream unavailable"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Upstream timeout"
+          }
+        },
+        "summary": "Disable an approved server",
+        "tags": [
+          "mcp-gateway"
+        ],
+        "x-auth": "session or API key, role org_admin",
+        "x-backend": "mcp-gateway",
+        "x-rate-tier": "authenticated"
+      }
+    },
+    "/api/v1/mcp/servers/{id}/reject": {
+      "post": {
+        "operationId": "post_mcp_servers_id_reject",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Section 9: retries with the same key replay the first final response",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServerDetailResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Idempotency-Key reused, in progress, or replay unavailable"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Rate limited"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Upstream unavailable"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Upstream timeout"
+          }
+        },
+        "summary": "Reject a pending server",
+        "tags": [
+          "mcp-gateway"
+        ],
+        "x-auth": "session or API key, role org_admin",
+        "x-backend": "mcp-gateway",
+        "x-rate-tier": "authenticated"
+      }
+    },
     "/api/v1/mcp/servers/{id}/tools/{tool}/grants": {
       "post": {
         "operationId": "post_mcp_servers_id_tools_tool_grants",
@@ -6778,7 +8966,7 @@
         "tags": [
           "identity-service"
         ],
-        "x-auth": "session or API key",
+        "x-auth": "session or API key, step-up",
         "x-backend": "identity-service",
         "x-rate-tier": "authenticated"
       }
@@ -6877,6 +9065,183 @@
           "identity-service"
         ],
         "x-auth": "session or API key",
+        "x-backend": "identity-service",
+        "x-rate-tier": "authenticated"
+      }
+    },
+    "/api/v1/me/mfa": {
+      "get": {
+        "operationId": "get_me_mfa",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/MfaFactorResponse"
+                  },
+                  "title": "Response List My Factors Api V1 Me Mfa Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Rate limited"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Upstream unavailable"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Upstream timeout"
+          }
+        },
+        "summary": "The caller's MFA factors",
+        "tags": [
+          "identity-service"
+        ],
+        "x-auth": "session or API key",
+        "x-backend": "identity-service",
+        "x-rate-tier": "authenticated"
+      }
+    },
+    "/api/v1/me/mfa/{id}": {
+      "delete": {
+        "operationId": "delete_me_mfa_id",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Section 9: retries with the same key replay the first final response",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Idempotency-Key reused, in progress, or replay unavailable"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Rate limited"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Upstream unavailable"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Upstream timeout"
+          }
+        },
+        "summary": "Remove one of the caller's factors",
+        "tags": [
+          "identity-service"
+        ],
+        "x-auth": "session or API key, step-up",
         "x-backend": "identity-service",
         "x-rate-tier": "authenticated"
       }
@@ -7982,7 +10347,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/SnapshotResponse"
+                }
               }
             },
             "description": "Successful Response"
@@ -7997,7 +10364,7 @@
             },
             "description": "Rate limited"
           },
-          "501": {
+          "502": {
             "content": {
               "application/json": {
                 "schema": {
@@ -8005,7 +10372,17 @@
                 }
               }
             },
-            "description": "Backing service not available yet"
+            "description": "Upstream unavailable"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Upstream timeout"
           }
         },
         "summary": "Read-only dashboard snapshot",
@@ -8013,7 +10390,6 @@
           "dashboard-service"
         ],
         "x-auth": "public",
-        "x-available-in-phase": "A10",
         "x-backend": "dashboard-service",
         "x-rate-tier": "public"
       }
@@ -8034,11 +10410,23 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SqlExecuteRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/SqlExecuteResponse"
+                }
               }
             },
             "description": "Successful Response"
@@ -8083,7 +10471,7 @@
             },
             "description": "Rate limited"
           },
-          "501": {
+          "502": {
             "content": {
               "application/json": {
                 "schema": {
@@ -8091,7 +10479,17 @@
                 }
               }
             },
-            "description": "Backing service not available yet"
+            "description": "Upstream unavailable"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Upstream timeout"
           }
         },
         "summary": "Execute validated SQL",
@@ -8099,7 +10497,6 @@
           "query-gateway"
         ],
         "x-auth": "session or API key, sql:execute",
-        "x-available-in-phase": "A4",
         "x-backend": "query-gateway",
         "x-rate-tier": "authenticated"
       }
@@ -8112,7 +10509,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/SqlHistoryResponse"
+                }
               }
             },
             "description": "Successful Response"
@@ -8147,7 +10546,7 @@
             },
             "description": "Rate limited"
           },
-          "501": {
+          "502": {
             "content": {
               "application/json": {
                 "schema": {
@@ -8155,7 +10554,17 @@
                 }
               }
             },
-            "description": "Backing service not available yet"
+            "description": "Upstream unavailable"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Upstream timeout"
           }
         },
         "summary": "Query history",
@@ -8163,7 +10572,6 @@
           "query-gateway"
         ],
         "x-auth": "session or API key, run:debug or sql:execute",
-        "x-available-in-phase": "A4",
         "x-backend": "query-gateway",
         "x-rate-tier": "authenticated"
       }
@@ -8184,11 +10592,23 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SqlRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/SqlValidateResponse"
+                }
               }
             },
             "description": "Successful Response"
@@ -8233,7 +10653,7 @@
             },
             "description": "Rate limited"
           },
-          "501": {
+          "502": {
             "content": {
               "application/json": {
                 "schema": {
@@ -8241,7 +10661,17 @@
                 }
               }
             },
-            "description": "Backing service not available yet"
+            "description": "Upstream unavailable"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Upstream timeout"
           }
         },
         "summary": "Dry SQL validation",
@@ -8249,7 +10679,6 @@
           "query-gateway"
         ],
         "x-auth": "session or API key, sql:execute",
-        "x-available-in-phase": "A4",
         "x-backend": "query-gateway",
         "x-rate-tier": "authenticated"
       }

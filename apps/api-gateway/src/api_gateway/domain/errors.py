@@ -23,12 +23,6 @@ class ForbiddenError(ApiError):
     message = "Insufficient permissions."
 
 
-class StepUpRequiredError(ApiError):
-    code = "STEP_UP_REQUIRED"
-    status_code = 403
-    message = "This operation requires re-verifying your identity."
-
-
 class NotFoundError(ApiError):
     code = "NOT_FOUND"
     status_code = 404
