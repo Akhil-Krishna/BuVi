@@ -12,6 +12,8 @@
         "server_not_approved",
         "tool_denied_by_policy",
         "not_granted",
+        "admin_only",
+        "step_up_required",
         "destination_not_allowed"
       ],
       "title": "Reason",

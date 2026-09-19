@@ -20,7 +20,12 @@ class McpInvocationDenied(_Versioned):
     tenant_id: uuid.UUID
     tool_id: uuid.UUID
     reason: Literal[
-        "server_not_approved", "tool_denied_by_policy", "not_granted", "destination_not_allowed"
+        "server_not_approved",
+        "tool_denied_by_policy",
+        "not_granted",
+        "admin_only",
+        "step_up_required",
+        "destination_not_allowed",
     ]
     invocation_id: uuid.UUID
     user_id: uuid.UUID

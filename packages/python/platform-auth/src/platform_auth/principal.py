@@ -12,6 +12,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, Final, Literal
 
 AuthMethod = Literal["session", "api_key", "service_jwt"]
+MfaMethod = Literal["totp", "webauthn"]
 
 #: Section 7.3: a step-up operation needs an MFA verification no older than this.
 STEP_UP_MAX_AGE: Final = timedelta(minutes=5)
@@ -34,6 +35,12 @@ class Principal:
         Carried for audit-log attribution (Section 22) and for the
         `platform_super_admin` checks in Section 2. Authorization decisions read
         `permissions`, never `roles`.
+
+    `mfa_method`, `webauthn_required` (Phase A10)
+        How the last MFA check was made, and whether this caller's step-up must be
+        WebAuthn. identity-service decides the requirement (tenant policy for
+        `org_admin`); `platform_super_admin` always needs it (Section 6.6), whatever
+        the payload says. A step-up made with the wrong method is not fresh.
     """
 
     user_id: str
@@ -44,6 +51,8 @@ class Principal:
     session_id: str | None = None
     mfa_verified_at: datetime | None = None
     roles: frozenset[str] = field(default_factory=frozenset)
+    mfa_method: MfaMethod | None = None
+    webauthn_required: bool = False
 
     def has_permission(self, permission: str) -> bool:
         """True when the caller holds `permission`, or the platform wildcard."""
@@ -54,9 +63,22 @@ class Principal:
         """True for `platform_super_admin`, the only cross-tenant principal."""
         return "platform:*" in self.permissions
 
-    def step_up_is_fresh(self, *, now: datetime | None = None) -> bool:
-        """True when MFA was verified within the Section 7.3 step-up window."""
+    @property
+    def step_up_method(self) -> MfaMethod | None:
+        """The method a step-up must use: `webauthn`, or None when any factor will do."""
+        return "webauthn" if self.webauthn_required or self.is_platform_operator else None
+
+    def step_up_is_fresh(self, *, now: datetime | None = None, any_method: bool = False) -> bool:
+        """True when MFA was verified, with an acceptable method, within the Section 7.3
+        step-up window.
+
+        `any_method` waives the WebAuthn requirement for one purpose only: enrolling a WebAuthn
+        key. Otherwise a caller who must use WebAuthn but has none could never get one.
+        """
         if not self.mfa_verified or self.mfa_verified_at is None:
+            return False
+        required = self.step_up_method
+        if required is not None and self.mfa_method != required and not any_method:
             return False
         moment = now or datetime.now(UTC)
         return (moment - self.mfa_verified_at) <= STEP_UP_MAX_AGE
@@ -72,6 +94,8 @@ class Principal:
             "mfa_verified": self.mfa_verified,
             "mfa_verified_at": self.mfa_verified_at.isoformat() if self.mfa_verified_at else None,
             "session_id": self.session_id,
+            "mfa_method": self.mfa_method,
+            "webauthn_required": self.webauthn_required,
         }
 
     @classmethod
@@ -90,4 +114,16 @@ class Principal:
             session_id=str(data["session_id"]) if data.get("session_id") else None,
             mfa_verified_at=datetime.fromisoformat(verified_at) if verified_at else None,
             roles=frozenset(str(r) for r in data.get("roles", [])),
+            mfa_method=_mfa_method(data.get("mfa_method")),
+            webauthn_required=bool(data.get("webauthn_required", False)),
         )
+
+
+def _mfa_method(value: object) -> MfaMethod | None:
+    if value is None:
+        return None
+    if value == "totp":
+        return "totp"
+    if value == "webauthn":
+        return "webauthn"
+    raise ValueError("unknown mfa_method")

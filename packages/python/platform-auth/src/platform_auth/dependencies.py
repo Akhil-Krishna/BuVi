@@ -27,6 +27,7 @@ from typing import Protocol
 from fastapi import Depends, FastAPI, HTTPException, Request, status
 
 from platform_auth.principal import Principal
+from platform_auth.step_up import StepUpRequiredError
 
 #: Signature every service's authentication adapter must satisfy.
 PrincipalResolver = Callable[[Request], Awaitable[Principal]]
@@ -114,16 +115,12 @@ def require_resource_owner(
 
 
 def require_step_up(principal: Principal = Depends(get_principal)) -> Principal:
-    """Require an MFA verification inside the Section 7.3 freshness window.
+    """Require an MFA verification inside the Section 7.3 freshness window, made with the
+    method this caller must use (WebAuthn for `platform_super_admin`, and for `org_admin`
+    under the tenant policy).
 
-    Applied on top of -- never instead of -- the permission and resource-tenant
-    checks. Phase A10 extends this with WebAuthn and makes it mandatory for
-    `platform_super_admin`; the freshness rule itself does not change.
+    Applied on top of -- never instead of -- the permission and resource-tenant checks.
     """
     if not principal.step_up_is_fresh():
-        raise HTTPException(
-            status.HTTP_403_FORBIDDEN,
-            detail="Step-up authentication required",
-            headers={"WWW-Authenticate": 'MFA realm="step-up", max_age=300'},
-        )
+        raise StepUpRequiredError.for_principal(principal)
     return principal

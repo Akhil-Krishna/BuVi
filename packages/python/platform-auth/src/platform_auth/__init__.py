@@ -1,6 +1,7 @@
 """Principal, OIDC/JWT validation, and authorization dependencies (Sections 6.3, 7.2).
 
 Contract: `Principal`, `require_permission`, `require_resource_owner`, `require_step_up`,
+`StepUpRequiredError`,
 service tokens, and `IntrospectionClient`. A permission check alone is never sufficient on
 an endpoint that takes a resource ID -- cross-tenant IDs return 404, not 403 (Section 7.2).
 
@@ -44,6 +45,7 @@ from platform_auth.service_tokens import (
     require_service_scope,
     verify_service_request,
 )
+from platform_auth.step_up import StepUpRequiredError
 
 __all__ = [
     "ALL_PERMISSIONS",
@@ -65,6 +67,7 @@ __all__ = [
     "ServiceTokenError",
     "ServiceTokenIssuer",
     "ServiceTokenVerifier",
+    "StepUpRequiredError",
     "TenantLoader",
     "get_principal",
     "install_principal_resolver",
