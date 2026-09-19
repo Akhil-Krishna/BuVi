@@ -126,6 +126,15 @@ def compose_openapi(app: FastAPI, contracts_dir: Path | None) -> dict[str, Any]:
                 continue
             if "requestBody" in up:
                 op["requestBody"] = up["requestBody"]
+            # Query parameters are the owning service's (filters, pagination); path parameters
+            # stay the gateway's, whose names can differ (`{id}` vs `{notification_id}`).
+            query = [p for p in up.get("parameters", []) if p.get("in") == "query"]
+            if query:
+                known = {(p.get("in"), p.get("name")) for p in op.get("parameters", [])}
+                op["parameters"] = [
+                    *op.get("parameters", []),
+                    *(p for p in query if ("query", p.get("name")) not in known),
+                ]
             for code, response in up.get("responses", {}).items():
                 if not code.startswith(("4", "5")):
                     op.setdefault("responses", {})[code] = response

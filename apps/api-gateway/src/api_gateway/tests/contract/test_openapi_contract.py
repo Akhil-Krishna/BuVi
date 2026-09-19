@@ -91,3 +91,32 @@ def test_internal_upstream_schemas_do_not_leak_into_the_public_contract() -> Non
     ):
         assert internal not in schemas, internal
     assert not any("secret_ref" in s.get("properties", {}) for s in schemas.values())
+
+
+def test_every_upstream_query_parameter_is_published() -> None:
+    """Phase A12: the generated client types filters and pagination only if the gateway's
+    contract carries them. Each live route must publish every query parameter its owning
+    service declares (the gateway once dropped them all)."""
+    paths = _generated()["paths"]
+    assert isinstance(paths, dict)
+    checked = 0
+    for route in CATALOG:
+        if route.is_stub or route.backend is None:
+            continue
+        contract = DEFAULT_CONTRACTS_DIR / f"{route.backend}.json"
+        if not contract.is_file():
+            continue
+        upstream = {
+            (re.sub(r"\{[^}]+\}", "{}", path), method.upper()): op
+            for path, ops in json.loads(contract.read_text())["paths"].items()
+            for method, op in ops.items()
+        }
+        up = upstream.get((re.sub(r"\{[^}]+\}", "{}", f"/api/v1{route.path}"), route.method))
+        if up is None:
+            continue
+        wanted = {p["name"] for p in up.get("parameters", []) if p.get("in") == "query"}
+        op = paths[f"/api/v1{route.path}"][route.method.lower()]
+        published = {p["name"] for p in op.get("parameters", []) if p.get("in") == "query"}
+        assert wanted <= published, (route.method, route.path, wanted - published)
+        checked += len(wanted)
+    assert checked >= 20  # guard: the check really ran over the routes that take filters
