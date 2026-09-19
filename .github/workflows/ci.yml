@@ -155,7 +155,7 @@ jobs:
       - run: npm ci --no-audit --no-fund
         working-directory: packages/ts/api-client
       - run: scripts/gen-client.sh --check
-      - run: npm audit --omit=dev --audit-level=high
+      - run: npx --yes npm@11.6.2 audit --omit=dev --audit-level=high
         working-directory: packages/ts/api-client
 
   backend-e2e:
@@ -241,5 +241,5 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
       - name: Node dependency audit
-        run: npm audit --audit-level=high
+        run: npx --yes npm@11.6.2 audit --audit-level=high
         working-directory: web/next-app

@@ -90,7 +90,7 @@ def _workflows() -> str:
 def test_ci_runs_dependency_audits() -> None:
     workflows = _workflows()
     assert "pip-audit" in workflows or "osv-scanner" in workflows
-    assert "npm audit" in workflows
+    assert re.search(r"npm(@[\d.]+)? audit", workflows)
 
 
 def test_ci_holds_no_long_lived_cloud_credentials() -> None:

@@ -29,6 +29,16 @@ step() {  # name, command...
     results+=("FAIL  $name ($((SECONDS - started))s) -- $log")
     failed=$((failed + 1))
     tail -25 "$log"
+    if [ "${GITHUB_ACTIONS:-}" = "true" ]; then
+      # A public annotation with the failure's tail: readable without repo rights to the logs.
+      local tail_text
+      tail_text="$(grep -E 'FAIL|Error|error|Traceback|assert' "$log" | tail -15)"
+      [ -n "$tail_text" ] || tail_text="$(tail -15 "$log")"
+      local pct='%' nl=$'\n' cr=$'\r'
+      tail_text="${tail_text//"$pct"/%25}"
+      tail_text="${tail_text//"$cr"/}"
+      echo "::error title=backend-e2e: $name failed::${tail_text//"$nl"/%0A}"
+    fi
   fi
 }
 
