@@ -1,0 +1,74 @@
+{
+  "additionalProperties": false,
+  "description": "`identity.role.changed`: identity-service -> notification-service. One event per change;\n`roles` is the user's role set afterwards.",
+  "properties": {
+    "changed_by": {
+      "format": "uuid",
+      "title": "Changed By",
+      "type": "string"
+    },
+    "granted": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 10,
+      "title": "Granted",
+      "type": "array"
+    },
+    "request_id": {
+      "anyOf": [
+        {
+          "maxLength": 128,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Request Id"
+    },
+    "revoked": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 10,
+      "title": "Revoked",
+      "type": "array"
+    },
+    "roles": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 10,
+      "title": "Roles",
+      "type": "array"
+    },
+    "schema_version": {
+      "default": "1.0",
+      "pattern": "^\\d+\\.\\d+$",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "tenant_id": {
+      "format": "uuid",
+      "title": "Tenant Id",
+      "type": "string"
+    },
+    "user_id": {
+      "format": "uuid",
+      "title": "User Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "tenant_id",
+    "user_id",
+    "roles",
+    "granted",
+    "revoked",
+    "changed_by"
+  ],
+  "title": "IdentityRoleChanged",
+  "type": "object"
+}

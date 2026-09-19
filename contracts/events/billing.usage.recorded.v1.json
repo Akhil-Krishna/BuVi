@@ -1,18 +1,37 @@
 {
   "additionalProperties": false,
-  "description": "`billing.usage.recorded`: one metered quantity (Section 23).",
+  "description": "`billing.usage.recorded`: one metered quantity (Section 23).\n\n1.1 (Phase A11): `event_id` (the aggregator's idempotency key, so a redelivered message is\ncounted once), `occurred_at`, and `query_execution_ms` from query-gateway, which has no model.",
   "properties": {
+    "event_id": {
+      "format": "uuid",
+      "title": "Event Id",
+      "type": "string"
+    },
     "metric": {
       "enum": [
         "llm_input_tokens",
-        "llm_output_tokens"
+        "llm_output_tokens",
+        "query_execution_ms"
       ],
       "title": "Metric",
       "type": "string"
     },
     "model": {
-      "maxLength": 128,
-      "title": "Model",
+      "anyOf": [
+        {
+          "maxLength": 128,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Model"
+    },
+    "occurred_at": {
+      "format": "date-time",
+      "title": "Occurred At",
       "type": "string"
     },
     "quantity": {
@@ -47,7 +66,7 @@
       "title": "Run Id"
     },
     "schema_version": {
-      "default": "1.0",
+      "default": "1.1",
       "pattern": "^\\d+\\.\\d+$",
       "title": "Schema Version",
       "type": "string"
@@ -74,8 +93,7 @@
   "required": [
     "tenant_id",
     "metric",
-    "quantity",
-    "model"
+    "quantity"
   ],
   "title": "BillingUsageRecorded",
   "type": "object"

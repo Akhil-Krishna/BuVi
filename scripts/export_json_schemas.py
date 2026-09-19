@@ -16,7 +16,9 @@ from platform_contracts import (
     BillingUsageRecorded,
     ChartSpec,
     DashboardTilePinned,
+    IdentityRoleChanged,
     McpInvocationDenied,
+    MetadataSyncCompleted,
     RunRequested,
 )
 
@@ -31,6 +33,10 @@ def schemas() -> dict[str, dict[str, Any]]:
         "contracts/events/billing.usage.recorded.v1.json": BillingUsageRecorded.model_json_schema(),
         "contracts/events/dashboard.tile.pinned.v1.json": DashboardTilePinned.model_json_schema(),
         "contracts/events/mcp.invocation.denied.v1.json": McpInvocationDenied.model_json_schema(),
+        "contracts/events/metadata.sync.completed.v1.json": (
+            MetadataSyncCompleted.model_json_schema()
+        ),
+        "contracts/events/identity.role.changed.v1.json": IdentityRoleChanged.model_json_schema(),
     }
 
 

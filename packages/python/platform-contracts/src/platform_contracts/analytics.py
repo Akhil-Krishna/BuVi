@@ -58,15 +58,26 @@ class RunRequested(_Versioned):
     request_id: str | None = Field(default=None, max_length=128)
 
 
-class BillingUsageRecorded(_Versioned):
-    """`billing.usage.recorded`: one metered quantity (Section 23)."""
+UsageMetric = Literal["llm_input_tokens", "llm_output_tokens", "query_execution_ms"]
+USAGE_METRICS: Final[tuple[str, ...]] = get_args(UsageMetric)
 
+
+class BillingUsageRecorded(_Versioned):
+    """`billing.usage.recorded`: one metered quantity (Section 23).
+
+    1.1 (Phase A11): `event_id` (the aggregator's idempotency key, so a redelivered message is
+    counted once), `occurred_at`, and `query_execution_ms` from query-gateway, which has no model.
+    """
+
+    schema_version: str = Field(default="1.1", pattern=r"^\d+\.\d+$")
+    event_id: uuid.UUID = Field(default_factory=uuid.uuid4)
     tenant_id: uuid.UUID
-    metric: Literal["llm_input_tokens", "llm_output_tokens"]
+    metric: UsageMetric
     quantity: int = Field(ge=0)
+    occurred_at: dt.datetime = Field(default_factory=lambda: dt.datetime.now(dt.UTC))
     run_id: uuid.UUID | None = None
     stage: str | None = Field(default=None, max_length=64)
-    model: str = Field(max_length=128)
+    model: str | None = Field(default=None, max_length=128)
     request_id: str | None = Field(default=None, max_length=128)
 
 

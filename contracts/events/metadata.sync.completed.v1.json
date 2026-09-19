@@ -1,0 +1,68 @@
+{
+  "additionalProperties": false,
+  "description": "`metadata.sync.completed`: metadata-service (while sync runs in-request) ->\nnotification-service. `user_id` ran the sync and is the one notified.",
+  "properties": {
+    "data_source_id": {
+      "format": "uuid",
+      "title": "Data Source Id",
+      "type": "string"
+    },
+    "data_source_name": {
+      "maxLength": 200,
+      "title": "Data Source Name",
+      "type": "string"
+    },
+    "request_id": {
+      "anyOf": [
+        {
+          "maxLength": 128,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Request Id"
+    },
+    "schema_version": {
+      "default": "1.0",
+      "pattern": "^\\d+\\.\\d+$",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "status": {
+      "enum": [
+        "succeeded",
+        "failed"
+      ],
+      "title": "Status",
+      "type": "string"
+    },
+    "tables_synced": {
+      "minimum": 0,
+      "title": "Tables Synced",
+      "type": "integer"
+    },
+    "tenant_id": {
+      "format": "uuid",
+      "title": "Tenant Id",
+      "type": "string"
+    },
+    "user_id": {
+      "format": "uuid",
+      "title": "User Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "tenant_id",
+    "data_source_id",
+    "data_source_name",
+    "status",
+    "tables_synced",
+    "user_id"
+  ],
+  "title": "MetadataSyncCompleted",
+  "type": "object"
+}
