@@ -156,3 +156,20 @@ def test_every_section_7_3_operation_requires_step_up_at_the_gateway() -> None:
     assert all(key in routes for key in SERVICE_ENFORCED_STEP_UP)
     # Nothing else is step-up by accident: the list above is the whole policy.
     assert {k for k, r in routes.items() if r.step_up} == SECTION_7_3_ROUTES
+
+
+def test_every_remaining_stub_is_tracked_post_ga_backlog() -> None:
+    """A stub labelled with a Track A phase outlives that phase unnoticed (A11 found one), so the
+    only stubs allowed are post-GA ones the spec's backlog names."""
+    spec = (
+        Path(__file__).resolve().parents[6]
+        / "docs"
+        / "architecture"
+        / "Agentic_BI_Platform_Build_Spec.md"
+    ).read_text()
+    backlog = spec.split("### Post-GA backlog", 1)[1].split("\n---\n", 1)[0]
+    stubs = [route for route in CATALOG if route.is_stub]
+    assert stubs, "no stubs left: drop this test's post-GA assumption"
+    for route in stubs:
+        assert route.available_in_phase == "post-GA", route.path
+        assert f"{route.method} {route.path}" in backlog, f"{route.path} not in the post-GA backlog"

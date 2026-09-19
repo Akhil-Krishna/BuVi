@@ -91,9 +91,13 @@ reset_demo_state() {  # [--mysql]
   flush_redis
   reset_notification_consumers
   docker exec -i "$PGCONTAINER" psql -U postgres -d agentic_bi -q -v ON_ERROR_STOP=1 <<SQL
+-- Demo users: active, no MFA (A10 enrolls factors; A11 deactivates the developer to prove the
+-- Section 6.7 cascade).
 DELETE FROM identity.mfa_credentials
-  WHERE user_id IN (SELECT id FROM identity.users WHERE email = 'admin@demo.example.com');
-UPDATE identity.users SET mfa_enabled = false WHERE email = 'admin@demo.example.com';
+  WHERE user_id IN (SELECT u.id FROM identity.users u, (VALUES $DEMO_MEMBER_ROLES) AS m(email, role_key)
+                    WHERE u.email = m.email);
+UPDATE identity.users u SET mfa_enabled = false, status = 'active'
+  FROM (VALUES $DEMO_MEMBER_ROLES) AS m(email, role_key) WHERE u.email = m.email;
 DELETE FROM metadata.data_sources WHERE name LIKE 'sample-sales-db%' OR name LIKE 'sample-sales-mysql%';
 DELETE FROM identity.tenant_policies;
 DELETE FROM identity.invitations WHERE email LIKE 'a10-%';
@@ -125,10 +129,10 @@ assert_demo_baseline() {  # fail fast if the reset left any cross-flow state beh
   problems=$(docker exec -i "$PGCONTAINER" psql -U postgres -d agentic_bi -qAt -v ON_ERROR_STOP=1 <<SQL
 SELECT 'tenant policies set' WHERE EXISTS (SELECT 1 FROM identity.tenant_policies)
 UNION ALL
-SELECT 'demo admin has MFA' WHERE EXISTS (
-  SELECT 1 FROM identity.users u
-  WHERE u.email = 'admin@demo.example.com'
-    AND (u.mfa_enabled OR EXISTS (SELECT 1 FROM identity.mfa_credentials c WHERE c.user_id = u.id)))
+SELECT 'demo user not active, or has MFA: ' || u.email
+  FROM identity.users u JOIN (VALUES $DEMO_MEMBER_ROLES) AS m(email, role_key) ON u.email = m.email
+  WHERE u.status <> 'active' OR u.mfa_enabled
+     OR EXISTS (SELECT 1 FROM identity.mfa_credentials c WHERE c.user_id = u.id)
 UNION ALL
 SELECT 'a10 users left' WHERE EXISTS (SELECT 1 FROM identity.users WHERE email LIKE 'a10-%')
 UNION ALL

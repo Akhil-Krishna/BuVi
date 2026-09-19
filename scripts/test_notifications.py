@@ -380,6 +380,34 @@ def main() -> int:
         api("GET", "/api/v1/billing/usage", client).status_code == 403,
     )
 
+    print("Section 6.7: deactivating a user revokes the share links they created")
+    enroll = api("POST", "/api/v1/auth/mfa/enroll", developer)
+    api(
+        "POST",
+        "/api/v1/auth/mfa/verify",
+        developer,
+        json={"code": pyotp.TOTP(enroll.json()["secret"]).now()},
+    )
+    board = api("POST", "/api/v1/dashboards", developer, json={"name": "shared"}).json()["id"]
+    api("POST", f"/api/v1/dashboards/{board}/tiles", developer, json={"artifact_id": artifact_id})
+    link = api("POST", f"/api/v1/dashboards/{board}/share-links", developer, json={}).json()
+    guest = f"/api/v1/share/{link.get('token', 'missing')}"
+    check("developer's share link works before deactivation", api("GET", guest).status_code == 200)
+    removed = api("DELETE", f"/api/v1/admin/users/{developer_id}", admin)
+    check("developer deactivated (204)", removed.status_code == 204, removed.text)
+    check("their share link is dead at once (404)", api("GET", guest).status_code == 404)
+    revoked_at = psql(
+        "SELECT revoked_at IS NOT NULL FROM dashboard.share_links WHERE id = :'id'::uuid",
+        id=link.get("id", str(uuid.uuid4())),
+    )
+    check("the link row is revoked, not just unreachable", revoked_at == "t", revoked_at)
+    audit = psql(
+        "SELECT after_state->>'share_links_revoked' FROM identity.audit_events "
+        "WHERE event_type = 'user.deleted' AND resource_id = :'id' ORDER BY created_at DESC LIMIT 1",
+        id=developer_id,
+    )
+    check("user.deleted audit records the share links revoked", audit == "1", audit)
+
     receiver.shutdown()
     if failures:
         print(f"FAILED ({len(failures)}): {'; '.join(failures)}")

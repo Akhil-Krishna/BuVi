@@ -25,13 +25,16 @@ email via SMTP/MailHog (invitations stay in identity), and `/admin/webhooks` wit
 delivery (URL/pinning code moved into `platform-egress`; event-type allow-list; role changes never leave). Usage:
 query-gateway meters `query_execution_ms`, worker-runtime aggregates `billing.usage.recorded` 1.1 into
 `analytics.usage_records` through the orchestrator, `GET /billing/usage` (tokens by stage, query minutes, live seats).
-`query.completed` and `POST /billing/subscription` are deferred (spec). Live: `make test-notifications`. Decisions:
+`query.completed` is not currently applicable and `POST /billing/subscription` is post-GA (spec). Live: `make test-notifications`. Decisions:
 `docs/adr/0014-phase-a11-notifications-webhooks-usage.md` (A10: 0013, A9: 0012, A8: 0011, A7: 0010, A6: 0007,
 idempotency: 0008, A5: 0006).
 Next up: Phase A12 (Backend completeness gate: one automated backend suite, CI green, generated TypeScript client).
 See Section 31 of the build spec.**
 
 **Carried forward (do not drop):**
+- **Before Phase A12 closes (required -- A12 is the reliability gate):** diagnose the intermittent A5 crash-resume
+  stall (1 failure in 3 full `test-live` runs; resumed run stalls without I/O until `STAGE_TIMEOUT`). Suspects and the
+  diagnostic plan are in ADR 0014 "Open".
 - **Phase C1 hardening (required for C1's DoD):** semantic-lookup caching. Cache the approved-definition context and the metadata agent-context packet per tenant/data source with a TTL and invalidation on approve/deprecate/sync; correctness must not depend on the cache (spec Phase C1; ADR 0010).
 - **Post-GA backlog (not in Tracks A–C):** subscriptions/invoicing (`POST /billing/subscription`, b537537);
   `query.completed` with async query/export execution; storage-bytes metering (ADR 0014). Four-eyes semantic approval as a tenant policy (ADR 0013). Snowflake/BigQuery/Redshift connectors (need vendor sandboxes in CI; spec "Post-GA backlog"; ADR 0011). Also: ratio metrics, metric filters, and multi-table metrics over approved `join_rules`, with join-rule management. Any extension must keep the metric-vs-SQL check exact (parsed), never presence-based (spec "Post-GA backlog"; ADR 0010).
@@ -40,10 +43,10 @@ See Section 31 of the build spec.**
 - **Before Phase C1 starts (required):** certificate-verified data-source TLS (`verify-full`) for Postgres and MySQL. Add a per-data-source CA bundle, and prove hostname-mismatch and untrusted-CA refusal against TLS-enabled instances in CI (spec Phase C1 entry requirement; ADR 0011).
 - **Phase C1 (required):** mcp-gateway/notification-service egress through a dedicated egress proxy with a
   NetworkPolicy, and per-tenant MCP invocation concurrency/rate limits (spec Sections 15, 24; ADR 0012).
-- **Before Phase A12 closes (or Phase C1):** a deactivated user's share links stay live -- a `user.deactivated` event
-  consumed by dashboard-service would close it (ADR 0013/0014 gap).
-- **Phase C1 hardening candidates (ADR 0014):** webhook replay/retry queue and resend of failed emails; a directory
-  count endpoint for seat counts above 5000 users.
+- **Phase C1 hardening candidates (ADR 0014):** webhook replay/retry queue and resend of failed emails; keyset
+  pagination of identity's `directory/users` (capped at 5000 with `truncated: true`; seats are already exact).
+- **Any future suspend path (e.g. SCIM):** must run the Section 6.7 deactivation cascade (share links) like
+  `DELETE /admin/users/{id}` does (ADR 0014 follow-up).
 - **Every new connector engine:** meet the spec Section 13.1 standing rule. Prove its defenses and its server-identity check against a live instance in CI, never from documentation.
 - **Any crewai/chromadb version bump:** re-review the chromadb advisory ignores. CI's "Accepted-advisory expiry (ADR 0006)" step fails until you do.
 

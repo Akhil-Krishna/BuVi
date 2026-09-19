@@ -105,3 +105,39 @@
 - **The directory returns at most 5000 users per call.** The seat count is exact only below that. It needs a count endpoint before large tenants.
 - **Legacy usage events:** `billing.usage.recorded` 1.0 messages already in a stream (none in production) get a random `event_id` when parsed, so a redelivery of one of those would be counted twice.
 - **Carried from ADR 0013:** a deactivated user's share links stay live. A `user.deactivated` event consumed by dashboard-service would close that; it is still open.
+
+## Follow-up before A12 (review of this ADR's gaps)
+
+1. **Section 6.7: deactivation revokes the user's share links.** A share link is bearer access that outlives the creator's session, so this is compliance, not backlog.
+   - `DELETE /admin/users/{id}` now calls dashboard-service first: `POST /internal/v1/users/{id}/share-links/revoke`, scope `dashboard-service:user-lifecycle`, identity-service only. identity signs its own token.
+   - The call happens before any local change. If it fails, the deactivation fails with a retryable `503` and nothing is committed. If identity fails afterwards, links are revoked but the user stays active: over-revocation, the safe direction.
+   - It is idempotent and audited on both sides (`dashboard.share_links.revoked_for_deactivated_user`, and `share_links_revoked` in `user.deleted`).
+   - An event was rejected: best-effort publishing can lose it, and a MUST cannot be best effort.
+   - No deployment predates this, so there is no backfill.
+   - A future suspend path (SCIM) must call the same cascade.
+   - Webhook subscriptions a deactivated admin created are tenant integrations and stay; other admins can disable them.
+2. **`query.completed` is not currently applicable** (spec dda1465). Every query path is request/response, and no near-term phase adds asynchronous execution.
+3. **Undelivered usage is observable, not silent.**
+   - Before this fix, both producers logged a WARNING without the event, so the loss could be neither seen nor recovered.
+   - Now each wraps its publisher (`ObservedUsageMeter` / `ObservedUsageSink`). A refused event is logged at ERROR in full (ids and numbers only) as `usage event undelivered`, counted, and reported by readiness as `checks.usage: degraded (N undelivered)`. Requests keep working.
+   - `scripts/replay_usage_events.py` republishes those events from the logs. The store is idempotent on `event_id`.
+4. **The last stub** is `POST /billing/subscription`. It is post-GA and named in the spec's backlog. An api-gateway test now fails on any stub that is not `post-GA` and in that backlog.
+5. **Seats past 5,000 users.**
+   - They were undercounted (the length of a capped list). They now come from an exact `COUNT` (`POST /internal/v1/directory/seats`), with no cap.
+   - The recipient list stays capped at 5,000 but says `truncated: true` when capped. notification-service still delivers to the listed users and logs an ERROR (`recipient list truncated`). Keyset pagination of the directory is tracked for Phase C1.
+6. **Also fixed: retries past `max_deliver` were silent abandonments.**
+   - On a message's last allowed delivery, a "retry" is never redelivered. worker-runtime's run (left `queued`) and notification-service's event were lost while the log said "will retry".
+   - Both now log the abandonment at ERROR, with the ids needed to re-publish, and terminate the message.
+
+### Open: intermittent A5 crash-resume stall (not fixed; root cause unknown)
+
+- **What happened:** in one of three full `make test-live` runs during this follow-up, A5's "orchestrator killed mid-run -> restart -> resumes" case failed.
+  - The resumed run finished its fourth model call, then made no network I/O at all until `build_chart_spec` hit `STAGE_TIMEOUT` (90 s).
+  - The worker's usage ingestion into the orchestrator had drained its backlog seconds earlier and was idle.
+- **Reproduction:** none so far. A5 passed 4/4 standalone, 1/1 with a 3,000-event usage backlog and a fresh usage durable, and in the next full chain.
+- **Ruled out:**
+  - the usage backlog;
+  - CrewAI running listeners on another event loop (async listeners are awaited on the caller's loop, so connections are not shared across loops);
+  - the executor holding the run row lock across a model call (every step commits separately).
+- **Remaining suspects:** a `SELECT … FOR UPDATE` in `_persist_usage` waiting on a lock held by the killed process's backend (Docker Desktop's port proxy can delay the dead client's EOF); a NATS or Redis await without its own bound.
+- **Next step, required before Phase A12 closes (it is a reliability gate):** enable `log_lock_waits` and statement timeouts on the dev Postgres, give `_persist_usage`/`_persist` a lock timeout, and loop the A5 crash case until it fails with evidence.
