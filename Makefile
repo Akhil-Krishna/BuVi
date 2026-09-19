@@ -12,7 +12,7 @@ WEB := web/next-app
         dev-orchestrator dev-worker dev-visualization dev-dashboard dev-semantic test-login \
         test-data-sources test-query-gateway test-analytics-run test-dashboards test-semantics \
         eval-groundedness seed-sample-mysql test-mysql-slice test-live dev-mcp test-mcp test-admin \
-        dev-notification test-notifications
+        dev-notification test-notifications backend-e2e test-client gen-client
 
 help: ## List available targets
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) \
@@ -180,6 +180,16 @@ test-live: ## Every scripted DoD flow in sequence; each resets demo state, so or
 	scripts/test-mcp.sh
 	scripts/test-admin.sh
 	scripts/test-notifications.sh
+	scripts/test-client.sh
+
+backend-e2e: ## Phase A12 gate: contracts, every live flow, and the Section 24 system suite
+	scripts/backend-e2e.sh
+
+test-client: ## Phase A12 flow: the generated TypeScript client against the running gateway
+	scripts/test-client.sh
+
+gen-client: ## Regenerate packages/ts/api-client from contracts/openapi/api-gateway.json
+	scripts/gen-client.sh
 
 eval-groundedness: ## Section 25 groundedness eval: metric usage and insight grounding per run
 	uv run --package analytics-orchestrator pytest -s -o addopts="" \

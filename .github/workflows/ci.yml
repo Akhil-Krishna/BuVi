@@ -141,6 +141,60 @@ jobs:
       - run: npm run test
       - run: npm run build
 
+  api-client:
+    # Phase A12: the generated TypeScript client matches the gateway contract and type-checks.
+    name: api-client (generated TypeScript client)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: packages/ts/api-client/package-lock.json
+      - run: npm ci --no-audit --no-fund
+        working-directory: packages/ts/api-client
+      - run: scripts/gen-client.sh --check
+      - run: npm audit --omit=dev --audit-level=high
+        working-directory: packages/ts/api-client
+
+  backend-e2e:
+    # Phase A12 gate: the whole backend against the compose stack -- every live DoD flow, the
+    # Section 24 system suite and the generated client -- with HTTP/SSE and queue assertions only.
+    name: backend e2e (Track A exit gate)
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - run: uv python install ${{ env.PYTHON_VERSION }}
+      - run: uv sync --all-packages --group dev --locked
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: packages/ts/api-client/package-lock.json
+      - run: npm ci --no-audit --no-fund
+        working-directory: packages/ts/api-client
+      - name: Start the compose stack
+        run: docker compose -f infra/compose/docker-compose.dev.yml up -d --wait --wait-timeout 300
+      - name: Backend e2e suite
+        env:
+          BUVI_E2E_LOGS: ${{ runner.temp }}/backend-e2e
+        run: scripts/backend-e2e.sh
+      - name: Keep service logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-e2e-logs
+          path: ${{ runner.temp }}/backend-e2e
+          retention-days: 7
+      - name: Compose logs on failure
+        if: failure()
+        run: docker compose -f infra/compose/docker-compose.dev.yml logs --tail 200
+
   security:
     name: security scans
     runs-on: ubuntu-latest

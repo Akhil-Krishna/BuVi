@@ -17,24 +17,22 @@ is genuinely missing, stop and ask, don't guess.
 
 > Update this line yourself after every completed phase, then commit it.
 
-**Phase A11 (Notification service, webhooks, billing usage -- API only) is complete -- notification-service (:8010,
-schema `notification`) consumes `dashboard.tile.pinned`, `mcp.invocation.denied`, `metadata.sync.completed` and
-`identity.role.changed` (new producers: metadata-service, identity-service) as durable JetStream consumers, idempotent
-per `<stream>:<seq>`, recipients from identity's new directory endpoint; in-app inbox (`/me/notifications`, mark read),
-email via SMTP/MailHog (invitations stay in identity), and `/admin/webhooks` with HMAC-signed, Section 15-pinned
-delivery (URL/pinning code moved into `platform-egress`; event-type allow-list; role changes never leave). Usage:
-query-gateway meters `query_execution_ms`, worker-runtime aggregates `billing.usage.recorded` 1.1 into
-`analytics.usage_records` through the orchestrator, `GET /billing/usage` (tokens by stage, query minutes, live seats).
-`query.completed` is not currently applicable and `POST /billing/subscription` is post-GA (spec). Live: `make test-notifications`. Decisions:
-`docs/adr/0014-phase-a11-notifications-webhooks-usage.md` (A10: 0013, A9: 0012, A8: 0011, A7: 0010, A6: 0007,
-idempotency: 0008, A5: 0006).
-Next up: Phase A12 (Backend completeness gate: one automated backend suite, CI green, generated TypeScript client).
-See Section 31 of the build spec.**
+**Phase A12 (Backend completeness gate -- Track A exit) is complete -- `scripts/backend-e2e.sh` (`make backend-e2e`,
+CI job "backend e2e (Track A exit gate)") runs contracts + static Section 24 controls, every live DoD flow A1-A12 from the
+shared reset, and the live `system` suite against the compose stack. Section 24 is a code registry
+(`tests/system/section_24.py`) mapping every bullet to its enforcing tests; supply chain, tenant-deletion cascade and MCP
+per-tenant limits are explicit Phase C1 deferrals. `packages/ts/api-client` (`@buvi/api-client`) is generated from
+`contracts/openapi/api-gateway.json` by `scripts/gen-client.sh` (drift-checked in CI) and driven live by `test-client`.
+Fixed on the way: the gateway contract dropped all query parameters; MFA verify had no per-account limit. Decisions:
+`docs/adr/0015-phase-a12-backend-completeness-gate.md` (A11: 0014, A10: 0013, A9: 0012, A8: 0011, A7: 0010,
+A6: 0007, idempotency: 0008, A5: 0006).
+Next up: Track B, Phase B1 (Real browser auth + design system). The backend is frozen except for bug fixes; Track B
+imports `@buvi/api-client`. See Section 31 of the build spec.**
 
 **Carried forward (do not drop):**
-- **Before Phase A12 closes (required -- A12 is the reliability gate):** diagnose the intermittent A5 crash-resume
-  stall (1 failure in 3 full `test-live` runs; resumed run stalls without I/O until `STAGE_TIMEOUT`). Suspects and the
-  diagnostic plan are in ADR 0014 "Open".
+- **Watch the A5 crash-resume stall (ADR 0014 "Open", ADR 0015):** 1 failure in 15 runs, not reproducible on demand.
+  A recurrence now logs `stage timed out` with the frames it was awaiting, and Postgres logs lock waits and releases a
+  dead client's locks after 60s; if it recurs in CI, the `backend-e2e-logs` artifact holds the evidence -- fix it then.
 - **Phase C1 hardening (required for C1's DoD):** semantic-lookup caching. Cache the approved-definition context and the metadata agent-context packet per tenant/data source with a TTL and invalidation on approve/deprecate/sync; correctness must not depend on the cache (spec Phase C1; ADR 0010).
 - **Post-GA backlog (not in Tracks A–C):** subscriptions/invoicing (`POST /billing/subscription`, b537537);
   `query.completed` with async query/export execution; storage-bytes metering (ADR 0014). Four-eyes semantic approval as a tenant policy (ADR 0013). Snowflake/BigQuery/Redshift connectors (need vendor sandboxes in CI; spec "Post-GA backlog"; ADR 0011). Also: ratio metrics, metric filters, and multi-table metrics over approved `join_rules`, with join-rule management. Any extension must keep the metric-vs-SQL check exact (parsed), never presence-based (spec "Post-GA backlog"; ADR 0010).
