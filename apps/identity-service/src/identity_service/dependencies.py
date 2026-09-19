@@ -14,6 +14,7 @@ Two things happen here that matter for security:
 from __future__ import annotations
 
 import ipaddress
+import logging
 import uuid
 from collections.abc import AsyncIterator
 from typing import Annotated
@@ -26,6 +27,7 @@ from identity_service.application.services.api_key_service import ApiKeyService
 from identity_service.application.services.audit_service import AuditService
 from identity_service.application.services.auth_service import AuthService
 from identity_service.application.services.mfa_service import MfaService
+from identity_service.application.services.ports import IdentityEvents
 from identity_service.application.services.session_service import (
     MAX_SESSION_TOKEN_LENGTH,
     SessionService,
@@ -44,6 +46,9 @@ from identity_service.infrastructure.oidc.client import OidcClient
 from identity_service.infrastructure.secrets.store import SecretStore
 from identity_service.infrastructure.webauthn.relying_party import RelyingParty
 from platform_auth import Principal, ServiceTokenIssuer, verify_service_request
+from platform_contracts import IdentityRoleChanged
+
+logger = logging.getLogger(__name__)
 
 BEARER_PREFIX = "Bearer "
 
@@ -295,3 +300,18 @@ def client_ip(request: Request) -> str | None:
     if forwarded:
         return str(forwarded)
     return request.client.host if request.client else None
+
+
+# --- Events ----------------------------------------------------------------------
+
+
+async def publish_role_changed(request: Request, event: IdentityRoleChanged) -> None:
+    """Best effort: the change is committed and audited; a lost event costs a notification."""
+    events: IdentityEvents = request.app.state.events
+    try:
+        await events.role_changed(event)
+    except Exception as error:
+        logger.warning(
+            "identity.role.changed not published",
+            extra={"context": {"user_id": str(event.user_id), "error_type": type(error).__name__}},
+        )

@@ -43,3 +43,10 @@
 1. `alembic upgrade head` as `buvi_migrator` (separate job, Section 26), then roll the deployment.
    Migration `0002_session_token_hash` revokes every session that predates it: all users log in once more.
 2. Rollback: redeploy the previous image; run `alembic downgrade -1` only if the migration is confirmed unused.
+
+## Directory and role events (Phase A11)
+
+- **Directory:** `POST /internal/v1/directory/users` (scope `identity-service:directory`: notification-service, analytics-orchestrator) returns a tenant's users with email, status and roles, filtered by id and/or role. It is RLS-bound to the tenant in the request. It is the only way emails leave identity-service.
+- **Role events:** a role change that actually changes something publishes `identity.role.changed` (stream `IDENTITY`). It is sent as a background task, after the response and so after the commit, so a rolled-back change is never announced.
+- **Best effort:** without NATS, login and admin work are unaffected; only the notification is lost. `IDENTITY_EVENTS_ENABLED=false` turns it off.
+- **Invitation email** stays here, not in notification-service (ADR 0014): it carries a one-time token.

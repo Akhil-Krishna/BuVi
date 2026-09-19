@@ -50,6 +50,16 @@ class IssuedInvitation:
     token: str
 
 
+@dataclass(frozen=True)
+class RoleChangeOutcome:
+    before: frozenset[str]
+    after: frozenset[str]
+
+    @property
+    def changed(self) -> bool:
+        return self.before != self.after
+
+
 class UserService:
     def __init__(
         self,
@@ -133,7 +143,7 @@ class UserService:
         grant: frozenset[str],
         revoke: frozenset[str],
         ip_address: str | None = None,
-    ) -> frozenset[str]:
+    ) -> RoleChangeOutcome:
         """Grant and revoke roles, upholding the Section 2 last-admin rule."""
         target = await self._repository.get_user(tenant_id, target_user_id)
         if target is None:
@@ -173,7 +183,7 @@ class UserService:
             after_state={"roles": sorted(resulting)},
             ip_address=ip_address,
         )
-        return resulting
+        return RoleChangeOutcome(before=current, after=resulting)
 
     # --- deletion ----------------------------------------------------------
 

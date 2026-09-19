@@ -15,6 +15,7 @@ from httpx import ASGITransport
 
 from identity_service.core.config import (
     SCOPE_AUDIT_WRITE,
+    SCOPE_DIRECTORY,
     SCOPE_INTROSPECT,
     SCOPE_PROXY,
     SCOPE_RESOLVE_PRINCIPAL,
@@ -491,3 +492,47 @@ async def test_analytics_service_clients_get_only_their_scopes(
         data=_grant(client_id=client_id, client_secret=secret, audience=audience, scope=scope),
     )
     assert (response.status_code == 200) is allowed, response.text
+
+
+async def test_directory_lists_a_tenants_users_by_id_or_role(
+    app: FastAPI,
+    client: httpx.AsyncClient,
+    fixtures: Fixtures,
+    tenant: uuid.UUID,
+    other_tenant: uuid.UUID,
+) -> None:
+    admin = await fixtures.create_user(
+        tenant_id=tenant, email="dir-admin@acme.example.com", roles=frozenset({"org_admin"})
+    )
+    member = await fixtures.create_user(
+        tenant_id=tenant, email="dir-dev@acme.example.com", roles=frozenset({"developer"})
+    )
+    stranger = await fixtures.create_user(
+        tenant_id=other_tenant, email="dir-x@other.example.com", roles=frozenset({"org_admin"})
+    )
+    headers = {SVC: f"Bearer {_service_token(app, 'notification-service', SCOPE_DIRECTORY)}"}
+
+    admins = await client.post(
+        "/internal/v1/directory/users",
+        headers=headers,
+        json={"tenant_id": str(tenant), "role": "org_admin"},
+    )
+    assert admins.status_code == 200, admins.text
+    assert [(u["id"], u["email"], u["roles"]) for u in admins.json()["users"]] == [
+        (str(admin), "dir-admin@acme.example.com", ["org_admin"])
+    ]
+    # Ids from another tenant simply do not match (RLS-bound to tenant_id).
+    by_id = await client.post(
+        "/internal/v1/directory/users",
+        headers=headers,
+        json={"tenant_id": str(tenant), "user_ids": [str(member), str(stranger)]},
+    )
+    assert [u["id"] for u in by_id.json()["users"]] == [str(member)]
+    assert by_id.json()["users"][0]["status"] == "active"
+
+    wrong_scope = {SVC: f"Bearer {_service_token(app, 'notification-service', SCOPE_INTROSPECT)}"}
+    refused = await client.post(
+        "/internal/v1/directory/users", headers=wrong_scope, json={"tenant_id": str(tenant)}
+    )
+    assert refused.status_code == 403
+    assert (await client.post("/internal/v1/directory/users", json={})).status_code == 401

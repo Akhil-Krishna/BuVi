@@ -15,7 +15,7 @@ from __future__ import annotations
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, Request, Response, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Query, Request, Response, status
 
 from identity_service.api.v1.schemas import (
     InvitationCreateRequest,
@@ -27,11 +27,13 @@ from identity_service.api.v1.schemas import (
     UserListResponse,
     UserResponse,
 )
+from identity_service.core.logging import request_id_var
 from identity_service.dependencies import (
     build_mfa_service,
     build_user_service,
     client_ip,
     get_repository,
+    publish_role_changed,
 )
 from identity_service.domain.errors import NotFoundError, SelfServiceForbiddenError
 from identity_service.infrastructure.db.repositories.identity_repository import (
@@ -44,6 +46,7 @@ from platform_auth import (
     require_step_up,
 )
 from platform_auth.permissions import PERM_ROLE_MANAGE, PERM_USER_MANAGE
+from platform_contracts import IdentityRoleChanged
 
 router = APIRouter(tags=["admin-users"])
 
@@ -138,10 +141,15 @@ async def change_roles(
     _owns: OwnsUser,
     _step_up: StepUp,
     repository: ScopedRepo,
+    background: BackgroundTasks,
 ) -> RoleChangeResponse:
-    """Grant or revoke roles (Section 9: `role:manage`, step-up)."""
+    """Grant or revoke roles (Section 9: `role:manage`, step-up).
+
+    `identity.role.changed` is published as a background task, which runs after the response
+    and so after the request's transaction commits: a rolled-back change is never announced.
+    """
     service = build_user_service(request, repository)
-    roles = await service.change_roles(
+    outcome = await service.change_roles(
         tenant_id=uuid.UUID(principal.tenant_id),
         actor_user_id=uuid.UUID(principal.user_id),
         target_user_id=user_id,
@@ -149,7 +157,18 @@ async def change_roles(
         revoke=frozenset(payload.revoke),
         ip_address=client_ip(request),
     )
-    return RoleChangeResponse(user_id=user_id, roles=sorted(roles))
+    if outcome.changed:
+        event = IdentityRoleChanged(
+            tenant_id=uuid.UUID(principal.tenant_id),
+            user_id=user_id,
+            roles=tuple(sorted(outcome.after)),
+            granted=tuple(sorted(outcome.after - outcome.before)),
+            revoked=tuple(sorted(outcome.before - outcome.after)),
+            changed_by=uuid.UUID(principal.user_id),
+            request_id=request_id_var.get(),
+        )
+        background.add_task(publish_role_changed, request, event)
+    return RoleChangeResponse(user_id=user_id, roles=sorted(outcome.after))
 
 
 @router.post(

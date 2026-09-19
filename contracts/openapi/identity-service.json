@@ -353,6 +353,109 @@
         "title": "AuditEventResponse",
         "type": "object"
       },
+      "DirectoryRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "role": {
+            "anyOf": [
+              {
+                "pattern": "^[a-z][a-z_]{0,63}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Role"
+          },
+          "tenant_id": {
+            "format": "uuid",
+            "title": "Tenant Id",
+            "type": "string"
+          },
+          "user_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "maxItems": 100,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Ids"
+          }
+        },
+        "required": [
+          "tenant_id"
+        ],
+        "title": "DirectoryRequest",
+        "type": "object"
+      },
+      "DirectoryResponse": {
+        "properties": {
+          "users": {
+            "items": {
+              "$ref": "#/components/schemas/DirectoryUser"
+            },
+            "title": "Users",
+            "type": "array"
+          }
+        },
+        "required": [
+          "users"
+        ],
+        "title": "DirectoryResponse",
+        "type": "object"
+      },
+      "DirectoryUser": {
+        "properties": {
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "roles": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Roles",
+            "type": "array"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "email",
+          "display_name",
+          "status",
+          "roles"
+        ],
+        "title": "DirectoryUser",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -1711,7 +1814,7 @@
     },
     "/api/v1/admin/users/{user_id}/roles": {
       "patch": {
-        "description": "Grant or revoke roles (Section 9: `role:manage`, step-up).",
+        "description": "Grant or revoke roles (Section 9: `role:manage`, step-up).\n\n`identity.role.changed` is published as a background task, which runs after the response\nand so after the request's transaction commits: a rolled-back change is never announced.",
         "operationId": "change_roles_api_v1_admin_users__user_id__roles_patch",
         "parameters": [
           {
@@ -2373,6 +2476,48 @@
           }
         },
         "summary": "Record Audit Event",
+        "tags": [
+          "internal"
+        ]
+      }
+    },
+    "/internal/v1/directory/users": {
+      "post": {
+        "description": "A tenant's users, RLS-bound to `tenant_id`: ids from another tenant simply do not match.\nEmails leave identity-service only through here, to services registered for it.",
+        "operationId": "directory_users_internal_v1_directory_users_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DirectoryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DirectoryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Directory Users",
         "tags": [
           "internal"
         ]

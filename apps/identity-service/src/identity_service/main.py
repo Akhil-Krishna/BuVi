@@ -22,11 +22,16 @@ from fastapi import FastAPI
 from identity_service.api.internal import router as internal_router
 from identity_service.api.v1.health import router as health_router
 from identity_service.api.v1.router import api_router
+from identity_service.application.services.ports import IdentityEvents
 from identity_service.core.config import Settings, get_settings
 from identity_service.core.logging import configure_logging
 from identity_service.dependencies import resolve_principal
 from identity_service.infrastructure.db.session import create_engine, create_session_factory
 from identity_service.infrastructure.email.sender import EmailSender, SmtpEmailSender
+from identity_service.infrastructure.messaging.nats_events import (
+    JetStreamIdentityEvents,
+    UnavailableIdentityEvents,
+)
 from identity_service.infrastructure.oidc.client import KeycloakOidcClient, OidcClient
 from identity_service.infrastructure.secrets.store import (
     InMemorySecretStore,
@@ -73,9 +78,27 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     if getattr(app.state, "email", None) is None:
         app.state.email = SmtpEmailSender(settings)
 
+    publisher: JetStreamIdentityEvents | None = None
+    if getattr(app.state, "events", None) is None:
+        app.state.events = UnavailableIdentityEvents()
+        if settings.events_enabled:
+            try:
+                publisher = await JetStreamIdentityEvents.connect(
+                    settings.nats_url, stream=settings.events_stream
+                )
+                app.state.events = publisher
+            except Exception as error:
+                # Login and admin work never depend on the event stream; notifications do.
+                logger.warning(
+                    "identity event stream unavailable",
+                    extra={"context": {"error_type": type(error).__name__}},
+                )
+
     try:
         yield
     finally:
+        if publisher is not None:
+            await publisher.close()
         await http.aclose()
         await engine.dispose()
 
@@ -87,6 +110,7 @@ def create_app(
     oidc: OidcClient | None = None,
     email: EmailSender | None = None,
     service_token_issuer: ServiceTokenIssuer | None = None,
+    events: IdentityEvents | None = None,
 ) -> FastAPI:
     """Build the application.
 
@@ -110,6 +134,7 @@ def create_app(
     app.state.secrets = secrets
     app.state.oidc = oidc
     app.state.email = email
+    app.state.events = events
 
     install_principal_resolver(app, resolve_principal)
 

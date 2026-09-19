@@ -126,6 +126,41 @@ class IdentityRepository:
             return rows[:limit], rows[limit - 1].id
         return rows, None
 
+    async def directory(
+        self,
+        tenant_id: uuid.UUID,
+        *,
+        user_ids: frozenset[uuid.UUID] | None,
+        role: str | None,
+        limit: int,
+    ) -> list[tuple[User, frozenset[str]]]:
+        """Users with their role keys, filtered by id and/or role (Phase A11 directory)."""
+        statement: Select[tuple[User]] = (
+            select(User).where(User.tenant_id == tenant_id).order_by(User.id).limit(limit)
+        )
+        if user_ids is not None:
+            statement = statement.where(User.id.in_(user_ids))
+        if role is not None:
+            statement = statement.where(
+                User.id.in_(
+                    select(UserRole.user_id)
+                    .join(Role, Role.id == UserRole.role_id)
+                    .where(Role.tenant_id == tenant_id, Role.key == role)
+                )
+            )
+        users = list((await self._session.execute(statement)).scalars().all())
+        if not users:
+            return []
+        rows = await self._session.execute(
+            select(UserRole.user_id, Role.key)
+            .join(Role, Role.id == UserRole.role_id)
+            .where(UserRole.user_id.in_([u.id for u in users]))
+        )
+        roles: dict[uuid.UUID, set[str]] = {}
+        for user_id, key in rows.all():
+            roles.setdefault(user_id, set()).add(key)
+        return [(u, frozenset(roles.get(u.id, ()))) for u in users]
+
     async def count_active_org_admins(self, tenant_id: uuid.UUID) -> int:
         """Count active `org_admin` users, for the Section 2 last-admin rule."""
         statement = (

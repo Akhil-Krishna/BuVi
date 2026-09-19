@@ -14,7 +14,9 @@ dependencies = [
     "authlib>=1.8.0",
     "fastapi>=0.141.1",
     "httpx>=0.28.1",
+    "nats-py>=2.16.0",
     "platform-auth",
+    "platform-contracts",
     "platform-observability",
     "platform-secrets",
     "pydantic-settings>=2.15.0",
@@ -34,5 +36,6 @@ build-backend = "uv_build"
 
 [tool.uv.sources]
 platform-auth = { workspace = true }
+platform-contracts = { workspace = true }
 platform-observability = { workspace = true }
 platform-secrets = { workspace = true }

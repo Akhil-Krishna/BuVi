@@ -28,6 +28,7 @@ from identity_service.core.config import Settings
 from identity_service.infrastructure.email.sender import InMemoryEmailSender
 from identity_service.infrastructure.oidc.client import OidcIdentity, OidcTokens
 from identity_service.infrastructure.secrets.store import InMemorySecretStore
+from platform_contracts import IdentityRoleChanged
 
 SERVICE_ROOT = Path(__file__).resolve().parents[3]
 
@@ -169,6 +170,7 @@ def settings(postgres_dsn: str, app_dsn: str) -> Settings:
         session_cookie_secure=True,
         oidc_issuer="https://idp.test/realms/buvi",
         oidc_client_id="buvi-platform",
+        events_enabled=False,
     )
 
 
@@ -187,16 +189,34 @@ def secrets() -> InMemorySecretStore:
     return InMemorySecretStore()
 
 
+class RecordingEvents:
+    """The Section 18.1 events the app published, in order."""
+
+    def __init__(self) -> None:
+        self.role_changes: list[IdentityRoleChanged] = []
+
+    async def role_changed(self, event: IdentityRoleChanged) -> None:
+        self.role_changes.append(event)
+
+
+@pytest.fixture
+def events() -> RecordingEvents:
+    return RecordingEvents()
+
+
 @pytest.fixture
 async def app(
     settings: Settings,
     oidc: StubOidcClient,
     mailbox: InMemoryEmailSender,
     secrets: InMemorySecretStore,
+    events: RecordingEvents,
 ) -> AsyncIterator[FastAPI]:
     from identity_service.main import create_app
 
-    application = create_app(settings=settings, secrets=secrets, oidc=oidc, email=mailbox)
+    application = create_app(
+        settings=settings, secrets=secrets, oidc=oidc, email=mailbox, events=events
+    )
     async with application.router.lifespan_context(application):
         yield application
 

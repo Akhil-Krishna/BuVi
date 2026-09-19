@@ -11,7 +11,7 @@ import pyotp
 import pytest
 
 from identity_service.infrastructure.email.sender import InMemoryEmailSender
-from identity_service.tests.conftest import Fixtures, StubOidcClient
+from identity_service.tests.conftest import Fixtures, RecordingEvents, StubOidcClient
 
 pytestmark = pytest.mark.integration
 
@@ -336,10 +336,10 @@ async def test_user_lists_and_revokes_only_their_own_sessions(
 # --- Roles and deletion (Section 2) -------------------------------------------------
 
 
-async def test_role_change_is_audited_with_before_and_after(
-    client: httpx.AsyncClient, fixtures: Fixtures, tenant: uuid.UUID
+async def test_role_change_is_audited_and_published(
+    client: httpx.AsyncClient, fixtures: Fixtures, tenant: uuid.UUID, events: RecordingEvents
 ) -> None:
-    _, session = await _admin(fixtures, tenant)
+    admin, session = await _admin(fixtures, tenant)
     target = await fixtures.create_user(
         tenant_id=tenant, email="promote@acme.example.com", roles=frozenset({"client"})
     )
@@ -351,6 +351,22 @@ async def test_role_change_is_audited_with_before_and_after(
     assert response.status_code == 200
     assert response.json()["roles"] == ["developer"]
     assert "user.role_changed" in await fixtures.audit_event_types(tenant)
+    # Section 18.1 `identity.role.changed`, published after the response (and the commit).
+    [event] = events.role_changes
+    assert (event.tenant_id, event.user_id, event.changed_by) == (tenant, target, admin)
+    assert (event.roles, event.granted, event.revoked) == (
+        ("developer",),
+        ("developer",),
+        ("client",),
+    )
+
+    # A request that changes nothing announces nothing.
+    same = await client.patch(
+        f"/api/v1/admin/users/{target}/roles",
+        json={"grant": ["developer"]},
+        cookies={COOKIE: str(session)},
+    )
+    assert same.status_code == 200 and len(events.role_changes) == 1
 
 
 async def test_admin_cannot_demote_or_delete_themselves(

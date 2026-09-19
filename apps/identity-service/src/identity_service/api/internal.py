@@ -7,6 +7,8 @@
 * `POST /internal/v1/principals/resolve` -- a user's *current* principal (status, roles), for a
   service acting on that user's behalf without a live session (Section 13, ADR 0006); requires
   `identity-service:resolve-principal`. The result is never step-up capable.
+* `POST /internal/v1/directory/users` -- a tenant's users with email, roles and status, by id
+  and/or role (notification recipients, seat counts); requires `identity-service:directory`.
 * `POST /internal/v1/audit-events` -- append an audit event on behalf of another service
   (e.g. metadata-service `connection.*`, Sections 7.3 and 22); requires
   `identity-service:audit` and an event type inside the client's registered namespace.
@@ -26,6 +28,7 @@ from identity_service.application.services.audit_service import AuditService
 from identity_service.application.services.service_token_service import ServiceTokenService
 from identity_service.core.config import (
     SCOPE_AUDIT_WRITE,
+    SCOPE_DIRECTORY,
     SCOPE_INTROSPECT,
     SCOPE_RESOLVE_PRINCIPAL,
 )
@@ -81,6 +84,29 @@ class ResolvePrincipalRequest(BaseModel):
 
     tenant_id: uuid.UUID
     user_id: uuid.UUID
+
+
+MAX_DIRECTORY_USERS = 5000
+
+
+class DirectoryRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    tenant_id: uuid.UUID
+    user_ids: Annotated[list[uuid.UUID], Field(max_length=100)] | None = None
+    role: Annotated[str, Field(pattern=r"^[a-z][a-z_]{0,63}$")] | None = None
+
+
+class DirectoryUser(BaseModel):
+    id: uuid.UUID
+    email: str
+    display_name: str | None
+    status: str
+    roles: list[str]
+
+
+class DirectoryResponse(BaseModel):
+    users: list[DirectoryUser]
 
 
 class AuditEventRequest(BaseModel):
@@ -198,6 +224,36 @@ async def record_audit_event(
         )
         await db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post("/directory/users", response_model=DirectoryResponse)
+async def directory_users(
+    request: Request,
+    payload: DirectoryRequest,
+    _service: Annotated[ServiceIdentity, Depends(require_service_scope(SCOPE_DIRECTORY))],
+) -> DirectoryResponse:
+    """A tenant's users, RLS-bound to `tenant_id`: ids from another tenant simply do not match.
+    Emails leave identity-service only through here, to services registered for it."""
+    async with tenant_scope(get_session_factory(request), payload.tenant_id) as db:
+        rows = await IdentityRepository(db).directory(
+            payload.tenant_id,
+            user_ids=frozenset(payload.user_ids) if payload.user_ids is not None else None,
+            role=payload.role,
+            limit=MAX_DIRECTORY_USERS,
+        )
+        await db.commit()
+    return DirectoryResponse(
+        users=[
+            DirectoryUser(
+                id=user.id,
+                email=user.email,
+                display_name=user.display_name,
+                status=user.status,
+                roles=sorted(roles),
+            )
+            for user, roles in rows
+        ]
+    )
 
 
 @router.post("/principals/resolve", response_model=IntrospectResponse)

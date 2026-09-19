@@ -41,3 +41,9 @@ make test-login                        # Phase A1 scripted end-to-end flow
 
 Tests: `uv run pytest apps/identity-service/src/identity_service/tests` (integration
 tests start a Postgres container and run the service as the RLS-bound `buvi_app` role).
+
+## Directory and events (Phase A11)
+
+- `POST /internal/v1/directory/users` (`identity-service:directory`) returns a tenant's users with email, status and roles, for notification recipients and seat counts.
+- Role changes publish `identity.role.changed` (stream `IDENTITY`) after the commit.
+- Invitation email stays here (ADR 0014).

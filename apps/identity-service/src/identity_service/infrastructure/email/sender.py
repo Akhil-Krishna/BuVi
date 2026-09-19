@@ -1,10 +1,9 @@
 """Transactional email for the invitation flow (Sections 6.5, 6.7).
 
-Section 3 gives email to notification-service, which arrives in Phase A11. Phase
-A1's Definition of Done requires an invitation to reach a MailHog inbox before
-that service exists, so identity-service owns a deliberately minimal SMTP
-adapter behind the `EmailSender` protocol. Phase A11 replaces the
-implementation, not the call sites. See ADR 0002.
+Section 3 gives email to notification-service. Invitation mail stays here (ADR 0014): the
+message carries a one-time invitation token, which must not travel over the event bus or sit in
+another service's store, and the invitee is not yet a user the notification directory could
+resolve. Everything else a user is told by email goes through notification-service.
 """
 
 from __future__ import annotations

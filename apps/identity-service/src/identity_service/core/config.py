@@ -21,6 +21,11 @@ SCOPE_PROXY = "identity-service:proxy"
 SCOPE_AUDIT_WRITE = "identity-service:audit"
 #: Resolve a user's *current* principal for delegated work (Section 13, ADR 0006).
 SCOPE_RESOLVE_PRINCIPAL = "identity-service:resolve-principal"
+#: Read a tenant's users (id, email, roles, status): notification recipients, seat counts (A11).
+SCOPE_DIRECTORY = "identity-service:directory"
+
+#: Section 18.1 subject; stream IDENTITY carries `identity.>`.
+ROLE_CHANGED_SUBJECT = "identity.role.changed"
 
 _DEV_GATEWAY_SECRET_SHA256 = hashlib.sha256(b"dev-gateway-secret").hexdigest()
 _DEV_METADATA_SECRET_SHA256 = hashlib.sha256(b"dev-metadata-secret").hexdigest()
@@ -30,6 +35,7 @@ _DEV_WORKER_SECRET_SHA256 = hashlib.sha256(b"dev-worker-runtime-secret").hexdige
 _DEV_DASHBOARD_SECRET_SHA256 = hashlib.sha256(b"dev-dashboard-service-secret").hexdigest()
 _DEV_SEMANTIC_SECRET_SHA256 = hashlib.sha256(b"dev-semantic-service-secret").hexdigest()
 _DEV_MCP_SECRET_SHA256 = hashlib.sha256(b"dev-mcp-gateway-secret").hexdigest()
+_DEV_NOTIFICATION_SECRET_SHA256 = hashlib.sha256(b"dev-notification-service-secret").hexdigest()
 _DEV_SECRET_HASHES = frozenset(
     {
         _DEV_GATEWAY_SECRET_SHA256,
@@ -40,6 +46,7 @@ _DEV_SECRET_HASHES = frozenset(
         _DEV_DASHBOARD_SECRET_SHA256,
         _DEV_SEMANTIC_SECRET_SHA256,
         _DEV_MCP_SECRET_SHA256,
+        _DEV_NOTIFICATION_SECRET_SHA256,
     }
 )
 
@@ -72,6 +79,7 @@ def _dev_service_clients() -> dict[str, ServiceClient]:
                 "dashboard-service": ["dashboard-service:proxy"],
                 "semantic-service": ["semantic-service:proxy"],
                 "mcp-gateway": ["mcp-gateway:proxy"],
+                "notification-service": ["notification-service:proxy"],
             },
         ),
         "metadata-service": ServiceClient(
@@ -89,7 +97,8 @@ def _dev_service_clients() -> dict[str, ServiceClient]:
         "analytics-orchestrator": ServiceClient(
             secret_sha256=_DEV_ORCHESTRATOR_SECRET_SHA256,
             audiences={
-                "identity-service": [SCOPE_INTROSPECT, SCOPE_RESOLVE_PRINCIPAL],
+                # Directory: the seat count in `/billing/usage` (Phase A11).
+                "identity-service": [SCOPE_INTROSPECT, SCOPE_RESOLVE_PRINCIPAL, SCOPE_DIRECTORY],
                 "metadata-service": ["metadata-service:context"],
                 "query-gateway": ["query-gateway:execute"],
                 "visualization-service": ["visualization-service:validate"],
@@ -99,7 +108,13 @@ def _dev_service_clients() -> dict[str, ServiceClient]:
         ),
         "worker-runtime": ServiceClient(
             secret_sha256=_DEV_WORKER_SECRET_SHA256,
-            audiences={"analytics-orchestrator": ["analytics-orchestrator:execute"]},
+            audiences={
+                "analytics-orchestrator": [
+                    "analytics-orchestrator:execute",
+                    # Phase A11: the aggregated `billing.usage.recorded` events.
+                    "analytics-orchestrator:usage",
+                ]
+            },
         ),
         "dashboard-service": ServiceClient(
             secret_sha256=_DEV_DASHBOARD_SECRET_SHA256,
@@ -122,6 +137,11 @@ def _dev_service_clients() -> dict[str, ServiceClient]:
             secret_sha256=_DEV_MCP_SECRET_SHA256,
             audiences={"identity-service": [SCOPE_INTROSPECT, SCOPE_AUDIT_WRITE]},
             audit_event_prefixes=["mcp."],
+        ),
+        "notification-service": ServiceClient(
+            secret_sha256=_DEV_NOTIFICATION_SECRET_SHA256,
+            audiences={"identity-service": [SCOPE_INTROSPECT, SCOPE_AUDIT_WRITE, SCOPE_DIRECTORY]},
+            audit_event_prefixes=["webhook."],
         ),
     }
 
@@ -154,6 +174,12 @@ class Settings(BaseSettings):
     db_pool_size: int = 10
     db_max_overflow: int = 5
     db_echo: bool = False
+
+    # --- Events (Section 18.1; Phase A11) ---------------------------------
+    nats_url: str = "nats://localhost:4222"
+    events_stream: str = "IDENTITY"
+    #: Off in unit/integration tests that do not run NATS; the service works without it.
+    events_enabled: bool = True
 
     # --- OIDC / Keycloak (Section 6.1) ----------------------------------
     oidc_issuer: str = "http://localhost:8080/realms/buvi"
