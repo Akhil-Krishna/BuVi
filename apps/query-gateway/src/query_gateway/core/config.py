@@ -13,6 +13,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 SCOPE_EXECUTE = "query-gateway:execute"
 #: The public `/api/v1/sql/*` routes, reached only through api-gateway (Phase A10).
 SCOPE_PROXY = "query-gateway:proxy"
+#: Section 18.1 subject for metered usage; stream BILLING (declared identically by
+#: analytics-orchestrator, the other producer).
+BILLING_USAGE_SUBJECT = "billing.usage.recorded"
 #: Read a stored `analytics_run` result behind its handle (dashboard-service, Section 13).
 SCOPE_RESULTS = "query-gateway:results"
 #: Scope this service needs to load a data source's query policy from metadata-service.
@@ -35,6 +38,12 @@ class Settings(BaseSettings):
     environment: Literal["dev", "test", "staging", "prod"] = "dev"
     service_name: str = "query-gateway"
     log_level: str = "INFO"
+
+    # --- Usage metering (Section 23; Phase A11) ------------------------------------------
+    nats_url: str = "nats://localhost:4222"
+    billing_stream: str = "BILLING"
+    #: Off in tests without NATS; queries never depend on metering (best effort).
+    metering_enabled: bool = True
 
     # --- Platform database (Section 19: request path is `buvi_app`) --------------------
     database_dsn: PostgresDsn = Field(

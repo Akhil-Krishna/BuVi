@@ -29,6 +29,8 @@ from typing import Any, Final, Protocol
 
 from platform_auth import Principal, StepUpRequiredError
 from platform_auth.permissions import PERM_CHAT_USE, PERM_SQL_EXECUTE, ROLE_ORG_ADMIN
+from platform_contracts import BillingUsageRecorded
+from platform_observability import request_id_var
 from platform_secrets import SecretStore, SecretStoreError, vault_kv2_path
 from query_gateway.domain.errors import (
     DataSourceNotActiveError,
@@ -65,13 +67,19 @@ from query_gateway.infrastructure.storage.base import ResultStore, ResultStoreEr
 logger = logging.getLogger(__name__)
 
 
-#: Which user permission each purpose requires.
 class ConcurrencyLimiter(Protocol):
     """Section 20's per-tenant cap: a slot for the duration of one query, or a 429."""
 
     def slot(self, tenant_id: uuid.UUID) -> AbstractAsyncContextManager[None]: ...
 
 
+class UsageMeter(Protocol):
+    """`billing.usage.recorded` (Section 23). Best effort: never fails a query."""
+
+    async def record(self, event: BillingUsageRecorded) -> None: ...
+
+
+#: Which user permission each purpose requires.
 PURPOSE_PERMISSION: Final[dict[Purpose, str]] = {
     Purpose.SQL_EDITOR: PERM_SQL_EXECUTE,
     Purpose.ANALYTICS_RUN: PERM_CHAT_USE,
@@ -144,6 +152,7 @@ class QueryService:
         limits: QueryLimits,
         purpose_callers: Mapping[str, Sequence[str]],
         vault_mount: str,
+        usage: UsageMeter,
     ) -> None:
         self._repository = repository
         self._policies = policies
@@ -151,6 +160,7 @@ class QueryService:
         self._executors = executors
         self._results = results
         self._limiter = limiter
+        self._usage = usage
         self._validator = validator
         self._limits = limits
         self._purpose_callers = purpose_callers
@@ -325,69 +335,78 @@ class QueryService:
                 details["detail"] = validation.detail
             raise QueryValidationFailedError(validation.message, **details)
 
-        async with self._limiter.slot(tenant_id):
-            try:
-                credentials = await self._credentials(policy)
-                result = await executor.execute(
-                    pool_key=str(policy.data_source_id),
-                    database_name=policy.database_name,
-                    credentials=credentials,
-                    sql=validation.sql,
-                    limits=limits,
-                )
-            except ExecutionError as error:
-                status = "timeout" if error.failure is ExecutionFailure.TIMEOUT else "failed"
-                api_error = _FAILURE_ERRORS[error.failure]
-                await self._record(
-                    query_id=query_id,
-                    principal=principal,
-                    command=command,
-                    validation=validation,
-                    status=status,
-                    started=started,
-                    error_code=error.failure.value,
-                )
-                extra: dict[str, Any] = {"query_id": str(query_id)}
-                if error.sqlstate_class and api_error is QueryExecutionFailedError:
-                    extra["sqlstate_class"] = error.sqlstate_class
-                raise api_error(**extra) from None
-            except DomainError as error:
-                await self._record(
-                    query_id=query_id,
-                    principal=principal,
-                    command=command,
-                    validation=validation,
-                    status="failed",
-                    started=started,
-                    error_code=error.code,
-                )
-                raise
+        # Metered after the slot is released: publishing usage must never hold query capacity.
+        database_ms: int | None = None
+        try:
+            async with self._limiter.slot(tenant_id):
+                try:
+                    credentials = await self._credentials(policy)
+                    executed = time.perf_counter()
+                    result = await executor.execute(
+                        pool_key=str(policy.data_source_id),
+                        database_name=policy.database_name,
+                        credentials=credentials,
+                        sql=validation.sql,
+                        limits=limits,
+                    )
+                except ExecutionError as error:
+                    database_ms = round((time.perf_counter() - executed) * 1000)
+                    status = "timeout" if error.failure is ExecutionFailure.TIMEOUT else "failed"
+                    api_error = _FAILURE_ERRORS[error.failure]
+                    await self._record(
+                        query_id=query_id,
+                        principal=principal,
+                        command=command,
+                        validation=validation,
+                        status=status,
+                        started=started,
+                        error_code=error.failure.value,
+                    )
+                    extra: dict[str, Any] = {"query_id": str(query_id)}
+                    if error.sqlstate_class and api_error is QueryExecutionFailedError:
+                        extra["sqlstate_class"] = error.sqlstate_class
+                    raise api_error(**extra) from None
+                except DomainError as error:
+                    await self._record(
+                        query_id=query_id,
+                        principal=principal,
+                        command=command,
+                        validation=validation,
+                        status="failed",
+                        started=started,
+                        error_code=error.code,
+                    )
+                    raise
 
-            payload = json.dumps(
-                {
-                    "query_id": str(query_id),
-                    "columns": [{"name": c.name, "type": c.type} for c in result.columns],
-                    "rows": result.rows,
-                    "truncated": result.truncated,
-                    "truncation_reason": result.truncation_reason,
-                },
-                separators=(",", ":"),
-            ).encode("utf-8")
-            try:
-                stored = await self._results.put(
-                    tenant_id=tenant_id, query_id=query_id, payload=payload
-                )
-            except ResultStoreError:
-                await self._record(
-                    query_id=query_id,
-                    principal=principal,
-                    command=command,
-                    validation=validation,
-                    status="failed",
-                    started=started,
-                    error_code=ResultStoreUnavailableError.code,
-                )
-                raise ResultStoreUnavailableError(query_id=str(query_id)) from None
+                database_ms = round((time.perf_counter() - executed) * 1000)
+                payload = json.dumps(
+                    {
+                        "query_id": str(query_id),
+                        "columns": [{"name": c.name, "type": c.type} for c in result.columns],
+                        "rows": result.rows,
+                        "truncated": result.truncated,
+                        "truncation_reason": result.truncation_reason,
+                    },
+                    separators=(",", ":"),
+                ).encode("utf-8")
+                try:
+                    stored = await self._results.put(
+                        tenant_id=tenant_id, query_id=query_id, payload=payload
+                    )
+                except ResultStoreError:
+                    await self._record(
+                        query_id=query_id,
+                        principal=principal,
+                        command=command,
+                        validation=validation,
+                        status="failed",
+                        started=started,
+                        error_code=ResultStoreUnavailableError.code,
+                    )
+                    raise ResultStoreUnavailableError(query_id=str(query_id)) from None
+        finally:
+            if database_ms is not None:
+                await self._meter(principal, command, database_ms)
 
         duration_ms = round((time.perf_counter() - started) * 1000)
         await self._record(
@@ -407,6 +426,25 @@ class QueryService:
             duration_ms=duration_ms,
             tables=validation.tables,
         )
+
+    async def _meter(self, principal: Principal, command: QueryCommand, database_ms: int) -> None:
+        """Database time as `query_execution_ms` (Section 23). Metered whether the query
+        succeeded, failed or timed out -- the database worked either way. Best effort."""
+        try:
+            await self._usage.record(
+                BillingUsageRecorded(
+                    tenant_id=uuid.UUID(principal.tenant_id),
+                    metric="query_execution_ms",
+                    quantity=max(0, database_ms),
+                    run_id=command.run_id,
+                    request_id=request_id_var.get(),
+                )
+            )
+        except Exception as error:
+            logger.warning(
+                "query usage not recorded",
+                extra={"context": {"error_type": type(error).__name__}},
+            )
 
 
 def _grant_exempt(principal: Principal) -> bool:

@@ -8,6 +8,7 @@ business SQL with customer credentials (Section 13).
 
 from __future__ import annotations
 
+import logging
 from collections.abc import AsyncIterator, Mapping
 from contextlib import asynccontextmanager
 
@@ -28,6 +29,7 @@ from platform_secrets import InMemorySecretStore, SecretStore, VaultSecretStore
 from query_gateway.api.internal import router as internal_router
 from query_gateway.api.v1.health import router as health_router
 from query_gateway.api.v1.sql import router as sql_router
+from query_gateway.application.services.query_service import UsageMeter
 from query_gateway.core.config import Settings, get_settings
 from query_gateway.core.logging import configure_logging
 from query_gateway.dependencies import resolve_principal
@@ -42,8 +44,14 @@ from query_gateway.infrastructure.connectors.postgres import PostgresQueryExecut
 from query_gateway.infrastructure.db.session import create_engine, create_session_factory
 from query_gateway.infrastructure.http.identity_resolver import IdentityResolver
 from query_gateway.infrastructure.http.metadata_client import MetadataPolicyClient
+from query_gateway.infrastructure.messaging.nats_usage import (
+    JetStreamUsageMeter,
+    UnavailableUsageMeter,
+)
 from query_gateway.infrastructure.storage.base import InMemoryResultStore, ResultStore
 from query_gateway.infrastructure.storage.minio_store import MinioResultStore
+
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
@@ -137,9 +145,26 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         else TenantConcurrencyLimiter(settings.tenant_max_concurrent_queries)
     )
     app.state.validator = SqlValidator(max_length=settings.max_sql_length)
+    meter: JetStreamUsageMeter | None = None
+    if app.state.usage is None:
+        app.state.usage = UnavailableUsageMeter()
+        if settings.metering_enabled:
+            try:
+                meter = await JetStreamUsageMeter.connect(
+                    settings.nats_url, stream=settings.billing_stream
+                )
+                app.state.usage = meter
+            except Exception as error:
+                # Queries never wait on metering; the usage is lost, and logged per query.
+                logger.warning(
+                    "usage stream unavailable",
+                    extra={"context": {"error_type": type(error).__name__}},
+                )
     try:
         yield
     finally:
+        if meter is not None:
+            await meter.close()
         if owned_executors:
             for executor in app.state.executors.values():
                 await executor.close()
@@ -157,6 +182,7 @@ def create_app(
     http_transport: httpx.AsyncBaseTransport | None = None,
     service_token_verifier: ServiceTokenVerifier | None = None,
     executors: Mapping[str, QueryExecutor] | None = None,
+    usage: UsageMeter | None = None,
 ) -> FastAPI:
     resolved = settings or get_settings()
     configure_logging(resolved.log_level)
@@ -173,6 +199,7 @@ def create_app(
     app.state.results = results
     app.state.http_transport = http_transport
     app.state.executors = executors
+    app.state.usage = usage
     app.state.service_token_verifier = service_token_verifier
     if service_token_verifier is not None:
         install_service_token_verifier(app, service_token_verifier)

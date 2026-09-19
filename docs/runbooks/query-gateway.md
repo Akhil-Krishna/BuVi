@@ -52,3 +52,9 @@ any `secret_ref mismatch` log line
 1. `alembic upgrade head` as `buvi_migrator`, then roll the deployment.
 2. Rollback: redeploy the previous image; `alembic downgrade -1` drops the query audit — only for a
    failed first deployment.
+
+## Usage metering (Phase A11)
+
+- **What is metered:** every executed query (succeeded, failed or timed out) publishes `billing.usage.recorded` with `query_execution_ms` (database time).
+- **When:** after the tenant's concurrency slot is released, so metering never holds query capacity.
+- **Best effort:** with NATS unreachable, queries still work and the usage is lost, logged as `query usage not recorded`. `QUERY_GATEWAY_METERING_ENABLED=false` turns it off.

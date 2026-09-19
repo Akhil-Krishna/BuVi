@@ -42,3 +42,7 @@ policy) → result handle in object storage with TTL → `query_executions` row 
 
 Tests: `uv run --package query-gateway pytest apps/query-gateway/src/query_gateway/tests` — the
 unsafe-SQL corpus is `tests/unit/corpus.py`. Live flow: `make test-query-gateway`.
+
+## Usage metering (Phase A11)
+
+Every executed query publishes `billing.usage.recorded` (`query_execution_ms`) on stream `BILLING`, best effort, after the tenant's concurrency slot is released.

@@ -27,6 +27,7 @@ from query_gateway.tests.conftest import (
     Api,
     FakeServices,
     PostgresInfo,
+    RecordingUsage,
     audit_rows,
     reader_secret,
 )
@@ -46,6 +47,7 @@ async def test_valid_select_executes_capped_stores_result_and_audits(
     postgres: PostgresInfo,
     platform_db: Any,
     tenant: uuid.UUID,
+    usage: RecordingUsage,
 ) -> None:
     who = services.add_user(tenant, {"developer"})
     source = await api.data_source(tenant)
@@ -76,6 +78,14 @@ async def test_valid_select_executes_capped_stores_result_and_audits(
 
     rows = await audit_rows(platform_db, tenant)
     assert [r["status"] for r in rows] == ["succeeded", "succeeded"]
+    # Section 23: database time is metered per executed query (Phase A11).
+    assert [(e.tenant_id, e.metric) for e in usage.events] == [
+        (tenant, "query_execution_ms"),
+        (tenant, "query_execution_ms"),
+    ]
+    assert len({e.event_id for e in usage.events}) == 2 and all(
+        e.model is None for e in usage.events
+    )
     last = rows[-1]
     assert str(last["id"]) == capped["query_id"]
     assert last["data_source_id"] == source
@@ -165,6 +175,7 @@ async def test_unsafe_sql_is_rejected_audited_and_never_reaches_the_database(
     sql: str,
     reason: str,
     detail: str | None,
+    usage: RecordingUsage,
 ) -> None:
     who = services.add_user(tenant, {"org_admin"})
     source = await api.data_source(tenant)
@@ -179,6 +190,7 @@ async def test_unsafe_sql_is_rejected_audited_and_never_reaches_the_database(
     assert rows[0]["status"] == "rejected" and rows[0]["error_code"] == "QUERY_VALIDATION_FAILED"
     assert rows[0]["sql_text"] == sql and rows[0]["result_handle"] is None
     assert str(rows[0]["id"]) == error["details"]["query_id"]
+    assert usage.events == []  # a rejected query never ran, so nothing is metered
     customer = await asyncpg.connect(postgres.customer_dsn())
     try:
         assert await customer.fetchval("SELECT count(*) FROM sales.orders") == 2000

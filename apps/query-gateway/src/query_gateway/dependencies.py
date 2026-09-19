@@ -94,4 +94,5 @@ def build_query_service(request: Request, repository: QueryRepository) -> QueryS
         ),
         purpose_callers=settings.purpose_callers,
         vault_mount=settings.vault_mount,
+        usage=state.usage,
     )

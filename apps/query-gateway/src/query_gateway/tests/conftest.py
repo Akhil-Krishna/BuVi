@@ -31,6 +31,7 @@ from fastapi import FastAPI
 
 from platform_auth import Principal, ServiceTokenIssuer, ServiceTokenVerifier
 from platform_auth.permissions import permissions_for_roles
+from platform_contracts import BillingUsageRecorded
 from platform_observability.logging import JsonFormatter
 from platform_secrets import InMemorySecretStore, SecretStore
 from query_gateway.core.config import Settings
@@ -306,6 +307,7 @@ def make_settings(postgres: PostgresInfo, **overrides: Any) -> Settings:
         "connector_allowed_internal_hosts": [postgres.host],
         "policy_cache_ttl_seconds": 0,
         "redis_url": None,
+        "metering_enabled": False,
         "log_level": "WARNING",
     }
     values.update(overrides)
@@ -324,6 +326,21 @@ def reader_secret(postgres: PostgresInfo, **overrides: str) -> dict[str, str]:
     return payload
 
 
+class RecordingUsage:
+    """The `billing.usage.recorded` events the app published, in order."""
+
+    def __init__(self) -> None:
+        self.events: list[BillingUsageRecorded] = []
+
+    async def record(self, event: BillingUsageRecorded) -> None:
+        self.events.append(event)
+
+
+@pytest.fixture
+def usage() -> RecordingUsage:
+    return RecordingUsage()
+
+
 @asynccontextmanager
 async def running_app(
     settings: Settings,
@@ -331,6 +348,7 @@ async def running_app(
     secrets: SecretStore,
     results: ResultStore,
     issuer: ServiceTokenIssuer,
+    usage: RecordingUsage | None = None,
 ) -> AsyncIterator[tuple[FastAPI, httpx.AsyncClient]]:
     from query_gateway.main import create_app
 
@@ -338,6 +356,7 @@ async def running_app(
         settings=settings,
         secrets=secrets,
         results=results,
+        usage=usage or RecordingUsage(),
         http_transport=httpx.MockTransport(services.handler),
         service_token_verifier=ServiceTokenVerifier(
             issuer="identity-service", audience="query-gateway", keyset=issuer.jwks()
@@ -359,8 +378,11 @@ async def app_client(
     secrets: InMemorySecretStore,
     results: InMemoryResultStore,
     issuer: ServiceTokenIssuer,
+    usage: RecordingUsage,
 ) -> AsyncIterator[tuple[FastAPI, httpx.AsyncClient]]:
-    async with running_app(make_settings(postgres), services, secrets, results, issuer) as pair:
+    async with running_app(
+        make_settings(postgres), services, secrets, results, issuer, usage
+    ) as pair:
         yield pair
 
 
