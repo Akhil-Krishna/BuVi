@@ -204,7 +204,13 @@ async def test_forwarded_ip_is_trusted_only_from_the_gateway(
     user = await fixtures.create_user(
         tenant_id=tenant, email="ip@acme.example.com", roles=frozenset({"client"})
     )
-    cookies = {COOKIE: str(await fixtures.create_session(tenant_id=tenant, user_id=user))}
+    cookies = {
+        COOKIE: str(
+            await fixtures.create_session(
+                tenant_id=tenant, user_id=user, mfa_verified_at=dt.datetime.now(dt.UTC)
+            )
+        )
+    }
 
     spoofed = await client.post(
         "/api/v1/me/api-keys",

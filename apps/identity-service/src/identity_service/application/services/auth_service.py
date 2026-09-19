@@ -109,7 +109,7 @@ class AuthService:
         else:
             user, is_new_user = await self._resolve_user(identity)
         if user.status not in ("active", "invited"):
-            await self._audit.record(
+            await self._audit.record_failure(
                 event_type=events.EVENT_LOGIN_FAILED,
                 tenant_id=user.tenant_id,
                 actor_user_id=user.id,

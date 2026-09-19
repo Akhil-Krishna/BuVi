@@ -41,11 +41,12 @@ from identity_service.domain.errors import (
     UserNotActiveError,
     ValidationFailedError,
 )
+from identity_service.domain.policies.tenant_policy import effective_permissions
 from identity_service.infrastructure.db.repositories.identity_repository import (
     IdentityRepository,
 )
 from identity_service.infrastructure.db.session import tenant_scope
-from platform_auth import Principal, ServiceIdentity, permissions_for_roles, require_service_scope
+from platform_auth import Principal, ServiceIdentity, require_service_scope
 
 router = APIRouter(prefix="/internal/v1", tags=["internal"])
 
@@ -215,6 +216,7 @@ async def resolve_principal_for_service(
         repository = IdentityRepository(db)
         user = await repository.get_user(payload.tenant_id, payload.user_id)
         roles = await repository.get_user_role_keys(user.id) if user is not None else frozenset()
+        policies = await repository.get_policies(payload.tenant_id)
         await db.commit()
     if user is None:
         raise NotFoundError()
@@ -223,7 +225,7 @@ async def resolve_principal_for_service(
     principal = Principal(
         user_id=str(user.id),
         tenant_id=str(user.tenant_id),
-        permissions=permissions_for_roles(roles),
+        permissions=effective_permissions(frozenset(roles), policies),
         auth_method="service_jwt",
         mfa_verified=False,
         roles=frozenset(roles),

@@ -24,6 +24,10 @@ from identity_service.domain.policies.sessions import (
     absolute_expiry,
     is_expired,
 )
+from identity_service.domain.policies.tenant_policy import (
+    effective_permissions,
+    webauthn_required,
+)
 from identity_service.domain.value_objects.tokens import generate_token, hash_token
 from identity_service.infrastructure.db.models import Session, User
 from identity_service.infrastructure.db.repositories.identity_repository import (
@@ -31,7 +35,8 @@ from identity_service.infrastructure.db.repositories.identity_repository import 
 )
 from identity_service.infrastructure.oidc.client import OidcTokens
 from identity_service.infrastructure.secrets.store import SecretStore, session_token_ref
-from platform_auth import Principal, permissions_for_roles
+from platform_auth import Principal
+from platform_auth.principal import MfaMethod
 
 #: Upper bound on a presented cookie token. Anything longer is refused before it
 #: is hashed or reaches the database.
@@ -147,15 +152,19 @@ class SessionService:
             raise UserNotActiveError()
 
         role_keys = await self._repository.get_user_role_keys(user.id)
+        policies = await self._repository.get_policies(user.tenant_id)
+        permissions = effective_permissions(role_keys, policies)
         principal = Principal(
             user_id=str(user.id),
             tenant_id=str(user.tenant_id),
-            permissions=permissions_for_roles(role_keys),
+            permissions=permissions,
             auth_method="session",
             mfa_verified=row.mfa_verified_at is not None,
             session_id=str(row.id),
             mfa_verified_at=row.mfa_verified_at,
             roles=role_keys,
+            mfa_method=_method(row.mfa_verified_method),
+            webauthn_required=webauthn_required(role_keys, policies, permissions),
         )
         await self._repository.touch_session(row.id, now)
         return row, user, principal
@@ -184,10 +193,21 @@ class SessionService:
         stored = await self._secrets.read(session_row.idp_refresh_token_ref)
         return stored.get("refresh_token") if stored else None
 
-    async def mark_mfa_verified(self, session_id: uuid.UUID, at: dt.datetime) -> None:
-        """Start the Section 7.3 step-up window for this session.
+    async def mark_mfa_verified(
+        self, session_id: uuid.UUID, at: dt.datetime, method: MfaMethod
+    ) -> None:
+        """Start the Section 7.3 step-up window for this session, recording how it was
+        proven (Section 6.6 can require WebAuthn).
 
         Takes the instant the verification actually happened rather than
         generating a second one, so the audit row and the step-up window agree.
         """
-        await self._repository.mark_session_mfa_verified(session_id, at)
+        await self._repository.mark_session_mfa_verified(session_id, at, method)
+
+
+def _method(value: str | None) -> MfaMethod | None:
+    if value == "totp":
+        return "totp"
+    if value == "webauthn":
+        return "webauthn"
+    return None

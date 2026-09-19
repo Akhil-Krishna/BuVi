@@ -34,6 +34,7 @@ from identity_service.application.services.user_service import UserService
 from identity_service.core.config import SCOPE_PROXY, Settings
 from identity_service.domain.errors import AuthenticationRequiredError
 from identity_service.domain.value_objects.tokens import hash_token
+from identity_service.infrastructure.db.independent import IndependentWrites
 from identity_service.infrastructure.db.repositories.identity_repository import (
     IdentityRepository,
 )
@@ -41,6 +42,7 @@ from identity_service.infrastructure.db.session import pre_auth_scope, tenant_sc
 from identity_service.infrastructure.email.sender import EmailSender
 from identity_service.infrastructure.oidc.client import OidcClient
 from identity_service.infrastructure.secrets.store import SecretStore
+from identity_service.infrastructure.webauthn.relying_party import RelyingParty
 from platform_auth import Principal, ServiceTokenIssuer, verify_service_request
 
 BEARER_PREFIX = "Bearer "
@@ -196,8 +198,13 @@ async def get_repository(
 # --- Service factories ---------------------------------------------------------
 
 
-def build_audit_service(repository: IdentityRepository) -> AuditService:
-    return AuditService(repository)
+def build_audit_service(
+    repository: IdentityRepository, request: Request | None = None
+) -> AuditService:
+    """With `request`, refusal events are written in their own transaction (they must
+    survive the rollback of the request that was refused)."""
+    independent = IndependentWrites(get_session_factory(request)) if request is not None else None
+    return AuditService(repository, independent)
 
 
 def build_session_service(request: Request, repository: IdentityRepository) -> SessionService:
@@ -213,7 +220,7 @@ def build_auth_service(request: Request, repository: IdentityRepository) -> Auth
         repository=repository,
         oidc=get_oidc_client(request),
         sessions=build_session_service(request, repository),
-        audit=build_audit_service(repository),
+        audit=build_audit_service(repository, request),
         settings=get_app_settings(request),
     )
 
@@ -229,11 +236,19 @@ def build_user_service(request: Request, repository: IdentityRepository) -> User
 
 
 def build_mfa_service(request: Request, repository: IdentityRepository) -> MfaService:
+    settings = get_app_settings(request)
     return MfaService(
         repository=repository,
         secrets=get_secret_store(request),
-        audit=build_audit_service(repository),
-        settings=get_app_settings(request),
+        audit=build_audit_service(repository, request),
+        independent=IndependentWrites(get_session_factory(request)),
+        settings=settings,
+        relying_party=RelyingParty(
+            rp_id=settings.webauthn_rp_id,
+            rp_name=settings.webauthn_rp_name,
+            origins=settings.webauthn_origins,
+            timeout_seconds=settings.webauthn_challenge_seconds,
+        ),
     )
 
 

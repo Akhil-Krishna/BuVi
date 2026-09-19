@@ -301,6 +301,7 @@ class Fixtures:
         tenant_id: uuid.UUID,
         user_id: uuid.UUID,
         mfa_verified_at: dt.datetime | None = None,
+        mfa_method: str = "totp",
         expires_in: dt.timedelta = dt.timedelta(days=7),
     ) -> SessionHandle:
         from sqlalchemy import text
@@ -319,8 +320,9 @@ class Fixtures:
             await session.execute(
                 text(
                     "INSERT INTO identity.sessions "
-                    "(id, user_id, tenant_id, token_hash, idp_refresh_token_ref, expires_at, mfa_verified_at) "
-                    "VALUES (:sid, :uid, :tid, :th, :ref, :exp, :mfa)"
+                    "(id, user_id, tenant_id, token_hash, idp_refresh_token_ref, expires_at, "
+                    "mfa_verified_at, mfa_verified_method) "
+                    "VALUES (:sid, :uid, :tid, :th, :ref, :exp, :mfa, :method)"
                 ),
                 {
                     "sid": str(session_id),
@@ -330,6 +332,7 @@ class Fixtures:
                     "ref": ref,
                     "exp": dt.datetime.now(dt.UTC) + expires_in,
                     "mfa": mfa_verified_at,
+                    "method": mfa_method if mfa_verified_at else None,
                 },
             )
             await session.commit()

@@ -523,49 +523,241 @@
         "title": "LogoutResponse",
         "type": "object"
       },
-      "MfaEnrollResponse": {
-        "description": "Returned once. The URI embeds the shared secret; do not log it.",
+      "MfaChallengeResponse": {
+        "description": "For `navigator.credentials.get({publicKey: options})`; single-use, short-lived.",
         "properties": {
-          "method": {
-            "const": "totp",
-            "default": "totp",
-            "title": "Method",
-            "type": "string"
-          },
-          "provisioning_uri": {
-            "title": "Provisioning Uri",
-            "type": "string"
-          },
-          "secret": {
-            "title": "Secret",
-            "type": "string"
+          "options": {
+            "additionalProperties": true,
+            "title": "Options",
+            "type": "object"
           }
         },
         "required": [
-          "secret",
-          "provisioning_uri"
+          "options"
+        ],
+        "title": "MfaChallengeResponse",
+        "type": "object"
+      },
+      "MfaEnrollRequest": {
+        "additionalProperties": false,
+        "description": "`totp` (the default, and the only method before Phase A10) or `webauthn`.",
+        "properties": {
+          "method": {
+            "default": "totp",
+            "enum": [
+              "totp",
+              "webauthn"
+            ],
+            "title": "Method",
+            "type": "string"
+          }
+        },
+        "title": "MfaEnrollRequest",
+        "type": "object"
+      },
+      "MfaEnrollResponse": {
+        "description": "Returned once. For TOTP the URI embeds the shared secret; do not log it. For WebAuthn,\n`options` goes to `navigator.credentials.create({publicKey: options})`.",
+        "properties": {
+          "method": {
+            "enum": [
+              "totp",
+              "webauthn"
+            ],
+            "title": "Method",
+            "type": "string"
+          },
+          "options": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Options"
+          },
+          "provisioning_uri": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provisioning Uri"
+          },
+          "secret": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Secret"
+          }
+        },
+        "required": [
+          "method"
         ],
         "title": "MfaEnrollResponse",
         "type": "object"
       },
-      "MfaVerifyRequest": {
+      "MfaFactorResponse": {
         "properties": {
-          "code": {
-            "maxLength": 10,
-            "minLength": 6,
-            "pattern": "^[0-9]+$",
-            "title": "Code",
+          "confirmed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmed At"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "last_used_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Used At"
+          },
+          "method": {
+            "enum": [
+              "totp",
+              "webauthn"
+            ],
+            "title": "Method",
             "type": "string"
           }
         },
         "required": [
-          "code"
+          "id",
+          "method",
+          "label",
+          "confirmed_at",
+          "last_used_at",
+          "created_at"
         ],
+        "title": "MfaFactorResponse",
+        "type": "object"
+      },
+      "MfaResetResponse": {
+        "properties": {
+          "factors_revoked": {
+            "title": "Factors Revoked",
+            "type": "integer"
+          },
+          "sessions_revoked": {
+            "title": "Sessions Revoked",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "factors_revoked",
+          "sessions_revoked"
+        ],
+        "title": "MfaResetResponse",
+        "type": "object"
+      },
+      "MfaVerifyRequest": {
+        "additionalProperties": false,
+        "description": "A TOTP `code`, or a WebAuthn `credential` (a registration or an assertion, whichever\nthe session's pending challenge was issued for).",
+        "properties": {
+          "code": {
+            "anyOf": [
+              {
+                "maxLength": 10,
+                "minLength": 6,
+                "pattern": "^[0-9]+$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code"
+          },
+          "credential": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Credential"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "method": {
+            "default": "totp",
+            "enum": [
+              "totp",
+              "webauthn"
+            ],
+            "title": "Method",
+            "type": "string"
+          }
+        },
         "title": "MfaVerifyRequest",
         "type": "object"
       },
       "MfaVerifyResponse": {
         "properties": {
+          "method": {
+            "enum": [
+              "totp",
+              "webauthn"
+            ],
+            "title": "Method",
+            "type": "string"
+          },
           "mfa_enabled": {
             "title": "Mfa Enabled",
             "type": "boolean"
@@ -583,10 +775,75 @@
         },
         "required": [
           "mfa_enabled",
+          "method",
           "verified_at",
           "step_up_expires_at"
         ],
         "title": "MfaVerifyResponse",
+        "type": "object"
+      },
+      "PoliciesPatchRequest": {
+        "additionalProperties": false,
+        "description": "Only the fields present change.",
+        "properties": {
+          "client_can_share_dashboards": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Client Can Share Dashboards"
+          },
+          "developer_can_manage_mcp": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Developer Can Manage Mcp"
+          },
+          "org_admin_requires_webauthn": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Org Admin Requires Webauthn"
+          }
+        },
+        "title": "PoliciesPatchRequest",
+        "type": "object"
+      },
+      "PoliciesResponse": {
+        "properties": {
+          "client_can_share_dashboards": {
+            "title": "Client Can Share Dashboards",
+            "type": "boolean"
+          },
+          "developer_can_manage_mcp": {
+            "title": "Developer Can Manage Mcp",
+            "type": "boolean"
+          },
+          "org_admin_requires_webauthn": {
+            "title": "Org Admin Requires Webauthn",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "client_can_share_dashboards",
+          "developer_can_manage_mcp",
+          "org_admin_requires_webauthn"
+        ],
+        "title": "PoliciesResponse",
         "type": "object"
       },
       "ResolvePrincipalRequest": {
@@ -650,6 +907,27 @@
           "roles"
         ],
         "title": "RoleChangeResponse",
+        "type": "object"
+      },
+      "RoleResponse": {
+        "properties": {
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "permissions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Permissions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "key",
+          "permissions"
+        ],
+        "title": "RoleResponse",
         "type": "object"
       },
       "SessionResponse": {
@@ -717,6 +995,18 @@
           "step_up_fresh": {
             "title": "Step Up Fresh",
             "type": "boolean"
+          },
+          "step_up_method": {
+            "anyOf": [
+              {
+                "const": "webauthn",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Step Up Method"
           },
           "tenant_id": {
             "format": "uuid",
@@ -1146,6 +1436,93 @@
         ]
       }
     },
+    "/api/v1/admin/policies": {
+      "get": {
+        "operationId": "read_policies_api_v1_admin_policies_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PoliciesResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Read Policies",
+        "tags": [
+          "admin-policies"
+        ]
+      },
+      "patch": {
+        "description": "Change tenant policies (step-up, audited with before and after).",
+        "operationId": "change_policies_api_v1_admin_policies_patch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PoliciesPatchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PoliciesResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Change Policies",
+        "tags": [
+          "admin-policies"
+        ]
+      }
+    },
+    "/api/v1/admin/roles": {
+      "get": {
+        "description": "The tenant roles and the Section 7.1 permissions each carries, before tenant policy.",
+        "operationId": "list_roles_api_v1_admin_roles_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/RoleResponse"
+                  },
+                  "title": "Response List Roles Api V1 Admin Roles Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Roles",
+        "tags": [
+          "admin-policies"
+        ]
+      }
+    },
     "/api/v1/admin/users": {
       "get": {
         "description": "Tenant-scoped user list (Section 9). Paginated, as all list endpoints are.",
@@ -1283,6 +1660,50 @@
           }
         },
         "summary": "Read User",
+        "tags": [
+          "admin-users"
+        ]
+      }
+    },
+    "/api/v1/admin/users/{user_id}/mfa/reset": {
+      "post": {
+        "description": "Revoke every factor of another user, and their sessions (Section 7.3; Phase A10).\n\nFor a lost device: the user logs in again and enrolls a first factor. Your own factors\nare removed through `DELETE /me/mfa/{id}`, never here.",
+        "operationId": "reset_user_mfa_api_v1_admin_users__user_id__mfa_reset_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "User Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MfaResetResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reset User Mfa",
         "tags": [
           "admin-users"
         ]
@@ -1482,10 +1903,49 @@
         ]
       }
     },
+    "/api/v1/auth/mfa/challenge": {
+      "post": {
+        "description": "WebAuthn assertion options for the caller's keys (Phase A10). Single-use, bound to this\nsession, short-lived.",
+        "operationId": "mfa_challenge_api_v1_auth_mfa_challenge_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MfaChallengeResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Mfa Challenge",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
     "/api/v1/auth/mfa/enroll": {
       "post": {
-        "description": "Begin TOTP enrolment (Section 6.6).\n\nSection 9 marks this endpoint \"session, step-up\", while Section 7.3's list\nof step-up operations covers changing MFA on *another* user's account. A\nuser enrolling for the first time has no MFA with which to satisfy a\nstep-up, so requiring one here would make enrolment unreachable. Resolved in\nADR 0002: first enrolment needs a session; re-enrolment while MFA is already\nenabled is refused here and handled by the Phase A10 reset flow, which is\nstep-up protected.",
+        "description": "Begin TOTP or WebAuthn enrollment (Section 6.6).\n\nThe first factor needs only the session: a user with no factor cannot satisfy a step-up.\nEvery later factor needs a fresh step-up with an existing one (ADR 0002, Phase A10).",
         "operationId": "enroll_mfa_api_v1_auth_mfa_enroll_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/MfaEnrollRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Payload"
+              }
+            }
+          }
+        },
         "responses": {
           "201": {
             "content": {
@@ -1496,6 +1956,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "summary": "Enroll Mfa",
@@ -1506,7 +1976,7 @@
     },
     "/api/v1/auth/mfa/verify": {
       "post": {
-        "description": "Complete MFA and open the Section 7.3 step-up window.",
+        "description": "Complete MFA and open the Section 7.3 step-up window, recording the method used.",
         "operationId": "verify_mfa_api_v1_auth_mfa_verify_post",
         "requestBody": {
           "content": {
@@ -1632,7 +2102,7 @@
         ]
       },
       "post": {
-        "description": "Mint an API key. The secret appears in this response and nowhere else.\n\nAn API key cannot mint another API key: allowing it would let a leaked key\nwith a short expiry bootstrap itself into a permanent one.",
+        "description": "Mint an API key. The secret appears in this response and nowhere else.\n\nStep-up (Section 7.3, \"rotating ... API keys\"; Phase A10): a new long-lived credential\nmust not be mintable with a stolen session cookie alone. An API key cannot mint another\nAPI key: a leaked key with a short expiry could otherwise make itself permanent.",
         "operationId": "create_my_api_key_api_v1_me_api_keys_post",
         "requestBody": {
           "content": {
@@ -1704,6 +2174,69 @@
           }
         },
         "summary": "Revoke My Api Key",
+        "tags": [
+          "me"
+        ]
+      }
+    },
+    "/api/v1/me/mfa": {
+      "get": {
+        "description": "The caller's active factors. Never secret material (it is in Vault).",
+        "operationId": "list_my_factors_api_v1_me_mfa_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/MfaFactorResponse"
+                  },
+                  "title": "Response List My Factors Api V1 Me Mfa Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List My Factors",
+        "tags": [
+          "me"
+        ]
+      }
+    },
+    "/api/v1/me/mfa/{factor_id}": {
+      "delete": {
+        "description": "Remove one of the caller's own factors (Section 6.6: step-up, audited). Removing the\nlast one turns MFA off; the next enrollment is then a first enrollment again.",
+        "operationId": "remove_my_factor_api_v1_me_mfa__factor_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "factor_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Factor Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Remove My Factor",
         "tags": [
           "me"
         ]

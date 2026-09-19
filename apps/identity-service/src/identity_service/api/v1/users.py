@@ -20,6 +20,7 @@ from fastapi import APIRouter, Depends, Query, Request, Response, status
 from identity_service.api.v1.schemas import (
     InvitationCreateRequest,
     InvitationResponse,
+    MfaResetResponse,
     RoleChangeRequest,
     RoleChangeResponse,
     SessionsRevokedResponse,
@@ -27,11 +28,12 @@ from identity_service.api.v1.schemas import (
     UserResponse,
 )
 from identity_service.dependencies import (
+    build_mfa_service,
     build_user_service,
     client_ip,
     get_repository,
 )
-from identity_service.domain.errors import NotFoundError
+from identity_service.domain.errors import NotFoundError, SelfServiceForbiddenError
 from identity_service.infrastructure.db.repositories.identity_repository import (
     IdentityRepository,
 )
@@ -191,6 +193,35 @@ async def delete_user(
         ip_address=client_ip(request),
     )
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post("/admin/users/{user_id}/mfa/reset", response_model=MfaResetResponse)
+async def reset_user_mfa(
+    request: Request,
+    user_id: uuid.UUID,
+    principal: UserManage,
+    _owns: OwnsUser,
+    _step_up: StepUp,
+    repository: ScopedRepo,
+) -> MfaResetResponse:
+    """Revoke every factor of another user, and their sessions (Section 7.3; Phase A10).
+
+    For a lost device: the user logs in again and enrolls a first factor. Your own factors
+    are removed through `DELETE /me/mfa/{id}`, never here.
+    """
+    if user_id == uuid.UUID(principal.user_id):
+        raise SelfServiceForbiddenError()
+    user = await repository.get_user(uuid.UUID(principal.tenant_id), user_id)
+    if user is None:
+        raise NotFoundError()
+    factors = await build_mfa_service(request, repository).reset(actor=principal, user=user)
+    sessions = await build_user_service(request, repository).force_revoke_sessions(
+        tenant_id=uuid.UUID(principal.tenant_id),
+        actor_user_id=uuid.UUID(principal.user_id),
+        target_user_id=user_id,
+        ip_address=client_ip(request),
+    )
+    return MfaResetResponse(factors_revoked=factors, sessions_revoked=sessions)
 
 
 @router.get("/admin/users/{user_id}", response_model=UserResponse)

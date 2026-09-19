@@ -63,8 +63,8 @@ def _dev_service_clients() -> dict[str, ServiceClient]:
             audiences={
                 "identity-service": [SCOPE_INTROSPECT, SCOPE_PROXY],
                 "metadata-service": ["metadata-service:proxy"],
-                # Section 9 `/sql/execute` proxies here once a public SQL route exists.
-                "query-gateway": ["query-gateway:execute"],
+                # Section 9 `/sql/*` (Phase A10).
+                "query-gateway": ["query-gateway:proxy"],
                 "analytics-orchestrator": [
                     "analytics-orchestrator:proxy",
                     "analytics-orchestrator:events",
@@ -103,8 +103,9 @@ def _dev_service_clients() -> dict[str, ServiceClient]:
         ),
         "dashboard-service": ServiceClient(
             secret_sha256=_DEV_DASHBOARD_SECRET_SHA256,
+            audit_event_prefixes=["dashboard."],
             audiences={
-                "identity-service": [SCOPE_INTROSPECT],
+                "identity-service": [SCOPE_INTROSPECT, SCOPE_AUDIT_WRITE],
                 "visualization-service": ["visualization-service:validate"],
                 "query-gateway": ["query-gateway:results"],
             },
@@ -200,6 +201,12 @@ class Settings(BaseSettings):
     # --- MFA (Section 6.6) ----------------------------------------------
     totp_issuer: str = "BuVi"
     totp_valid_window: int = 1
+    #: WebAuthn relying party (Phase A10). The RP ID is the registrable domain the browser
+    #: app is served from; credentials are bound to it and to these exact origins.
+    webauthn_rp_id: str = "localhost"
+    webauthn_rp_name: str = "BuVi"
+    webauthn_origins: list[str] = Field(default_factory=lambda: ["http://localhost:3000"])
+    webauthn_challenge_seconds: int = Field(default=120, ge=30, le=600)
 
     # --- API keys (Section 6.8) ------------------------------------------
     api_key_prefix: str = "sk_live_"
@@ -237,6 +244,10 @@ class Settings(BaseSettings):
             problems.append("a service client still uses the development secret")
         if self.vault_token.get_secret_value() == "devroot":
             problems.append("vault_token is still the development root token")
+        if self.webauthn_rp_id == "localhost" or any(
+            not o.startswith("https://") for o in self.webauthn_origins
+        ):
+            problems.append("webauthn_rp_id/webauthn_origins are the development values")
         if problems:
             raise RuntimeError(
                 f"Unsafe configuration for {self.environment}: {'; '.join(problems)}"

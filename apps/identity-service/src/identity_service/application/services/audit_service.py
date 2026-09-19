@@ -17,6 +17,7 @@ import uuid
 from typing import Any, Final
 
 from identity_service.core.logging import redact, request_id_var
+from identity_service.infrastructure.db.independent import IndependentWrites
 from identity_service.infrastructure.db.models import AuditEvent
 from identity_service.infrastructure.db.repositories.identity_repository import (
     IdentityRepository,
@@ -34,6 +35,10 @@ EVENT_MFA_ENROLL_STARTED: Final = "auth.mfa_enroll_started"
 EVENT_MFA_ENABLED: Final = "auth.mfa_enabled"
 EVENT_MFA_VERIFIED: Final = "auth.mfa_verified"
 EVENT_MFA_VERIFICATION_FAILED: Final = "auth.mfa_verification_failed"
+EVENT_MFA_FACTOR_ADDED: Final = "auth.mfa_factor_added"
+EVENT_MFA_FACTOR_REMOVED: Final = "auth.mfa_factor_removed"
+EVENT_MFA_RESET: Final = "auth.mfa_reset"
+EVENT_POLICIES_CHANGED: Final = "tenant.policies_changed"
 EVENT_USER_INVITED: Final = "user.invited"
 EVENT_INVITATION_ACCEPTED: Final = "user.invitation_accepted"
 EVENT_USER_PROVISIONED: Final = "user.provisioned"
@@ -46,8 +51,23 @@ EVENT_API_KEY_REVOKED: Final = "api_key.revoked"
 class AuditService:
     """Append-only writer for `identity.audit_events`."""
 
-    def __init__(self, repository: IdentityRepository) -> None:
+    def __init__(
+        self, repository: IdentityRepository, independent: IndependentWrites | None = None
+    ) -> None:
         self._repository = repository
+        self._independent = independent
+
+    async def record_failure(self, **event: Any) -> None:
+        """Record an event about a refusal, in its own transaction, so it survives the
+        rollback the refusal causes (a failed MFA check, a refused login)."""
+        if self._independent is None:
+            await self.record(**event)
+            return
+
+        async def write(repository: IdentityRepository) -> None:
+            await AuditService(repository).record(**event)
+
+        await self._independent.run(event["tenant_id"], write)
 
     async def record(
         self,

@@ -22,6 +22,7 @@ dependencies = [
     "pyotp>=2.10.0",
     "sqlalchemy[asyncio]>=2.0.52",
     "uvicorn>=0.52.4",
+    "webauthn>=3.0.0",
 ]
 
 [project.scripts]

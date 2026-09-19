@@ -111,12 +111,12 @@ class MfaVerificationFailedError(DomainError):
     message = "The verification code is incorrect or has expired."
 
 
-class StepUpRequiredError(DomainError):
-    """A Section 7.3 sensitive operation without a recent MFA verification."""
+class MfaChallengeRequiredError(DomainError):
+    """A WebAuthn response arrived with no live challenge for this session."""
 
-    code = "STEP_UP_REQUIRED"
-    status_code = 403
-    message = "This operation requires re-verifying your identity."
+    code = "MFA_CHALLENGE_REQUIRED"
+    status_code = 409
+    message = "Request a new challenge and try again."
 
 
 # --- Invitations (Section 6.7) -----------------------------------------------
@@ -210,3 +210,11 @@ class AuditEventNotAllowedError(DomainError):
     code = "AUDIT_EVENT_NOT_ALLOWED"
     status_code = 403
     message = "This service client may not record that audit event."
+
+
+class WebAuthnNotEnrolledError(DomainError):
+    """Requiring WebAuthn of org_admins while the acting admin has no key would lock them out."""
+
+    code = "WEBAUTHN_NOT_ENROLLED"
+    status_code = 409
+    message = "Register a security key before requiring one for administrators."

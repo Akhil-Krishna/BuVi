@@ -11,6 +11,8 @@ audit log (build spec Sections 3, 6, 7, 8.1, 9).
 | Health | `GET /health/live`, `GET /health/ready` (checks Postgres) |
 | API | `/api/v1` — OpenAPI at `/docs`; exported to `contracts/openapi/` from Phase A2 |
 | Dependencies | Postgres (`buvi_app`, RLS-bound), Keycloak (OIDC), Vault (KV v2), SMTP (MailHog locally) |
+| MFA | TOTP and WebAuthn (py_webauthn; Phase A10). Step-up is judged by method: WebAuthn is required for `platform_super_admin`, and for `org_admin` under the tenant policy |
+| Policies | `GET/PATCH /api/v1/admin/policies` (tenant policies that feed every principal's permissions), `GET /api/v1/admin/roles` |
 | Runbook | [`docs/runbooks/identity-service.md`](../../docs/runbooks/identity-service.md) |
 
 ## Endpoints

@@ -15,6 +15,7 @@ from identity_service.application.services import audit_service as events
 from identity_service.application.services.audit_service import AuditService
 from identity_service.core.config import Settings
 from identity_service.domain.errors import NotFoundError
+from identity_service.domain.policies.tenant_policy import effective_permissions
 from identity_service.domain.value_objects.tokens import (
     API_KEY_PREFIX_RANDOM_CHARS,
     generate_api_key,
@@ -26,7 +27,6 @@ from identity_service.infrastructure.db.repositories.identity_repository import 
     IdentityRepository,
 )
 from platform_auth import Principal
-from platform_auth.permissions import permissions_for_roles
 
 
 @dataclass(frozen=True)
@@ -131,11 +131,12 @@ class ApiKeyService:
         for candidate in candidates:
             if not verify_secret(presented_key, candidate.secret_hash):
                 continue
+            await self._repository.bind_tenant(candidate.tenant_id)
             granted = frozenset(candidate.scopes)
             if candidate.owner_user_id is not None:
                 owner_roles = await self._repository.get_user_role_keys(candidate.owner_user_id)
-                granted &= permissions_for_roles(owner_roles)
-            await self._repository.bind_tenant(candidate.tenant_id)
+                policies = await self._repository.get_policies(candidate.tenant_id)
+                granted &= effective_permissions(owner_roles, policies)
             await self._repository.touch_api_key(candidate.id, dt.datetime.now(dt.UTC))
             return Principal(
                 user_id=str(candidate.owner_user_id or candidate.id),

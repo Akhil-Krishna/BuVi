@@ -25,6 +25,7 @@ __all__ = [
     "VaultSecretStore",
     "mfa_secret_ref",
     "session_token_ref",
+    "webauthn_key_ref",
 ]
 
 
@@ -36,3 +37,8 @@ def session_token_ref(tenant_id: uuid.UUID, session_id: uuid.UUID) -> str:
 def mfa_secret_ref(tenant_id: uuid.UUID, user_id: uuid.UUID) -> str:
     """Vault path for a user's TOTP shared secret (Section 6.6)."""
     return f"tenants/{tenant_id}/users/{user_id}/mfa/totp"
+
+
+def webauthn_key_ref(tenant_id: uuid.UUID, user_id: uuid.UUID, credential_row: uuid.UUID) -> str:
+    """Vault path for one WebAuthn key: credential id, public key, signature counter (8.1)."""
+    return f"tenants/{tenant_id}/users/{user_id}/mfa/webauthn/{credential_row}"

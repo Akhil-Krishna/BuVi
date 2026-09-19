@@ -218,6 +218,14 @@ class Session(Base):
     #: "MFA verified in the last 5 minutes" survives a process restart instead of
     #: living in process memory. See ADR 0002.
     mfa_verified_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
+    #: How that check was made (`totp` | `webauthn`); Section 6.6 requires WebAuthn for
+    #: some callers' step-up (Phase A10).
+    mfa_verified_method: Mapped[str | None] = mapped_column(Text)
+    #: The session's one pending WebAuthn challenge (base64url), cleared on use.
+    webauthn_challenge: Mapped[str | None] = mapped_column(Text)
+    webauthn_challenge_expires_at: Mapped[dt.datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
 
 
 class ApiKey(Base):
@@ -338,6 +346,32 @@ class MfaCredential(Base):
     revoked_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
 
 
+class TenantPolicy(Base):
+    """Tenant policies (Section 3 "policy mapping"; Phase A10). No row = every default."""
+
+    __tablename__ = "tenant_policies"
+    __table_args__ = {"schema": SCHEMA}  # noqa: RUF012 - SQLAlchemy declarative
+
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey(f"{SCHEMA}.tenants.id"), primary_key=True
+    )
+    client_can_share_dashboards: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false")
+    )
+    developer_can_manage_mcp: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false")
+    )
+    org_admin_requires_webauthn: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false")
+    )
+    updated_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey(f"{SCHEMA}.users.id")
+    )
+    updated_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=_NOW
+    )
+
+
 #: Tables carrying `tenant_id`, for the RLS policies in the migration (Section 19).
 TENANT_OWNED_TABLES: tuple[str, ...] = (
     "users",
@@ -346,6 +380,7 @@ TENANT_OWNED_TABLES: tuple[str, ...] = (
     "api_keys",
     "audit_events",
     "mfa_credentials",
+    "tenant_policies",
 )
 
 __all__ = [
@@ -359,6 +394,7 @@ __all__ = [
     "Role",
     "Session",
     "Tenant",
+    "TenantPolicy",
     "User",
     "UserRole",
 ]

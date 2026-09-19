@@ -20,11 +20,13 @@ import json
 from base64 import urlsafe_b64decode, urlsafe_b64encode
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, Query, Request, Response, status
+from fastapi import APIRouter, Body, Depends, Query, Request, Response, status
 from fastapi.responses import RedirectResponse
 
 from identity_service.api.v1.schemas import (
     LogoutResponse,
+    MfaChallengeResponse,
+    MfaEnrollRequest,
     MfaEnrollResponse,
     MfaVerifyRequest,
     MfaVerifyResponse,
@@ -195,6 +197,7 @@ async def read_session(
         mfa_enabled=user.mfa_enabled,
         mfa_verified=principal.mfa_verified,
         step_up_fresh=principal.step_up_is_fresh(),
+        step_up_method=principal.step_up_method,
         session_id=session_row.id if session_row is not None else None,
         expires_at=session_row.expires_at if session_row is not None else None,
     )
@@ -224,7 +227,16 @@ async def logout(
     return response
 
 
-# --- MFA (Sections 6.6, 9) ----------------------------------------------------
+# --- MFA (Sections 6.6, 7.3, 9) --------------------------------------------------
+
+
+def _session_caller(request: Request) -> tuple[Any, Any]:
+    user = getattr(request.state, "user", None)
+    session_row = getattr(request.state, "session_row", None)
+    if user is None or session_row is None:
+        # MFA is interactive: an API key has no session to carry a step-up.
+        raise AuthenticationRequiredError()
+    return user, session_row
 
 
 @router.post(
@@ -234,24 +246,39 @@ async def logout(
 )
 async def enroll_mfa(
     request: Request,
+    principal: CurrentPrincipal,
     repository: ScopedRepo,
+    payload: Annotated[MfaEnrollRequest | None, Body()] = None,
 ) -> MfaEnrollResponse:
-    """Begin TOTP enrolment (Section 6.6).
+    """Begin TOTP or WebAuthn enrollment (Section 6.6).
 
-    Section 9 marks this endpoint "session, step-up", while Section 7.3's list
-    of step-up operations covers changing MFA on *another* user's account. A
-    user enrolling for the first time has no MFA with which to satisfy a
-    step-up, so requiring one here would make enrolment unreachable. Resolved in
-    ADR 0002: first enrolment needs a session; re-enrolment while MFA is already
-    enabled is refused here and handled by the Phase A10 reset flow, which is
-    step-up protected.
+    The first factor needs only the session: a user with no factor cannot satisfy a step-up.
+    Every later factor needs a fresh step-up with an existing one (ADR 0002, Phase A10).
     """
-    user = getattr(request.state, "user", None)
-    if user is None:
-        raise AuthenticationRequiredError()
-    service = build_mfa_service(request, repository)
-    challenge = await service.begin_enrollment(user)
-    return MfaEnrollResponse(secret=challenge.secret, provisioning_uri=challenge.provisioning_uri)
+    user, session_row = _session_caller(request)
+    enrollment = await build_mfa_service(request, repository).begin_enrollment(
+        user=user,
+        principal=principal,
+        session_row=session_row,
+        method=payload.method if payload else "totp",
+    )
+    return MfaEnrollResponse(
+        method=enrollment.method,
+        secret=enrollment.secret,
+        provisioning_uri=enrollment.provisioning_uri,
+        options=enrollment.options,
+    )
+
+
+@router.post("/auth/mfa/challenge", response_model=MfaChallengeResponse)
+async def mfa_challenge(request: Request, repository: ScopedRepo) -> MfaChallengeResponse:
+    """WebAuthn assertion options for the caller's keys (Phase A10). Single-use, bound to this
+    session, short-lived."""
+    user, session_row = _session_caller(request)
+    options = await build_mfa_service(request, repository).begin_assertion(
+        user=user, session_row=session_row
+    )
+    return MfaChallengeResponse(options=options)
 
 
 @router.post("/auth/mfa/verify", response_model=MfaVerifyResponse)
@@ -260,18 +287,25 @@ async def verify_mfa(
     payload: MfaVerifyRequest,
     repository: ScopedRepo,
 ) -> MfaVerifyResponse:
-    """Complete MFA and open the Section 7.3 step-up window."""
-    user = getattr(request.state, "user", None)
-    session_row = getattr(request.state, "session_row", None)
-    if user is None or session_row is None:
-        raise AuthenticationRequiredError()
-
+    """Complete MFA and open the Section 7.3 step-up window, recording the method used."""
+    user, session_row = _session_caller(request)
     service = build_mfa_service(request, repository)
-    verified_at = await service.verify(user=user, code=payload.code)
-    await build_session_service(request, repository).mark_mfa_verified(session_row.id, verified_at)
-
+    # The request model guarantees exactly one proof, matching `method`.
+    if payload.method == "totp":
+        verified_at = await service.verify_totp(user=user, code=payload.code or "")
+    else:
+        verified_at = await service.verify_webauthn(
+            user=user,
+            session_row=session_row,
+            credential=payload.credential or {},
+            label=payload.label,
+        )
+    await build_session_service(request, repository).mark_mfa_verified(
+        session_row.id, verified_at, payload.method
+    )
     return MfaVerifyResponse(
         mfa_enabled=True,
+        method=payload.method,
         verified_at=verified_at,
         step_up_expires_at=verified_at + STEP_UP_MAX_AGE,
     )

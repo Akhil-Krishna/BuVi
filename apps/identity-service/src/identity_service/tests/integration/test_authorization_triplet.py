@@ -370,7 +370,8 @@ async def test_step_up_endpoint_refuses_stale_mfa(
     )
     stale_response = await _call(client, endpoint, session_id=stale, user_id=target)
     assert stale_response.status_code == 403
-    assert stale_response.json()["error"]["code"] == "FORBIDDEN"
+    assert stale_response.json()["error"]["code"] == "STEP_UP_REQUIRED"
+    assert stale_response.json()["error"]["details"] == {"method": "any"}
 
     fresh = await fixtures.create_session(
         tenant_id=tenant, user_id=actor, mfa_verified_at=dt.datetime.now(dt.UTC)

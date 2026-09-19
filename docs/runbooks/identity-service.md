@@ -25,6 +25,19 @@
 - **Suspected API key leak:** `DELETE /api/v1/me/api-keys/{id}`; revocation is immediate.
 - **Audit:** `identity.audit_events` is append-only (no UPDATE/DELETE for `buvi_app`). Query by `request_id` to join logs.
 
+## Step-up, WebAuthn and tenant policies (Phase A10, ADR 0013)
+
+- **Step-up is judged by method.** Every session records how its last MFA check was made (`totp` or `webauthn`). A `platform_super_admin` must always use WebAuthn. An `org_admin` must too when the tenant policy `org_admin_requires_webauthn` is on. A step-up made with the wrong method is refused with `403 STEP_UP_REQUIRED` and `details.method = "webauthn"`. `GET /auth/session` returns `step_up_method`, so a client knows which factor to ask for.
+- **WebAuthn:**
+  - enroll with `POST /auth/mfa/enroll {"method":"webauthn"}`, then `POST /auth/mfa/verify` with the browser's credential;
+  - step up with `POST /auth/mfa/challenge`, then `/verify`.
+  - A challenge is single-use, bound to one session, and expires after `IDENTITY_WEBAUTHN_CHALLENGE_SECONDS`.
+  - In production, set `IDENTITY_WEBAUTHN_RP_ID` to the app's registrable domain and `IDENTITY_WEBAUTHN_ORIGINS` to its exact `https://` origins. Startup refuses the development values.
+- **`MFA_VERIFICATION_FAILED` spike:** each failure is audited as `auth.mfa_verification_failed` (in its own transaction, so it survives the refused request). A WebAuthn failure after a device change is usually a counter regression (a cloned or reset key). The user removes the key and registers it again.
+- **Lost device:** `POST /admin/users/{id}/mfa/reset` (`user:manage`, step-up). It revokes every factor, deletes the secrets in Vault, and ends the user's sessions. The user logs in again and enrolls a first factor, which needs no step-up.
+- **An org_admin is stuck behind the WebAuthn policy:** they can still add a key with a fresh TOTP check. Adding a stronger factor never needs the stronger factor. The policy cannot be turned on by an admin who has no key yet (`409 WEBAUTHN_NOT_ENROLLED`).
+- **Tenant policies:** `GET/PATCH /admin/policies` (`policy:manage`; a change needs step-up). A change takes effect on each caller's next request, and is audited as `tenant.policies_changed`, with the state before and after.
+
 ## Deploy / rollback
 
 1. `alembic upgrade head` as `buvi_migrator` (separate job, Section 26), then roll the deployment.

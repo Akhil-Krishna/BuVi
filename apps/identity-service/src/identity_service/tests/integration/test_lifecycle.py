@@ -197,7 +197,13 @@ async def test_wrong_totp_code_is_rejected(
     user = await fixtures.create_user(
         tenant_id=tenant, email="mfa2@acme.example.com", roles=frozenset({"client"})
     )
-    cookies = {COOKIE: str(await fixtures.create_session(tenant_id=tenant, user_id=user))}
+    cookies = {
+        COOKIE: str(
+            await fixtures.create_session(
+                tenant_id=tenant, user_id=user, mfa_verified_at=dt.datetime.now(dt.UTC)
+            )
+        )
+    }
     await client.post("/api/v1/auth/mfa/enroll", cookies=cookies)
     response = await client.post(
         "/api/v1/auth/mfa/verify", json={"code": "000000"}, cookies=cookies
@@ -214,7 +220,13 @@ async def test_api_key_is_shown_once_authenticates_and_dies_on_revoke(
     user = await fixtures.create_user(
         tenant_id=tenant, email="keys@acme.example.com", roles=frozenset({"developer"})
     )
-    cookies = {COOKIE: str(await fixtures.create_session(tenant_id=tenant, user_id=user))}
+    cookies = {
+        COOKIE: str(
+            await fixtures.create_session(
+                tenant_id=tenant, user_id=user, mfa_verified_at=dt.datetime.now(dt.UTC)
+            )
+        )
+    }
 
     created = await client.post(
         "/api/v1/me/api-keys", json={"name": "ci", "scopes": ["sql:execute"]}, cookies=cookies
@@ -229,9 +241,9 @@ async def test_api_key_is_shown_once_authenticates_and_dies_on_revoke(
     bearer = {"Authorization": f"Bearer {secret}"}
     assert (await client.get("/api/v1/me/api-keys", headers=bearer)).status_code == 200
 
-    # A key cannot mint another key.
+    # A key cannot mint another key: it can never carry a step-up (Section 7.3).
     minted = await client.post("/api/v1/me/api-keys", json={"name": "x"}, headers=bearer)
-    assert minted.status_code == 401
+    assert minted.status_code == 403 and minted.json()["error"]["code"] == "STEP_UP_REQUIRED"
 
     assert (
         await client.delete(f"/api/v1/me/api-keys/{key_id}", cookies=cookies)
@@ -246,7 +258,13 @@ async def test_api_key_scope_cannot_exceed_owner_permissions(
     user = await fixtures.create_user(
         tenant_id=tenant, email="scope@acme.example.com", roles=frozenset({"client"})
     )
-    cookies = {COOKIE: str(await fixtures.create_session(tenant_id=tenant, user_id=user))}
+    cookies = {
+        COOKIE: str(
+            await fixtures.create_session(
+                tenant_id=tenant, user_id=user, mfa_verified_at=dt.datetime.now(dt.UTC)
+            )
+        )
+    }
     created = await client.post(
         "/api/v1/me/api-keys", json={"name": "esc", "scopes": ["user:manage"]}, cookies=cookies
     )
@@ -261,7 +279,11 @@ async def test_foreign_api_key_revoke_is_404(
         tenant_id=other_tenant, email="v@globex.example.com", roles=frozenset({"developer"})
     )
     victim_cookies = {
-        COOKIE: str(await fixtures.create_session(tenant_id=other_tenant, user_id=victim))
+        COOKIE: str(
+            await fixtures.create_session(
+                tenant_id=other_tenant, user_id=victim, mfa_verified_at=dt.datetime.now(dt.UTC)
+            )
+        )
     }
     key_id = (
         await client.post("/api/v1/me/api-keys", json={"name": "v"}, cookies=victim_cookies)
@@ -371,7 +393,9 @@ async def test_deleting_a_user_revokes_their_sessions_and_keys(
     target = await fixtures.create_user(
         tenant_id=tenant, email="leaver@acme.example.com", roles=frozenset({"developer"})
     )
-    target_session = await fixtures.create_session(tenant_id=tenant, user_id=target)
+    target_session = await fixtures.create_session(
+        tenant_id=tenant, user_id=target, mfa_verified_at=dt.datetime.now(dt.UTC)
+    )
     secret = (
         await client.post(
             "/api/v1/me/api-keys", json={"name": "k"}, cookies={COOKIE: str(target_session)}

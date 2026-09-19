@@ -1,4 +1,4 @@
-"""Self-service endpoints: sessions and API keys (Sections 6.8, 6.9, 9).
+"""Self-service endpoints: sessions, MFA factors and API keys (Sections 6.6, 6.8, 6.9, 9).
 
 `GET /me/sessions` and `DELETE /me/sessions/{id}` are not in the Section 9
 catalog, but Section 6.9 requires that "users can view and revoke their own
@@ -19,12 +19,14 @@ from identity_service.api.v1.schemas import (
     ApiKeyCreateRequest,
     ApiKeyListResponse,
     ApiKeyResponse,
+    MfaFactorResponse,
     UserSessionListResponse,
     UserSessionResponse,
 )
 from identity_service.dependencies import (
     CurrentPrincipal,
     build_api_key_service,
+    build_mfa_service,
     build_session_service,
     client_ip,
     get_repository,
@@ -33,10 +35,43 @@ from identity_service.domain.errors import AuthenticationRequiredError, NotFound
 from identity_service.infrastructure.db.repositories.identity_repository import (
     IdentityRepository,
 )
+from platform_auth import Principal, require_step_up
 
 router = APIRouter(tags=["me"])
 
 ScopedRepo = Annotated[IdentityRepository, Depends(get_repository, scope="function")]
+
+
+StepUp = Annotated[Principal, Depends(require_step_up)]
+
+
+# --- MFA factors (Section 6.6; Phase A10) ---------------------------------------
+
+
+@router.get("/me/mfa", response_model=list[MfaFactorResponse])
+async def list_my_factors(request: Request, repository: ScopedRepo) -> list[MfaFactorResponse]:
+    """The caller's active factors. Never secret material (it is in Vault)."""
+    user = getattr(request.state, "user", None)
+    if user is None:
+        raise AuthenticationRequiredError()
+    factors = await build_mfa_service(request, repository).factors(user)
+    return [MfaFactorResponse.model_validate(f) for f in factors]
+
+
+@router.delete("/me/mfa/{factor_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def remove_my_factor(
+    request: Request,
+    factor_id: uuid.UUID,
+    _step_up: StepUp,
+    repository: ScopedRepo,
+) -> Response:
+    """Remove one of the caller's own factors (Section 6.6: step-up, audited). Removing the
+    last one turns MFA off; the next enrollment is then a first enrollment again."""
+    user = getattr(request.state, "user", None)
+    if user is None:
+        raise AuthenticationRequiredError()
+    await build_mfa_service(request, repository).remove_factor(user=user, credential_id=factor_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 # --- Sessions (Section 6.9) ---------------------------------------------------
@@ -116,12 +151,14 @@ async def create_my_api_key(
     request: Request,
     payload: ApiKeyCreateRequest,
     principal: CurrentPrincipal,
+    _step_up: StepUp,
     repository: ScopedRepo,
 ) -> ApiKeyCreatedResponse:
     """Mint an API key. The secret appears in this response and nowhere else.
 
-    An API key cannot mint another API key: allowing it would let a leaked key
-    with a short expiry bootstrap itself into a permanent one.
+    Step-up (Section 7.3, "rotating ... API keys"; Phase A10): a new long-lived credential
+    must not be mintable with a stolen session cookie alone. An API key cannot mint another
+    API key: a leaked key with a short expiry could otherwise make itself permanent.
     """
     if principal.auth_method != "session":
         raise AuthenticationRequiredError("API keys can only be created from a user session.")

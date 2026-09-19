@@ -18,6 +18,7 @@ from dataclasses import dataclass
 from sqlalchemy import Select, delete, func, or_, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from identity_service.domain.policies.tenant_policy import DEFAULT_POLICIES, Policies
 from identity_service.infrastructure.db.models import (
     ApiKey,
     AuditEvent,
@@ -26,6 +27,7 @@ from identity_service.infrastructure.db.models import (
     Role,
     Session,
     Tenant,
+    TenantPolicy,
     User,
     UserRole,
 )
@@ -286,10 +288,42 @@ class IdentityRepository:
             update(Session).where(Session.id == session_id).values(last_seen_at=at)
         )
 
-    async def mark_session_mfa_verified(self, session_id: uuid.UUID, at: dt.datetime) -> None:
+    async def mark_session_mfa_verified(
+        self, session_id: uuid.UUID, at: dt.datetime, method: str
+    ) -> None:
         await self._session.execute(
-            update(Session).where(Session.id == session_id).values(mfa_verified_at=at)
+            update(Session)
+            .where(Session.id == session_id)
+            .values(mfa_verified_at=at, mfa_verified_method=method)
         )
+
+    async def set_webauthn_challenge(
+        self, session_id: uuid.UUID, challenge: str, expires_at: dt.datetime
+    ) -> None:
+        """Replace the session's pending WebAuthn challenge (one at a time)."""
+        await self._session.execute(
+            update(Session)
+            .where(Session.id == session_id)
+            .values(webauthn_challenge=challenge, webauthn_challenge_expires_at=expires_at)
+        )
+
+    async def take_webauthn_challenge(
+        self, session_id: uuid.UUID
+    ) -> tuple[str | None, dt.datetime | None]:
+        """Read and clear the pending challenge in one step, so it is usable exactly once."""
+        row = (
+            await self._session.execute(
+                select(Session.webauthn_challenge, Session.webauthn_challenge_expires_at)
+                .where(Session.id == session_id)
+                .with_for_update()
+            )
+        ).one_or_none()
+        await self._session.execute(
+            update(Session)
+            .where(Session.id == session_id)
+            .values(webauthn_challenge=None, webauthn_challenge_expires_at=None)
+        )
+        return (row[0], row[1]) if row is not None else (None, None)
 
     async def revoke_session(
         self, tenant_id: uuid.UUID, session_id: uuid.UUID, at: dt.datetime
@@ -440,6 +474,79 @@ class IdentityRepository:
         await self._session.execute(
             update(MfaCredential).where(MfaCredential.id == credential_id).values(last_used_at=at)
         )
+
+    async def list_mfa_credentials(
+        self,
+        tenant_id: uuid.UUID,
+        user_id: uuid.UUID,
+        *,
+        method: str | None = None,
+        confirmed_only: bool = False,
+    ) -> list[MfaCredential]:
+        """The user's non-revoked factors, oldest first."""
+        query = select(MfaCredential).where(
+            MfaCredential.tenant_id == tenant_id,
+            MfaCredential.user_id == user_id,
+            MfaCredential.revoked_at.is_(None),
+        )
+        if method is not None:
+            query = query.where(MfaCredential.method == method)
+        if confirmed_only:
+            query = query.where(MfaCredential.confirmed_at.is_not(None))
+        result = await self._session.execute(
+            query.order_by(MfaCredential.created_at, MfaCredential.id)
+        )
+        return list(result.scalars().all())
+
+    async def get_mfa_credential_by_id(
+        self, tenant_id: uuid.UUID, credential_id: uuid.UUID
+    ) -> MfaCredential | None:
+        result = await self._session.execute(
+            select(MfaCredential).where(
+                MfaCredential.tenant_id == tenant_id,
+                MfaCredential.id == credential_id,
+                MfaCredential.revoked_at.is_(None),
+            )
+        )
+        return result.scalar_one_or_none()
+
+    async def revoke_mfa_credentials(
+        self, tenant_id: uuid.UUID, credential_ids: list[uuid.UUID], at: dt.datetime
+    ) -> None:
+        if not credential_ids:
+            return
+        await self._session.execute(
+            update(MfaCredential)
+            .where(MfaCredential.tenant_id == tenant_id, MfaCredential.id.in_(credential_ids))
+            .values(revoked_at=at)
+        )
+
+    # --- tenant policies (Phase A10) ------------------------------------------
+
+    async def get_policies(self, tenant_id: uuid.UUID) -> Policies:
+        """The tenant's policies; every default when it has never set one."""
+        row = await self._session.get(TenantPolicy, tenant_id)
+        if row is None:
+            return DEFAULT_POLICIES
+        return Policies(
+            client_can_share_dashboards=row.client_can_share_dashboards,
+            developer_can_manage_mcp=row.developer_can_manage_mcp,
+            org_admin_requires_webauthn=row.org_admin_requires_webauthn,
+        )
+
+    async def save_policies(
+        self, tenant_id: uuid.UUID, policies: Policies, *, updated_by: uuid.UUID
+    ) -> None:
+        row = await self._session.get(TenantPolicy, tenant_id)
+        if row is None:
+            row = TenantPolicy(tenant_id=tenant_id)
+            self._session.add(row)
+        row.client_can_share_dashboards = policies.client_can_share_dashboards
+        row.developer_can_manage_mcp = policies.developer_can_manage_mcp
+        row.org_admin_requires_webauthn = policies.org_admin_requires_webauthn
+        row.updated_by = updated_by
+        row.updated_at = dt.datetime.now(dt.UTC)
+        await self._session.flush()
 
     # --- audit -------------------------------------------------------------
 
