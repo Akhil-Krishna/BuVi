@@ -46,6 +46,7 @@ from query_gateway.infrastructure.http.identity_resolver import IdentityResolver
 from query_gateway.infrastructure.http.metadata_client import MetadataPolicyClient
 from query_gateway.infrastructure.messaging.nats_usage import (
     JetStreamUsageMeter,
+    ObservedUsageMeter,
     UnavailableUsageMeter,
 )
 from query_gateway.infrastructure.storage.base import InMemoryResultStore, ResultStore
@@ -147,13 +148,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.validator = SqlValidator(max_length=settings.max_sql_length)
     meter: JetStreamUsageMeter | None = None
     if app.state.usage is None:
-        app.state.usage = UnavailableUsageMeter()
+        app.state.usage = ObservedUsageMeter(UnavailableUsageMeter())
         if settings.metering_enabled:
             try:
                 meter = await JetStreamUsageMeter.connect(
                     settings.nats_url, stream=settings.billing_stream
                 )
-                app.state.usage = meter
+                app.state.usage = ObservedUsageMeter(meter)
             except Exception as error:
                 # Queries never wait on metering; the usage is lost, and logged per query.
                 logger.warning(

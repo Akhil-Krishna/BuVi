@@ -48,7 +48,10 @@ from analytics_orchestrator.infrastructure.http.clients import (
     VisualizationClient,
 )
 from analytics_orchestrator.infrastructure.llm.scripted_provider import ScriptedProvider
-from analytics_orchestrator.infrastructure.messaging.nats_queue import JetStreamPublisher
+from analytics_orchestrator.infrastructure.messaging.nats_queue import (
+    JetStreamPublisher,
+    ObservedUsageSink,
+)
 from analytics_orchestrator.infrastructure.messaging.redis_events import RedisRunEventPublisher
 from platform_auth import (
     IntrospectionClient,
@@ -118,7 +121,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.queue_ready = lambda: publisher.connected
     else:
         app.state.queue_ready = lambda: True
-    usage: UsageSink = app.state.usage_sink or app.state.queue
+    usage = ObservedUsageSink(app.state.usage_sink or app.state.queue)
+    app.state.usage = usage
 
     provider = _provider(settings, app.state.model_provider)
     app.state.model_provider = provider

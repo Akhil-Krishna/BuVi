@@ -31,10 +31,13 @@ async def ready(request: Request, response: Response) -> HealthResponse:
         checks["redis"] = "unavailable"
     checks["queue"] = "ok" if state.queue_ready() else "unavailable"
     serving = all(value == "ok" for value in checks.values())
+    # Runs still work; billing is missing events until they are replayed (runbook).
+    undelivered = getattr(getattr(state, "usage", None), "undelivered", 0)
+    checks["usage"] = "ok" if not undelivered else f"degraded ({undelivered} undelivered)"
     if not serving:
         response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
     return HealthResponse(
-        status="ok" if serving else "unavailable",
+        status=("ok" if not undelivered else "degraded") if serving else "unavailable",
         service=state.settings.service_name,
         checks=checks,
     )

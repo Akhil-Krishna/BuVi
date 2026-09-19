@@ -12,6 +12,7 @@ import asyncpg
 import pytest
 from fastapi import FastAPI
 
+from platform_auth import ServiceTokenIssuer
 from platform_egress import EgressPolicy
 from platform_secrets import InMemorySecretStore
 from query_gateway.domain.value_objects.execution import (
@@ -21,6 +22,10 @@ from query_gateway.domain.value_objects.execution import (
     ExecutionLimits,
 )
 from query_gateway.infrastructure.connectors.postgres import PostgresQueryExecutor
+from query_gateway.infrastructure.messaging.nats_usage import (
+    ObservedUsageMeter,
+    UnavailableUsageMeter,
+)
 from query_gateway.infrastructure.storage.base import InMemoryResultStore
 from query_gateway.tests.conftest import (
     CUSTOMER_DB,
@@ -29,7 +34,9 @@ from query_gateway.tests.conftest import (
     PostgresInfo,
     RecordingUsage,
     audit_rows,
+    make_settings,
     reader_secret,
+    running_app,
 )
 
 pytestmark = pytest.mark.integration
@@ -401,3 +408,30 @@ async def test_executor_enforces_egress_policy(postgres: PostgresInfo) -> None:
         assert info.value.failure is ExecutionFailure.DESTINATION_NOT_ALLOWED
     finally:
         await strict.close()
+
+
+async def test_a_query_succeeds_while_usage_is_undeliverable_and_readiness_says_so(
+    postgres: PostgresInfo,
+    services: FakeServices,
+    secrets: InMemorySecretStore,
+    results: InMemoryResultStore,
+    issuer: ServiceTokenIssuer,
+    tenant: uuid.UUID,
+) -> None:
+    """ADR 0014: with the bus down, metering never fails a query, and the loss is observable."""
+    meter = ObservedUsageMeter(UnavailableUsageMeter())
+    async with running_app(
+        make_settings(postgres),
+        services,
+        secrets,
+        results,
+        issuer,
+        meter,  # type: ignore[arg-type]
+    ) as (_, client):
+        api = Api(client, issuer, services, secrets, postgres)
+        who = services.add_user(tenant, {"developer"})
+        source = await api.data_source(tenant)
+        assert (await api.query(who, source, REVENUE_SQL)).status_code == 200
+        ready = (await client.get("/health/ready")).json()
+    assert meter.undelivered == 1
+    assert ready["checks"]["usage"] == "degraded (1 undelivered)"

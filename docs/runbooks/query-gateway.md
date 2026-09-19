@@ -58,3 +58,9 @@ any `secret_ref mismatch` log line
 - **What is metered:** every executed query (succeeded, failed or timed out) publishes `billing.usage.recorded` with `query_execution_ms` (database time).
 - **When:** after the tenant's concurrency slot is released, so metering never holds query capacity.
 - **Best effort:** with NATS unreachable, queries still work and the usage is lost, logged as `query usage not recorded`. `QUERY_GATEWAY_METERING_ENABLED=false` turns it off.
+
+## Undelivered usage (ADR 0014 follow-up)
+
+- **Signal:** readiness `checks.usage: degraded (N undelivered)`, and ERROR log lines `usage event undelivered`, each carrying the whole event. The query time they record is missing from billing until replayed.
+- **Action:** restore NATS, then run `uv run --package analytics-orchestrator python scripts/replay_usage_events.py < <service log>`. Use `--dry-run` to count first.
+- **Replaying twice is safe:** the store is idempotent on `event_id`. The counter resets when the process restarts; the log lines are the record.

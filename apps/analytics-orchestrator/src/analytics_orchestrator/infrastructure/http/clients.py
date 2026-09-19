@@ -124,18 +124,18 @@ class IdentityClient(_ServiceClient):
         return principal
 
     async def active_seats(self, tenant_id: uuid.UUID) -> int:
-        """Active users in the tenant: the seat count `/billing/usage` reports (Section 23)."""
+        """Active users in the tenant: the seat count `/billing/usage` reports (Section 23).
+        An exact count from identity-service, not the length of a capped user list."""
         response = await self._request(
             "POST",
-            "/internal/v1/directory/users",
+            "/internal/v1/directory/seats",
             SCOPE_DIRECTORY,
             json={"tenant_id": str(tenant_id)},
         )
         if response.status_code != 200:
             raise DependencyUnavailableError()
         try:
-            users = response.json()["users"]
-            return sum(1 for user in users if user["status"] == "active")
+            return int(response.json()["active_users"])
         except (KeyError, TypeError, ValueError):
             raise DependencyUnavailableError() from None
 

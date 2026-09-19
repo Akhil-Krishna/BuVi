@@ -68,3 +68,9 @@
   - defaults to the current month, and refuses a period longer than 366 days (`422`);
   - adds seats (active users) read live from identity-service's directory, so a directory outage gives `502 UPSTREAM_UNAVAILABLE`.
 - **Usage events** now carry an `event_id`, also used as the JetStream message id.
+
+## Undelivered usage (ADR 0014 follow-up)
+
+- **Signal:** readiness `checks.usage: degraded (N undelivered)`, and ERROR log lines `usage event undelivered`, each carrying the whole event. The LLM tokens they record is missing from billing until replayed.
+- **Action:** restore NATS, then run `uv run --package analytics-orchestrator python scripts/replay_usage_events.py < <service log>`. Use `--dry-run` to count first.
+- **Replaying twice is safe:** the store is idempotent on `event_id`. The counter resets when the process restarts; the log lines are the record.

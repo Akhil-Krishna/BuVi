@@ -35,6 +35,9 @@ async def ready(request: Request, response: Response) -> HealthResponse:
     checks["metadata-service"] = "ok" if await state.policies.ready() else "unavailable"
     checks["secret-store"] = "ok" if await state.secrets.ping() else "unavailable"
     checks["result-store"] = "ok" if await state.results.ping() else "unavailable"
+    # Queries still run; billing is missing events until they are replayed (runbook).
+    undelivered = getattr(state.usage, "undelivered", 0)
+    checks["usage"] = "ok" if not undelivered else f"degraded ({undelivered} undelivered)"
     required = ("database", "identity-service", "metadata-service")
     serving = all(checks[name] == "ok" for name in required)
     if not serving:
