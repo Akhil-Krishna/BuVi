@@ -73,3 +73,32 @@ async def tenant_scope(
             yield session
         finally:
             event.remove(session.sync_session, "after_begin", bind_tenant)
+
+
+#: Enables the FOR SELECT policy on `share_links` (migration 0002) for one transaction.
+SHARE_LOOKUP_GUC = "app.share_lookup"
+
+
+@asynccontextmanager
+async def share_lookup_scope(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> AsyncIterator[AsyncSession]:
+    """A session that may look a share link up by its token hash before any tenant is known.
+
+    The setting is transaction-local and bound to no tenant, so nothing but `share_links`
+    rows are readable, and nothing is writable. Use it for the one keyed lookup only.
+    """
+    async with session_factory() as session:
+
+        def enable(
+            _session: Session, _transaction: SessionTransaction, connection: Connection
+        ) -> None:
+            connection.execute(
+                text("SELECT set_config(:guc, 'on', true)"), {"guc": SHARE_LOOKUP_GUC}
+            )
+
+        event.listen(session.sync_session, "after_begin", enable)
+        try:
+            yield session
+        finally:
+            event.remove(session.sync_session, "after_begin", enable)

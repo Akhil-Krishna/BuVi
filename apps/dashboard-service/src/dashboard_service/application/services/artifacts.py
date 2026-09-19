@@ -25,7 +25,7 @@ from dashboard_service.infrastructure.http.clients import (
     ResultNotFoundError,
     ResultRows,
 )
-from platform_auth import Principal
+from platform_auth import Principal, StepUpRequiredError
 
 logger = logging.getLogger(__name__)
 
@@ -54,10 +54,12 @@ class ArtifactService:
         repository: DashboardRepository,
         visualization: ChartValidator,
         results: ResultReader,
+        export_step_up_rows: int,
     ) -> None:
         self._repository = repository
         self._visualization = visualization
         self._results = results
+        self._export_step_up_rows = export_step_up_rows
 
     async def store_from_run(self, new: NewArtifact) -> tuple[Artifact, bool]:
         """Idempotent on the artifact id the run derives from its own id: a resumed run gets the
@@ -99,7 +101,15 @@ class ArtifactService:
         return artifact
 
     async def data(self, principal: Principal, artifact_id: uuid.UUID) -> ResultRows:
+        """The stored rows. More rows than the export threshold is an export (Section 7.3):
+        refused without a fresh step-up, before any row leaves the service."""
         artifact = await self.get(principal, artifact_id)
+        rows = await self._read(artifact)
+        if rows.row_count > self._export_step_up_rows and not principal.step_up_is_fresh():
+            raise StepUpRequiredError.for_principal(principal)
+        return rows
+
+    async def _read(self, artifact: Artifact) -> ResultRows:
         try:
             return await self._results.read(artifact.tenant_id, artifact.query_result_ref)
         except ResultGoneError:

@@ -26,6 +26,7 @@ from dashboard_service.infrastructure.db.repositories.dashboard_repository impor
 )
 from dashboard_service.infrastructure.http.clients import DependencyUnavailableError
 from platform_auth import Principal
+from platform_auth.permissions import ROLE_ORG_ADMIN
 from platform_contracts import DashboardTilePinned
 from platform_observability import request_id_var
 
@@ -72,6 +73,22 @@ class DashboardService:
         if write and access != "owner":
             raise DashboardNotOwnerError()
         return dashboard
+
+    async def share_managed(self, principal: Principal, dashboard_id: uuid.UUID) -> Dashboard:
+        """For listing and revoking share links: the owner, or any `org_admin` of the tenant
+        (incident response on a leaked link). Stopping a share never needs more than starting
+        one did."""
+        if ROLE_ORG_ADMIN in principal.roles:
+            tenant_id, _ = self._ids(principal)
+            dashboard = await self._repository.get_dashboard(tenant_id, dashboard_id)
+            if dashboard is None:
+                raise NotFoundError()
+            return dashboard
+        return await self.owned(principal, dashboard_id)
+
+    async def owned(self, principal: Principal, dashboard_id: uuid.UUID) -> Dashboard:
+        """The dashboard, locked, if the caller owns it (404 if hidden, 403 if only visible)."""
+        return await self._dashboard(principal, dashboard_id, write=True)
 
     async def create(self, principal: Principal, *, name: str, visibility: str) -> Dashboard:
         tenant_id, user_id = self._ids(principal)

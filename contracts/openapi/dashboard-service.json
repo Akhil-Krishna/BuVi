@@ -501,6 +501,235 @@
         "title": "ResultColumnResponse",
         "type": "object"
       },
+      "ShareLinkCreateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "expires_in_hours": {
+            "anyOf": [
+              {
+                "maximum": 720.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires In Hours"
+          }
+        },
+        "title": "ShareLinkCreateRequest",
+        "type": "object"
+      },
+      "ShareLinkCreatedResponse": {
+        "properties": {
+          "active": {
+            "title": "Active",
+            "type": "boolean"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "format": "uuid",
+            "title": "Created By",
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "revoked_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revoked At"
+          },
+          "token": {
+            "title": "Token",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "created_by",
+          "created_at",
+          "expires_at",
+          "revoked_at",
+          "active",
+          "token",
+          "url"
+        ],
+        "title": "ShareLinkCreatedResponse",
+        "type": "object"
+      },
+      "ShareLinkListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ShareLinkResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "ShareLinkListResponse",
+        "type": "object"
+      },
+      "ShareLinkResponse": {
+        "description": "Never the token: it is shown once, at creation.",
+        "properties": {
+          "active": {
+            "title": "Active",
+            "type": "boolean"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "format": "uuid",
+            "title": "Created By",
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "revoked_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revoked At"
+          }
+        },
+        "required": [
+          "id",
+          "created_by",
+          "created_at",
+          "expires_at",
+          "revoked_at",
+          "active"
+        ],
+        "title": "ShareLinkResponse",
+        "type": "object"
+      },
+      "SnapshotResponse": {
+        "description": "A read-only dashboard for a link holder: charts and their data, nothing else.",
+        "properties": {
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "tiles": {
+            "items": {
+              "$ref": "#/components/schemas/SnapshotTileResponse"
+            },
+            "title": "Tiles",
+            "type": "array"
+          }
+        },
+        "required": [
+          "name",
+          "expires_at",
+          "tiles"
+        ],
+        "title": "SnapshotResponse",
+        "type": "object"
+      },
+      "SnapshotTileResponse": {
+        "properties": {
+          "chart_spec": {
+            "additionalProperties": true,
+            "title": "Chart Spec",
+            "type": "object"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data"
+          },
+          "data_status": {
+            "enum": [
+              "ok",
+              "expired",
+              "too_large"
+            ],
+            "title": "Data Status",
+            "type": "string"
+          },
+          "overrides": {
+            "additionalProperties": true,
+            "title": "Overrides",
+            "type": "object"
+          },
+          "position": {
+            "additionalProperties": true,
+            "title": "Position",
+            "type": "object"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "position",
+          "chart_spec",
+          "overrides",
+          "data",
+          "data_status"
+        ],
+        "title": "SnapshotTileResponse",
+        "type": "object"
+      },
       "SourceRefIn": {
         "additionalProperties": false,
         "properties": {
@@ -934,6 +1163,155 @@
         ]
       }
     },
+    "/api/v1/dashboards/{dashboard_id}/share-links": {
+      "get": {
+        "operationId": "list_share_links_api_v1_dashboards__dashboard_id__share_links_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dashboard_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Dashboard Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShareLinkListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Share Links",
+        "tags": [
+          "share-links"
+        ]
+      },
+      "post": {
+        "description": "Owner only, fresh step-up. The token is in this response and nowhere else.",
+        "operationId": "create_share_link_api_v1_dashboards__dashboard_id__share_links_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dashboard_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Dashboard Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/ShareLinkCreateRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Payload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShareLinkCreatedResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Share Link",
+        "tags": [
+          "share-links"
+        ]
+      }
+    },
+    "/api/v1/dashboards/{dashboard_id}/share-links/{link_id}": {
+      "delete": {
+        "description": "Effective at once: the next guest request with that token is a 404.",
+        "operationId": "revoke_share_link_api_v1_dashboards__dashboard_id__share_links__link_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dashboard_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Dashboard Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "link_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Link Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Revoke Share Link",
+        "tags": [
+          "share-links"
+        ]
+      }
+    },
     "/api/v1/dashboards/{dashboard_id}/tiles": {
       "post": {
         "description": "Section 32 Step D: pin an artifact; returns the created `DashboardTile`.",
@@ -985,6 +1363,51 @@
         "summary": "Pin Artifact",
         "tags": [
           "dashboards"
+        ]
+      }
+    },
+    "/api/v1/share/{token}": {
+      "get": {
+        "description": "Public and token-gated (Section 9). An unknown, expired or revoked token is a 404.",
+        "operationId": "guest_snapshot_api_v1_share__token__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 1,
+              "title": "Token",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SnapshotResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Guest Snapshot",
+        "tags": [
+          "guest-share"
         ]
       }
     },

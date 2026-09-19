@@ -157,3 +157,50 @@ class TileUpdateRequest(BaseModel):
         if self.position is None and self.overrides is None:
             raise ValueError("position or overrides is required")
         return self
+
+
+# --- Share links and the guest snapshot (Phase A10) -------------------------------------------
+
+
+class ShareLinkCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    #: Capped by `share_link_max_hours`; the default is `share_link_default_hours`.
+    expires_in_hours: int | None = Field(default=None, ge=1, le=720)
+
+
+class ShareLinkResponse(BaseModel):
+    """Never the token: it is shown once, at creation."""
+
+    id: uuid.UUID
+    created_by: uuid.UUID
+    created_at: dt.datetime
+    expires_at: dt.datetime
+    revoked_at: dt.datetime | None
+    active: bool
+
+
+class ShareLinkCreatedResponse(ShareLinkResponse):
+    token: str
+    url: str
+
+
+class ShareLinkListResponse(BaseModel):
+    items: list[ShareLinkResponse]
+
+
+class SnapshotTileResponse(BaseModel):
+    title: str
+    position: dict[str, Any]
+    chart_spec: dict[str, Any]
+    overrides: dict[str, Any]
+    data: dict[str, Any] | None
+    data_status: Literal["ok", "expired", "too_large"]
+
+
+class SnapshotResponse(BaseModel):
+    """A read-only dashboard for a link holder: charts and their data, nothing else."""
+
+    name: str
+    expires_at: dt.datetime
+    tiles: list[SnapshotTileResponse]

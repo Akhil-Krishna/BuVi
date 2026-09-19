@@ -44,6 +44,7 @@ async def store_artifact(
             repository=DashboardRepository(db),
             visualization=state.visualization,
             results=state.results,
+            export_step_up_rows=state.settings.export_step_up_rows,
         ).store_from_run(
             NewArtifact(
                 id=payload.artifact_id,

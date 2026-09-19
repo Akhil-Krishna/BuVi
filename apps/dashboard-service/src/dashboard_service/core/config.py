@@ -14,6 +14,7 @@ SCOPE_PROXY = "dashboard-service:proxy"
 SCOPE_ARTIFACTS_WRITE = "dashboard-service:artifacts"
 SCOPE_VALIDATE = "visualization-service:validate"
 SCOPE_RESULTS = "query-gateway:results"
+SCOPE_AUDIT_WRITE = "identity-service:audit"
 
 TILE_PINNED_SUBJECT = "dashboard.tile.pinned"
 
@@ -52,6 +53,17 @@ class Settings(BaseSettings):
 
     nats_url: str = "nats://localhost:4222"
     dashboard_stream: str = "DASHBOARD"
+
+    # --- Share links and exports (Sections 7.3, 8.6; Phase A10) ---------------------------
+    #: Where a guest opens a link (the Track B app); the token is appended.
+    share_base_url: str = "http://localhost:3000/share/"
+    share_link_default_hours: int = Field(default=72, ge=1)
+    #: "Time-boxed": no link outlives this.
+    share_link_max_hours: int = Field(default=168, ge=1, le=720)
+    max_active_share_links: int = Field(default=20, ge=1)
+    #: Reading more result rows than this is an export (Section 7.3): it needs a fresh
+    #: step-up, and a guest snapshot omits the tile's data.
+    export_step_up_rows: int = Field(default=10_000, ge=1)
 
     @property
     def service_token_url(self) -> str:

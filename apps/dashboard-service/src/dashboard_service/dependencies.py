@@ -10,6 +10,7 @@ from fastapi import Depends, HTTPException, Request, status
 
 from dashboard_service.application.services.artifacts import ArtifactService
 from dashboard_service.application.services.dashboards import DashboardService
+from dashboard_service.application.services.share_links import ShareLinkService, SnapshotService
 from dashboard_service.core.config import SCOPE_PROXY, Settings
 from dashboard_service.domain.errors import (
     AuthenticationRequiredError,
@@ -110,7 +111,10 @@ async def load_tile_tenant_id(tile_id: uuid.UUID, repository: ScopedRepo) -> uui
 def build_artifact_service(request: Request, repository: DashboardRepository) -> ArtifactService:
     state = request.app.state
     return ArtifactService(
-        repository=repository, visualization=state.visualization, results=state.results
+        repository=repository,
+        visualization=state.visualization,
+        results=state.results,
+        export_step_up_rows=state.settings.export_step_up_rows,
     )
 
 
@@ -118,4 +122,21 @@ def build_dashboard_service(request: Request, repository: DashboardRepository) -
     state = request.app.state
     return DashboardService(
         repository=repository, visualization=state.visualization, events=state.events
+    )
+
+
+def build_share_link_service(request: Request, repository: DashboardRepository) -> ShareLinkService:
+    state = request.app.state
+    return ShareLinkService(
+        repository=repository,
+        dashboards=build_dashboard_service(request, repository),
+        audit=state.audit,
+        settings=state.settings,
+    )
+
+
+def build_snapshot_service(request: Request) -> SnapshotService:
+    state = request.app.state
+    return SnapshotService(
+        session_factory=state.session_factory, results=state.results, settings=state.settings
     )

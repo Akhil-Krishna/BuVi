@@ -85,3 +85,9 @@ class UpstreamTimeoutError(DomainError):
     code = "UPSTREAM_TIMEOUT"
     status_code = 504
     message = "A backing service did not respond in time."
+
+
+class ShareLinkLimitError(DomainError):
+    code = "SHARE_LINK_LIMIT"
+    status_code = 409
+    message = "This dashboard has too many active share links. Revoke one first."

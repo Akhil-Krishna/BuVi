@@ -7,7 +7,7 @@ The canonical store for analytics artifacts, and the owner of dashboards and til
 | Owner | platform / dashboards |
 | Schema | `dashboard` (Section 8.6: `artifacts` (immutable for the request role), `dashboards`, `tiles`, `share_links`; RLS) |
 | Port | 8007 |
-| Public API (via api-gateway) | `GET /api/v1/artifacts/{id}` and `…/data` (`artifact:read`) · `GET /api/v1/dashboards`, `GET /api/v1/dashboards/{id}` (`dashboard:read`) · `POST /api/v1/dashboards`, `POST /api/v1/dashboards/{id}/tiles`, `PATCH /api/v1/tiles/{id}` (`dashboard:pin`) |
+| Public API (via api-gateway) | `GET /api/v1/artifacts/{id}` and `…/data` (`artifact:read`) · `GET /api/v1/dashboards`, `GET /api/v1/dashboards/{id}` (`dashboard:read`) · `POST /api/v1/dashboards`, `POST /api/v1/dashboards/{id}/tiles`, `PATCH /api/v1/tiles/{id}` (`dashboard:pin`) · `POST /api/v1/dashboards/{id}/share-links` (owner, `dashboard:share`, step-up), `GET`/`DELETE …/share-links[/{link_id}]` (owner or `org_admin`) · `GET /api/v1/share/{token}` (public, token-gated; Phase A10) |
 | Internal API | `POST /internal/v1/artifacts` (analytics-orchestrator, `dashboard-service:artifacts`) |
 | Events | publishes `dashboard.tile.pinned` (JetStream `DASHBOARD`) |
 | Contract | `contracts/openapi/dashboard-service.json`, `contracts/events/dashboard.tile.pinned.v1.json` |

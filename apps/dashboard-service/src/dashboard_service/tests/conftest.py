@@ -24,6 +24,7 @@ import pytest
 from pydantic import ValidationError
 
 from dashboard_service.core.config import Settings
+from dashboard_service.infrastructure.audit.sink import AuditRecord
 from dashboard_service.infrastructure.http.clients import (
     ChartCheck,
     DependencyUnavailableError,
@@ -119,15 +120,23 @@ class Caller:
 class FakeIdentity:
     principals: dict[str, dict[str, Any]] = field(default_factory=dict)
 
-    def add_user(self, tenant_id: uuid.UUID, roles: set[str]) -> Caller:
+    def add_user(
+        self,
+        tenant_id: uuid.UUID,
+        roles: set[str],
+        *,
+        fresh_mfa: bool = False,
+        extra_permissions: frozenset[str] = frozenset(),
+    ) -> Caller:
         token = f"sess-{uuid.uuid4().hex}"
         user_id = uuid.uuid4()
         self.principals[token] = Principal(
             user_id=str(user_id),
             tenant_id=str(tenant_id),
-            permissions=permissions_for_roles(frozenset(roles)),
+            permissions=permissions_for_roles(frozenset(roles)) | extra_permissions,
             auth_method="session",
-            mfa_verified=False,
+            mfa_verified=fresh_mfa,
+            mfa_verified_at=dt.datetime.now(dt.UTC) if fresh_mfa else None,
             roles=frozenset(roles),
         ).to_dict()
         return Caller(token, user_id, tenant_id)
@@ -184,6 +193,8 @@ class FakeVisualization:
 class FakeResults:
     def __init__(self) -> None:
         self.expired: set[str] = set()
+        #: Handles that report more rows than they carry (an export-sized result).
+        self.row_counts: dict[str, int] = {}
         self.reads: list[tuple[uuid.UUID, str]] = []
 
     async def read(self, tenant_id: uuid.UUID, handle: str) -> ResultRows:
@@ -196,10 +207,18 @@ class FakeResults:
                 {"name": "revenue", "type": "numeric"},
             ],
             rows=[["2026-04-01T00:00:00", "1200.50"], ["2026-05-01T00:00:00", "980.00"]],
-            row_count=2,
+            row_count=self.row_counts.get(handle, 2),
             truncated=False,
             expires_at=(dt.datetime.now(dt.UTC) + dt.timedelta(hours=20)).isoformat(),
         )
+
+
+class MemoryAudit:
+    def __init__(self) -> None:
+        self.events: list[AuditRecord] = []
+
+    async def record(self, event: AuditRecord) -> None:
+        self.events.append(event)
 
 
 class MemoryEvents:
@@ -256,6 +275,7 @@ class Harness:
     visualization: FakeVisualization
     results: FakeResults
     events: MemoryEvents
+    audit: MemoryAudit
 
     def service_headers(
         self, subject: str = "analytics-orchestrator", scope: str = "dashboard-service:artifacts"
@@ -312,6 +332,7 @@ async def harness(
     results: FakeResults,
     events: MemoryEvents,
 ) -> AsyncIterator[Harness]:
+    audit = MemoryAudit()
     from dashboard_service.main import create_app
 
     app = create_app(
@@ -328,6 +349,7 @@ async def harness(
         visualization=visualization,
         results=results,
         events=events,
+        audit=audit,
     )
     async with (
         app.router.lifespan_context(app),
@@ -335,4 +357,4 @@ async def harness(
             transport=httpx.ASGITransport(app=app), base_url="https://ds.test"
         ) as client,
     ):
-        yield Harness(client, issuer, identity, visualization, results, events)
+        yield Harness(client, issuer, identity, visualization, results, events, audit)

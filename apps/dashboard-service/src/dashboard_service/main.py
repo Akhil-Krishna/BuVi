@@ -26,6 +26,7 @@ from dashboard_service.application.services.ports import (
 from dashboard_service.core.config import Settings, get_settings
 from dashboard_service.core.logging import configure_logging
 from dashboard_service.dependencies import resolve_principal
+from dashboard_service.infrastructure.audit.sink import AuditSink, IdentityAuditSink
 from dashboard_service.infrastructure.db.session import create_engine, create_session_factory
 from dashboard_service.infrastructure.http.clients import QueryResultsClient, VisualizationClient
 from dashboard_service.infrastructure.messaging.nats_events import JetStreamDashboardEvents
@@ -71,6 +72,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 http=http,
             ),
         )
+    if app.state.audit is None:
+        app.state.audit = IdentityAuditSink(identity=app.state.introspection, http=http)
     if app.state.visualization is None:
         app.state.visualization = VisualizationClient(
             base_url=settings.visualization_url, http=http, tokens=tokens
@@ -117,6 +120,7 @@ def create_app(
     visualization: ChartValidator | None = None,
     results: ResultReader | None = None,
     events: DashboardEvents | None = None,
+    audit: AuditSink | None = None,
 ) -> FastAPI:
     resolved = settings or get_settings()
     configure_logging(resolved.log_level)
@@ -134,6 +138,7 @@ def create_app(
     state.results = results
     state.events = events
     state.events_ready = lambda: True
+    state.audit = audit
     if service_token_verifier is not None:
         install_service_token_verifier(app, service_token_verifier)
     install_principal_resolver(app, resolve_principal)

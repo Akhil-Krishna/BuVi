@@ -3,13 +3,14 @@ tenant (Section 19); the explicit `tenant_id` filters are the second layer, not 
 
 from __future__ import annotations
 
+import datetime as dt
 import uuid
 from typing import Any
 
 from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from dashboard_service.infrastructure.db.models import Artifact, Dashboard, Tile
+from dashboard_service.infrastructure.db.models import Artifact, Dashboard, ShareLink, Tile
 
 
 class DashboardRepository:
@@ -121,3 +122,59 @@ class DashboardRepository:
         await self._session.flush()
         await self._session.refresh(tile)
         return tile
+
+    # --- share links (Phase A10) ---------------------------------------------------------
+    async def add_share_link(self, link: ShareLink) -> ShareLink:
+        self._session.add(link)
+        await self._session.flush()
+        await self._session.refresh(link)
+        return link
+
+    async def list_share_links(
+        self, tenant_id: uuid.UUID, dashboard_id: uuid.UUID
+    ) -> list[ShareLink]:
+        result = await self._session.execute(
+            select(ShareLink)
+            .where(ShareLink.tenant_id == tenant_id, ShareLink.dashboard_id == dashboard_id)
+            .order_by(ShareLink.created_at.desc(), ShareLink.id)
+        )
+        return list(result.scalars().all())
+
+    async def count_active_share_links(
+        self, tenant_id: uuid.UUID, dashboard_id: uuid.UUID, now: dt.datetime
+    ) -> int:
+        result = await self._session.execute(
+            select(func.count())
+            .select_from(ShareLink)
+            .where(
+                ShareLink.tenant_id == tenant_id,
+                ShareLink.dashboard_id == dashboard_id,
+                ShareLink.revoked_at.is_(None),
+                ShareLink.expires_at > now,
+            )
+        )
+        return int(result.scalar_one())
+
+    async def revoke_share_link(
+        self, tenant_id: uuid.UUID, dashboard_id: uuid.UUID, link_id: uuid.UUID, now: dt.datetime
+    ) -> ShareLink | None:
+        link = (
+            await self._session.execute(
+                select(ShareLink).where(
+                    ShareLink.tenant_id == tenant_id,
+                    ShareLink.dashboard_id == dashboard_id,
+                    ShareLink.id == link_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if link is not None and link.revoked_at is None:
+            link.revoked_at = now
+            await self._session.flush()
+        return link
+
+    async def find_share_link(self, token_hash: str) -> ShareLink | None:
+        """Only inside `share_lookup_scope`: the one lookup made before a tenant is known."""
+        result = await self._session.execute(
+            select(ShareLink).where(ShareLink.token_hash == token_hash)
+        )
+        return result.scalar_one_or_none()

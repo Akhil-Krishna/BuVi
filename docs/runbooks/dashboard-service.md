@@ -32,6 +32,14 @@
 - **Artifacts are immutable.** `buvi_app` cannot `UPDATE` or `DELETE` them; do not grant it.
 - **Dashboard visibility:** `private` means owner only. `tenant` means readable by the tenant, changeable by the owner only. `link` is reserved for share links (Phase A10).
 
+## Share links and exports (Phase A10, ADR 0013)
+
+- **Create:** `POST /dashboards/{id}/share-links` (the owner, `dashboard:share`, step-up). The token is shown once, stored as SHA-256, and lives at most `DASHBOARD_SHARE_LINK_MAX_HOURS`. A dashboard can have at most `DASHBOARD_MAX_ACTIVE_SHARE_LINKS` active links (`409 SHARE_LINK_LIMIT`).
+- **A leaked link:** the owner, or any `org_admin`, calls `DELETE /dashboards/{id}/share-links/{link_id}`. The next guest request gets `404`. Revoking never needs step-up or `dashboard:share`.
+- **Guest view:** `GET /share/{token}` is public, rate-limited per IP at the gateway, and sent with `Cache-Control: no-store` and `Referrer-Policy: no-referrer`. It carries names, chart specs and data only. A tile's data is omitted when its result has expired or has more rows than `DASHBOARD_EXPORT_STEP_UP_ROWS`.
+- **Exports:** `GET /artifacts/{id}/data` returning more rows than `DASHBOARD_EXPORT_STEP_UP_ROWS` needs a fresh step-up (Section 7.3). Otherwise it is refused with `403 STEP_UP_REQUIRED`.
+- **Known gap:** a link created by a user who is later deactivated keeps working until it expires or an admin revokes it. Identity does not notify this service of deactivations.
+
 ## Deploy / rollback
 
 1. `alembic upgrade head` as `buvi_migrator`, then roll the deployment.
