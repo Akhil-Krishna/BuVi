@@ -2611,18 +2611,42 @@ flag). A10 completes authorization:
 
 ### Phase A12 — Backend completeness gate (exit Track A here)
 
-- Assemble a single automated suite (`scripts/backend-e2e.sh` or a pytest "system" marker) that
-  runs the **entire** vertical slice plus admin plus MCP plus notifications, against
-  `docker-compose.dev.yml`, using only HTTP/SSE clients and message-queue assertions — no
-  browser, no Next.js.
+- Assemble a single automated suite, `scripts/backend-e2e.sh` (`make backend-e2e`). It runs the
+  **entire** vertical slice plus admin plus MCP plus notifications against
+  `docker-compose.dev.yml`, using only HTTP/SSE clients and message-queue assertions — no browser,
+  no Next.js. It chains, and fails on any failure:
+  - every per-phase live DoD flow (`scripts/test-*.sh`, A1–A11), each starting from the shared
+    self-verifying reset;
+  - a `system`-marked pytest suite (`tests/system/`) run against the live stack;
+  - OpenAPI validation of every exported document;
+  - a smoke test through the generated TypeScript client.
+
+  CI runs it in its own job, bringing up the compose stack on the runner.
 - Run the full Section 24 security-loophole checklist as automated tests where the item is
-  testable without a UI (all of them are, by construction, since every control in this document
-  is enforced server-side per Section 7.4).
+  testable without a UI.
+  - `tests/system/section_24.py` is a registry that maps every checklist bullet to the tests
+    enforcing it (unit, integration, live-flow checks, and new system tests against the running
+    stack). A test fails if the spec gains a bullet the registry does not cover, or if a
+    referenced test disappears.
+  - Bullets that are not request-path controls are marked **deferred** with their phase, never
+    silently passed:
+    - supply chain: pinned image digests, cosign signing, image scanning, CI OIDC federation;
+    - the tenant-deletion cascade (Section 29);
+    - per-tenant MCP invocation limits.
+    All three are Phase C1 items.
+- The intermittent Phase A5 crash-resume stall (ADR 0014) is diagnosed and fixed first: a
+  suite that CI runs on every push must be deterministic.
 - **DoD (hard gate — do not start Track B until this passes):** the suite is green in CI; every
   service exports a valid OpenAPI doc into `contracts/openapi/`; `scripts/gen-client.sh` produces
   a working generated TypeScript client in `packages/ts/api-client` from those specs. This
   generated client is what Track B will import — Track B therefore starts from a contract that is
   already implemented, already running, and already tested.
+  - The client is generated from `contracts/openapi/api-gateway.json`, the only surface a browser
+    reaches (the gateway composes the owning services' schemas).
+  - Generation uses `openapi-typescript` for the types and `openapi-fetch` for a typed `fetch`
+    wrapper. The output is committed.
+  - `gen-client.sh --check` fails CI on drift from the contract.
+  - "Working" means it type-checks and the suite drives the running gateway through it.
 
 ---
 
@@ -2711,6 +2735,11 @@ flag). A10 completes authorization:
   Today `verify-full` uses only the system trust store and has not been exercised live (ADR 0011).
 - Run every item in Section 24's checklist as an explicit test or manual review sign-off recorded
   in `docs/runbooks/security-review-<date>.md`.
+  - Phase A12's registry (`tests/system/section_24.py`) lists the items still deferred here:
+    - supply chain: pinned base-image digests, cosign-signed images, image scanning that blocks
+      on high/critical findings, and short-lived OIDC federation for CI's cloud access;
+    - the tenant-deletion cascade across every owning service (Section 29);
+    - per-tenant MCP invocation limits (below).
 - Complete Section 28 (Terraform environments, DR drill), Section 22.1 (SLO dashboards/alerts),
   Section 29 (data export/delete flows).
 - Outbound network hardening (Sections 15, 24, 28):
