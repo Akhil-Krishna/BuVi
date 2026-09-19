@@ -1243,7 +1243,7 @@ optional `Idempotency-Key` header. All responses use the error envelope in Secti
 | Semantic | `GET/POST /semantic/dimensions` | `semantic:manage` | a named, catalogued non-PII column |
 | Billing | `GET /billing/usage` | `billing:read` | `?start=&end=` (UTC dates, default this month, max 366 days): LLM input/output tokens (and by stage), query minutes, current seats (Phase A11) |
 | Billing | `GET /billing/quotas` | `billing:read` | today's LLM token budget: limit, used, remaining, reset time (Phase A10) |
-| Billing | `POST /billing/subscription` | `billing:manage`, step-up | — |
+| Billing | `POST /billing/subscription` | `billing:manage`, step-up | post-GA backlog: needs a payment provider and an owning service, neither of which Section 3 names; api-gateway serves it as a documented `501` |
 | Audit | `GET /admin/audit` | `audit:read` | filter by actor/date/event_type |
 | Notifications | `GET /me/notifications` | session | the caller's in-app notifications, newest first; `?unread_only=`, cursor-paginated |
 | Notifications | `POST /me/notifications/{id}/read` | session + own notification | marks read; someone else's id is `404` (Phase A11) |
@@ -2738,6 +2738,10 @@ flag). A10 completes authorization:
 
 - **Four-eyes semantic approval:** a tenant policy that stops a metric's creator from approving
   it (ADR 0010). It needs the tenant policy in semantic-service's authorization path.
+
+- **Subscriptions and invoicing (`POST /billing/subscription`).** It needs a payment provider, an
+  owning service (Section 3 names none for billing) and a plan model. Phase A11 meters usage
+  (`/billing/usage`) and A10 enforces quotas; changing a plan waits for this.
 
 - **Richer metrics:** ratio metrics (e.g. average order value as revenue / orders), metric-level
   filters, and multi-table metrics over approved `semantic.join_rules`, with join-rule management
