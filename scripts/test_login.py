@@ -114,6 +114,19 @@ def api(method: str, path: str, session: str | None = None, **kwargs: object) ->
         return svc.request(method, path, headers=headers, **kwargs)  # type: ignore[arg-type]
 
 
+def patient_api(
+    method: str, path: str, session: str | None = None, **kwargs: object
+) -> httpx.Response:
+    """For checks on auth-tier routes (10 per IP, then one per 5 s): honour one `Retry-After`,
+    as a real client does, so a fast machine's burst does not turn the check into a rate-limit
+    test. The rate-limit checks themselves call `api` directly."""
+    response = api(method, path, session, **kwargs)
+    if response.status_code == 429:
+        time.sleep(int(response.headers.get("retry-after", "5")) + 1)
+        response = api(method, path, session, **kwargs)
+    return response
+
+
 def mailed_token(email: str) -> str | None:
     for _ in range(20):
         items = httpx.get(f"{MAILHOG}/api/v2/search", params={"kind": "to", "query": email}).json()
@@ -234,8 +247,12 @@ def main() -> int:
             )
         session, header = login(username, "POST", accept_path)
         check(f"{role}: invitation redeemed through matching IdP login", bool(session))
-        reuse = api("POST", accept_path)
-        check(f"{role}: invitation token single-use (400)", reuse.status_code == 400)
+        reuse = patient_api("POST", accept_path)
+        check(
+            f"{role}: invitation token single-use (400)",
+            reuse.status_code == 400,
+            f"{reuse.status_code} {reuse.text[:200]}",
+        )
         check_cookie(role, header)
         user_ids[role] = str(check_session(role, session, tenant_id).get("user_id", ""))
         if role == "client":
