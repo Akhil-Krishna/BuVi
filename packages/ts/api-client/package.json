@@ -1,0 +1,35 @@
+{
+  "name": "@buvi/api-client",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Typed client for the BuVi public API, generated from contracts/openapi/api-gateway.json (Phase A12). Do not edit src/schema.d.ts by hand: run scripts/gen-client.sh.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "generate": "openapi-typescript ../../../contracts/openapi/api-gateway.json -o src/schema.d.ts",
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "smoke": "node dist/smoke.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "openapi-fetch": "0.17.0"
+  },
+  "devDependencies": {
+    "@types/node": "20.19.25",
+    "openapi-typescript": "7.13.0",
+    "typescript": "5.9.3"
+  }
+}
