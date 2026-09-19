@@ -234,6 +234,8 @@ class FakeServices:
     engine: str = "postgres"
     artifact_posts: int = 0
     dashboard_down: bool = False
+    #: query-gateway answers `429 QUERY_CONCURRENCY_LIMITED` to this many executions first.
+    capacity_refusals: int = 0
 
     def add_user(self, tenant_id: uuid.UUID, roles: set[str]) -> Caller:
         token = f"sess-{uuid.uuid4().hex}"
@@ -430,6 +432,13 @@ class FakeServices:
                         "tables": ["sales.orders"],
                         "normalized_sql_sha256": "0" * 64,
                     },
+                )
+            if self.capacity_refusals > 0:
+                self.capacity_refusals -= 1
+                return httpx.Response(
+                    429,
+                    json={"error": {"code": "QUERY_CONCURRENCY_LIMITED"}},
+                    headers={"Retry-After": "2"},
                 )
             return httpx.Response(
                 200,

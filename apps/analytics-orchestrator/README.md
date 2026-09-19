@@ -10,7 +10,7 @@ user-safe stage events.
 | Owner | platform / analytics |
 | Schema | `analytics` (Section 8.4: `conversations`, `messages`, `runs`, `run_events` append-only; RLS) |
 | Port | 8004 |
-| Public API (via api-gateway, `chat:use`) | `POST /api/v1/conversations` · `POST /api/v1/conversations/{id}/messages` (`Idempotency-Key`) · `POST /api/v1/runs/{id}/cancel` |
+| Public API (via api-gateway, `chat:use`) | `POST /api/v1/conversations` · `POST /api/v1/conversations/{id}/messages` (`Idempotency-Key`) · `POST /api/v1/runs/{id}/cancel` · `GET /api/v1/billing/quotas` (`billing:read`; Phase A10) |
 | Internal API | `POST /internal/v1/runs/{id}/execute` (worker-runtime, `analytics-orchestrator:execute`) · `GET /internal/v1/runs/{id}/events` (api-gateway SSE replay, `analytics-orchestrator:events`) |
 | Contract | `contracts/openapi/analytics-orchestrator.json`; events `contracts/events/*.v1.json`; `contracts/json-schema/{AnalyticsRunEvent,ChartSpec}.json` |
 | Health | `/health/live`; `/health/ready` (Postgres, Redis, NATS required) |

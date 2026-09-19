@@ -40,6 +40,7 @@ from analytics_orchestrator.application.services.ports import (
     MetadataContext,
     OutputT,
     QueryCall,
+    QueryCapacityError,
     QueryDeniedError,
     QueryExecutionError,
     QueryGateway,
@@ -83,6 +84,7 @@ from analytics_orchestrator.domain.value_objects.failures import (
 )
 from analytics_orchestrator.domain.value_objects.run_state import (
     AnalyticsRunState,
+    ExecutionSummary,
     SchemaContext,
     SemanticState,
 )
@@ -108,6 +110,10 @@ class FlowLimits:
     query_timeout_ms: int
     context_max_tables: int
     max_repairs: int
+    #: Section 20: a tenant over its query concurrency cap is retried briefly, then the run
+    #: fails QUERY_CONCURRENCY_LIMITED (never UPSTREAM_UNAVAILABLE).
+    query_capacity_retries: int = 3
+    query_capacity_backoff_seconds: float = 1.0
 
 
 @dataclass(frozen=True)
@@ -499,11 +505,9 @@ class RunExecutor:
     async def _execute_query(self, state: AnalyticsRunState) -> None:
         assert state.generated_sql is not None
         try:
-            state.execution = await self._queries.execute(
-                self._query_call(state, state.generated_sql),
-                max_rows=self._limits.query_max_rows,
-                timeout_ms=self._limits.query_timeout_ms,
-            )
+            state.execution = await self._execute_with_capacity_retries(state, state.generated_sql)
+        except QueryCapacityError:
+            raise RunFailedError(FailureCode.QUERY_CONCURRENCY_LIMITED) from None
         except QueryRejectedError:
             raise RunFailedError(FailureCode.QUERY_REJECTED) from None
         except QueryDeniedError:
@@ -516,6 +520,24 @@ class RunExecutor:
             raise RunFailedError(FailureCode.QUERY_FAILED) from None
         except DependencyUnavailableError:
             raise RunFailedError(FailureCode.UPSTREAM_UNAVAILABLE) from None
+
+    async def _execute_with_capacity_retries(
+        self, state: AnalyticsRunState, sql: str
+    ) -> ExecutionSummary:
+        """The tenant's other queries finish in seconds: wait a little (exponential backoff)
+        rather than fail a run the user is watching."""
+        for attempt in range(self._limits.query_capacity_retries + 1):
+            try:
+                return await self._queries.execute(
+                    self._query_call(state, sql),
+                    max_rows=self._limits.query_max_rows,
+                    timeout_ms=self._limits.query_timeout_ms,
+                )
+            except QueryCapacityError:
+                if attempt == self._limits.query_capacity_retries:
+                    raise
+                await asyncio.sleep(self._limits.query_capacity_backoff_seconds * 2**attempt)
+        raise QueryCapacityError()  # unreachable: the loop returns or raises
 
     async def _analyze_result(self, state: AnalyticsRunState) -> None:
         """ADR 0009: the model reads aggregate statistics only; every number it writes must be

@@ -23,6 +23,7 @@ class FailureCode(StrEnum):
     QUERY_REJECTED = "QUERY_REJECTED"
     QUERY_TIMEOUT = "QUERY_TIMEOUT"
     QUERY_FAILED = "QUERY_FAILED"
+    QUERY_CONCURRENCY_LIMITED = "QUERY_CONCURRENCY_LIMITED"
     CHART_INVALID = "CHART_INVALID"
     MODEL_UNAVAILABLE = "MODEL_UNAVAILABLE"
     MODEL_REFUSED = "MODEL_REFUSED"
@@ -34,6 +35,9 @@ class FailureCode(StrEnum):
 MESSAGES: Final[dict[FailureCode, str]] = {
     FailureCode.RUN_BUDGET_EXCEEDED: "This request exceeded its processing budget.",
     FailureCode.TENANT_BUDGET_EXCEEDED: "Your organization has reached today's analysis limit.",
+    FailureCode.QUERY_CONCURRENCY_LIMITED: (
+        "Your organization is running too many queries at once. Try again shortly."
+    ),
     FailureCode.BUDGET_UNAVAILABLE: "Usage limits could not be checked. Try again shortly.",
     FailureCode.STAGE_TIMEOUT: "A step took too long to finish.",
     FailureCode.RUN_TIMEOUT: "The request took too long to finish.",

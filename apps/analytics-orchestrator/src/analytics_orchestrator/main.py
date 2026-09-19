@@ -103,6 +103,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         )
     redis = Redis.from_url(settings.redis_url, socket_timeout=2.0, socket_connect_timeout=2.0)
     app.state.redis = redis
+    app.state.token_ledger = RedisTokenLedger(redis)
     app.state.events = RedisRunEventPublisher(redis)
 
     publisher: JetStreamPublisher | None = None
@@ -125,7 +126,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         fallback=ModelRoute(provider, settings.llm_fallback_model)
         if settings.llm_fallback_model
         else None,
-        ledger=RedisTokenLedger(redis),
+        ledger=app.state.token_ledger,
         usage=usage,
         limits=BudgetLimits(
             run_tokens=settings.run_token_budget,
@@ -153,6 +154,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             query_timeout_ms=settings.query_timeout_ms,
             context_max_tables=settings.context_max_tables,
             max_repairs=settings.max_repair_attempts,
+            query_capacity_retries=settings.query_capacity_retries,
+            query_capacity_backoff_seconds=settings.query_capacity_backoff_seconds,
         ),
         after_step=app.state.after_step,
     )

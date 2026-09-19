@@ -143,6 +143,10 @@ class QueryExecutionError(Exception):
     pass
 
 
+class QueryCapacityError(Exception):
+    """429 QUERY_CONCURRENCY_LIMITED: the tenant is at its query concurrency cap (Section 20)."""
+
+
 @dataclass(frozen=True)
 class QueryCall:
     tenant_id: uuid.UUID

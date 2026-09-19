@@ -80,6 +80,10 @@ class Settings(BaseSettings):
 
     query_max_rows: int = Field(default=1_000, ge=1)
     query_timeout_ms: int = Field(default=30_000, ge=100)
+    #: A tenant at its query concurrency cap (429) is retried this many times, with
+    #: exponential backoff from `query_capacity_backoff_seconds`, before the run fails.
+    query_capacity_retries: int = Field(default=3, ge=0, le=10)
+    query_capacity_backoff_seconds: float = Field(default=1.0, ge=0)
     context_max_tables: int = Field(default=8, ge=1, le=50)
 
     @property

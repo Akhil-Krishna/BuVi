@@ -21,6 +21,7 @@ from analytics_orchestrator.application.services.ports import (
     DelegatedUserDeniedError,
     DependencyUnavailableError,
     QueryCall,
+    QueryCapacityError,
     QueryDeniedError,
     QueryExecutionError,
     QueryNotActiveError,
@@ -209,6 +210,8 @@ class QueryGatewayClient(_ServiceClient):
             raise QueryNotActiveError()
         if response.status_code == 504 and code == "QUERY_TIMEOUT":
             raise QueryTimedOutError()
+        if response.status_code == 429 and code == "QUERY_CONCURRENCY_LIMITED":
+            raise QueryCapacityError()
         if response.status_code == 422:
             raise QueryExecutionError()
         raise DependencyUnavailableError()

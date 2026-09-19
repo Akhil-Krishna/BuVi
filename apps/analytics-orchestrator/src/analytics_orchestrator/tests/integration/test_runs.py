@@ -561,3 +561,83 @@ async def test_a_full_run_opens_no_outbound_connection_and_no_chroma_client(
     monkeypatch.undo()
     assert result["status"] == "completed", result
     assert attempted == []
+
+
+# --- Quotas (Sections 20, 23; Phase A10) -----------------------------------------------------
+
+
+def _executions(services: FakeServices) -> int:
+    return sum(1 for call in services.query_calls if call["path"] == "/internal/v1/queries")
+
+
+async def test_a_busy_tenant_is_retried_then_succeeds(
+    postgres: PostgresInfo,
+    redis_url: str,
+    services: FakeServices,
+    provider: ScriptedProvider,
+    queue: MemoryQueue,
+    issuer: ServiceTokenIssuer,
+    tenant: uuid.UUID,
+) -> None:
+    services.capacity_refusals = 2
+    settings = make_settings(postgres, redis_url, query_capacity_backoff_seconds=0.01)
+    async with running(settings, services, provider, queue, issuer) as h:
+        who = services.add_user(tenant, {"client"})
+        services.add_data_source(tenant)
+        result = (await h.execute(who, await h.start_run(who))).json()
+    assert result["status"] == "completed", result
+    assert _executions(services) == 3
+
+
+async def test_a_quota_breach_is_a_documented_failure_not_upstream_unavailable(
+    postgres: PostgresInfo,
+    redis_url: str,
+    services: FakeServices,
+    provider: ScriptedProvider,
+    queue: MemoryQueue,
+    issuer: ServiceTokenIssuer,
+    tenant: uuid.UUID,
+) -> None:
+    """Phase A10 DoD: before A10 this 429 fell through to UPSTREAM_UNAVAILABLE."""
+    services.capacity_refusals = 100
+    settings = make_settings(
+        postgres, redis_url, query_capacity_retries=2, query_capacity_backoff_seconds=0.01
+    )
+    async with running(settings, services, provider, queue, issuer) as h:
+        who = services.add_user(tenant, {"client"})
+        services.add_data_source(tenant)
+        result = (await h.execute(who, await h.start_run(who))).json()
+    assert result["error_code"] == "QUERY_CONCURRENCY_LIMITED"
+    assert _executions(services) == 3  # the first try and two retries, then it stops
+
+
+async def test_billing_quotas_show_the_enforced_token_budget(
+    postgres: PostgresInfo,
+    redis_url: str,
+    services: FakeServices,
+    provider: ScriptedProvider,
+    queue: MemoryQueue,
+    issuer: ServiceTokenIssuer,
+    tenant: uuid.UUID,
+) -> None:
+    ledger = aioredis.Redis.from_url(redis_url)
+    await ledger.set(f"llm:tokens:{tenant}:{dt.datetime.now(dt.UTC):%Y%m%d}", 1_500_000)
+    await ledger.aclose()
+    async with running(make_settings(postgres, redis_url), services, provider, queue, issuer) as h:
+        billing = services.add_user(tenant, {"billing_admin"})
+        response = await h.client.get("/api/v1/billing/quotas", headers=billing.headers)
+        assert response.status_code == 200, response.text
+        quota = response.json()["llm_tokens"]
+        assert (quota["limit"], quota["used"], quota["remaining"]) == (
+            2_000_000,
+            1_500_000,
+            500_000,
+        )
+        assert dt.datetime.fromisoformat(quota["resets_at"]) > dt.datetime.now(dt.UTC)
+        client = services.add_user(tenant, {"client"})
+        assert (
+            await h.client.get("/api/v1/billing/quotas", headers=client.headers)
+        ).status_code == 403
+        other = services.add_user(uuid.uuid4(), {"org_admin"})
+        mine = (await h.client.get("/api/v1/billing/quotas", headers=other.headers)).json()
+        assert mine["llm_tokens"]["used"] == 0  # per tenant

@@ -124,6 +124,23 @@
         "title": "MessageCreateRequest",
         "type": "object"
       },
+      "QuotasResponse": {
+        "properties": {
+          "llm_tokens": {
+            "$ref": "#/components/schemas/TokenQuota"
+          },
+          "run_token_limit": {
+            "title": "Run Token Limit",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "llm_tokens",
+          "run_token_limit"
+        ],
+        "title": "QuotasResponse",
+        "type": "object"
+      },
       "RunAcceptedResponse": {
         "properties": {
           "conversation_id": {
@@ -202,6 +219,41 @@
         "title": "RunStatusResponse",
         "type": "object"
       },
+      "TokenQuota": {
+        "properties": {
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "period": {
+            "const": "day",
+            "title": "Period",
+            "type": "string"
+          },
+          "remaining": {
+            "title": "Remaining",
+            "type": "integer"
+          },
+          "resets_at": {
+            "format": "date-time",
+            "title": "Resets At",
+            "type": "string"
+          },
+          "used": {
+            "title": "Used",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "period",
+          "limit",
+          "used",
+          "remaining",
+          "resets_at"
+        ],
+        "title": "TokenQuota",
+        "type": "object"
+      },
       "ValidationError": {
         "properties": {
           "ctx": {
@@ -251,6 +303,27 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/v1/billing/quotas": {
+      "get": {
+        "operationId": "quotas_api_v1_billing_quotas_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuotasResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Quotas",
+        "tags": [
+          "billing"
+        ]
+      }
+    },
     "/api/v1/conversations": {
       "post": {
         "operationId": "create_conversation_api_v1_conversations_post",

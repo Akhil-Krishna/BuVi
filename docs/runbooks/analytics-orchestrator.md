@@ -49,6 +49,11 @@
 - **Never** delete or update `analytics.run_events` (append-only; `UPDATE`/`DELETE` are revoked). SSE replay depends on it.
 - **CrewAI:** telemetry, tracing and the version check are forced off (package `__init__`, Dockerfile). Any egress from this service other than identity, metadata, query-gateway, visualization, dashboard, Redis, NATS, Postgres and the model provider is a defect. See ADR 0006 on the chromadb risk acceptance.
 
+## Quotas (Phase A10, ADR 0013)
+
+- **`QUERY_CONCURRENCY_LIMITED` runs:** query-gateway refused the tenant's query because too many were already running. The run first retries `ANALYTICS_QUERY_CAPACITY_RETRIES` times, with backoff starting at `ANALYTICS_QUERY_CAPACITY_BACKOFF_SECONDS`. Frequent failures mean the tenant's concurrency cap is too low for its usage.
+- **`GET /billing/quotas`** (`billing:read`) shows today's LLM token budget: limit, used, remaining and reset time (UTC midnight). It reads the same Redis ledger the ModelRouter enforces.
+
 ## Deploy / rollback
 
 1. `alembic upgrade head` as `buvi_migrator`, then roll the deployment. In-flight runs resume on the new pods.
