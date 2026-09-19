@@ -19,9 +19,11 @@ from __future__ import annotations
 import asyncio
 import datetime as dt
 import logging
+import traceback
 import uuid
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Protocol
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -249,7 +251,19 @@ class RunExecutor:
         try:
             async with asyncio.timeout(self._limits.stage_timeout_seconds):
                 await handler(state)
-        except TimeoutError:
+        except TimeoutError as timeout:
+            # Where the stage was stuck: the innermost frames of the cancelled await (file,
+            # line, function only -- never locals). A stall then names its own cause.
+            logger.error(
+                "stage timed out",
+                extra={
+                    "context": {
+                        "run_id": state.id,
+                        "step": step,
+                        "awaiting": _awaiting(timeout),
+                    }
+                },
+            )
             raise RunFailedError(FailureCode.STAGE_TIMEOUT) from None
         state.completed_steps.append(step)
         await self._persist(state, step)
@@ -882,3 +896,10 @@ class RunExecutor:
             await db.commit()
         for event in published:
             await self._publish(current, event)
+
+
+def _awaiting(error: BaseException, depth: int = 8) -> list[str]:
+    """The innermost `depth` frames of the cancellation behind a timeout."""
+    cancelled = error.__context__ or error
+    frames = traceback.extract_tb(cancelled.__traceback__)[-depth:]
+    return [f"{Path(f.filename).name}:{f.lineno}:{f.name}" for f in frames]

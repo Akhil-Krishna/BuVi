@@ -15,6 +15,17 @@ name: buvi-dev
 services:
   postgres:
     image: postgres:16
+    # A transaction whose client died (e.g. behind Docker Desktop's port proxy) releases its
+    # locks within a minute instead of holding them indefinitely; lock waits are logged so a
+    # stall names its blocker (ADR 0015).
+    command:
+      - postgres
+      - -c
+      - idle_in_transaction_session_timeout=60s
+      - -c
+      - log_lock_waits=on
+      - -c
+      - deadlock_timeout=1s
     environment:
       POSTGRES_PASSWORD: devpass
       POSTGRES_DB: agentic_bi
