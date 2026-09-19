@@ -13,5 +13,14 @@ Contract:
 - `resolve_host(host, port)`: resolve once, IPv4 first. Raises `HostResolutionError` with no detail.
   Callers validate the result and connect to exactly those addresses (DNS rebinding defense).
 
-Pure standard library. The SSRF-safe HTTP client for MCP and webhooks (Section 33) joins this
-package when those phases land.
+- `parse_endpoint(url, policy)` -> `Endpoint`: registration-time URL rules (HTTPS unless the host is
+  allow-listed, no credentials/query/fragment, no blocked IP literal or numeric host spelling).
+  Raises `EndpointRejected` with a fixed `reason`. Used by mcp-gateway (servers) and
+  notification-service (webhooks); moved here from mcp-gateway in Phase A11.
+- `pin_endpoint(endpoint, policy, resolver)` -> `PinnedEndpoint`: resolve now, check every answer,
+  connect to the first. `request_url` targets the address; `extensions` keep TLS SNI (and
+  certificate verification) on the hostname. Raises `DestinationNotAllowedError` or
+  `HostResolutionError`.
+
+Pure standard library: each service keeps its own HTTP client (MCP streams responses; webhooks
+only post), built with no redirects, no keep-alive and no environment proxies.

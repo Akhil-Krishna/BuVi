@@ -1,7 +1,7 @@
-"""MCP endpoint URLs (Section 15), checked at registration.
+"""Outbound endpoint URLs (Section 15), checked at registration: MCP servers and webhooks.
 
 Registration never touches the network: a hostname is judged on its resolved addresses at
-request time (`infrastructure/mcp/transport.py`). What *can* be refused from the text alone is:
+request time (`platform_egress.pin_endpoint`). What *can* be refused from the text alone is:
 
 * anything but `https` -- plain `http` only for an allow-listed internal host (dev, tests);
 * credentials, a query string or a fragment in the URL (a token belongs in the secret store, and
@@ -19,7 +19,7 @@ from dataclasses import dataclass
 from typing import Final
 from urllib.parse import urlsplit
 
-from platform_egress import EgressPolicy
+from platform_egress.policy import EgressPolicy
 
 MAX_URL_LENGTH: Final = 2048
 _LABEL: Final = re.compile(r"^(?!-)[a-z0-9-]{1,63}(?<!-)$")

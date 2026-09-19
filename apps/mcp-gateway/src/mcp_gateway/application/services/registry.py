@@ -20,7 +20,6 @@ from mcp_gateway.domain.errors import (
     ToolNotFoundError,
     UpstreamError,
 )
-from mcp_gateway.domain.policies.endpoint import Endpoint, EndpointRejected, parse_endpoint
 from mcp_gateway.domain.policies.tool_policy import (
     default_policy,
     manifest_problems,
@@ -30,10 +29,16 @@ from mcp_gateway.domain.policies.tool_policy import (
 from mcp_gateway.infrastructure.audit.sink import AuditRecord, AuditSink
 from mcp_gateway.infrastructure.db.models import Server, Tool, ToolGrant
 from mcp_gateway.infrastructure.db.repositories.mcp_repository import McpRepository
-from mcp_gateway.infrastructure.mcp.egress import DestinationNotAllowedError, UpstreamFailure
+from mcp_gateway.infrastructure.mcp.egress import UpstreamFailure
 from platform_auth import Principal, StepUpRequiredError
 from platform_auth.permissions import TENANT_ROLES
-from platform_egress import EgressPolicy
+from platform_egress import (
+    DestinationNotAllowedError,
+    EgressPolicy,
+    Endpoint,
+    EndpointRejected,
+    parse_endpoint,
+)
 from platform_secrets import SecretStore, SecretStoreError
 
 logger = logging.getLogger(__name__)

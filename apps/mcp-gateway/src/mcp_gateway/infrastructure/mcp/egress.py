@@ -16,20 +16,21 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 
 import httpx
 
-from mcp_gateway.domain.policies.endpoint import Endpoint
-from platform_egress import EgressPolicy, HostResolutionError, IPAddress, resolve_host
-
-Resolver = Callable[[str, int], Awaitable[list[IPAddress]]]
-
-
-class DestinationNotAllowedError(Exception):
-    """The endpoint now resolves to an address Section 15 refuses."""
+from platform_egress import (
+    EgressPolicy,
+    Endpoint,
+    HostResolutionError,
+    PinnedEndpoint,
+    Resolver,
+    pin_endpoint,
+    resolve_host,
+)
 
 
 class UpstreamFailure(Exception):  # noqa: N818 - carries a fixed reason code, not the server's text
@@ -60,32 +61,13 @@ def build_http_client(
     )
 
 
-@dataclass(frozen=True)
-class PinnedEndpoint:
-    endpoint: Endpoint
-    address: IPAddress
-
-    @property
-    def request_url(self) -> str:
-        host = f"[{self.address}]" if self.address.version == 6 else str(self.address)
-        return f"{self.endpoint.scheme}://{host}:{self.endpoint.port}{self.endpoint.path}"
-
-    @property
-    def extensions(self) -> dict[str, str]:
-        """TLS SNI (and so certificate verification) against the hostname, not the address."""
-        if self.endpoint.scheme == "https" and ":" not in self.endpoint.host:
-            return {"sni_hostname": self.endpoint.host}
-        return {}
-
-
 async def pin(endpoint: Endpoint, egress: EgressPolicy, resolver: Resolver) -> PinnedEndpoint:
+    """`platform_egress.pin_endpoint`, with an unresolvable host as an upstream failure.
+    Raises `platform_egress.DestinationNotAllowedError` for a refused address."""
     try:
-        addresses = await resolver(endpoint.host, endpoint.port)
+        return await pin_endpoint(endpoint, egress, resolver)
     except HostResolutionError:
         raise UpstreamFailure("unresolvable") from None
-    if not egress.permits(endpoint.host, addresses):
-        raise DestinationNotAllowedError()
-    return PinnedEndpoint(endpoint, addresses[0])
 
 
 class EgressClient:

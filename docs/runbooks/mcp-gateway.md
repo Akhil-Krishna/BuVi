@@ -50,3 +50,8 @@
 
 1. `alembic upgrade head` as `buvi_migrator`, then roll the deployment. Register `mcp-gateway` as a service client in identity-service (introspection plus `mcp.` audit events), and give api-gateway the `mcp-gateway:proxy` audience.
 2. Rollback: redeploy the previous image. `alembic downgrade -1` drops every registration and the invocation history; use it only for a failed first deployment.
+
+## Phase A11
+
+- A published `mcp.invocation.denied` now reaches every active `org_admin` in-app and by email, and any webhook subscribed to it (notification-service).
+- The endpoint rules and connect-time pinning now live in `platform-egress` (`parse_endpoint`, `pin_endpoint`), shared with webhook delivery. The behaviour is unchanged.

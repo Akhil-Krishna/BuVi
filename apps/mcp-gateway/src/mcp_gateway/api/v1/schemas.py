@@ -8,8 +8,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
 
-from mcp_gateway.domain.policies.endpoint import MAX_URL_LENGTH
 from mcp_gateway.domain.policies.tool_policy import MAX_TOOLS, ToolClass
+from platform_egress import MAX_URL_LENGTH
 
 
 class HealthResponse(BaseModel):

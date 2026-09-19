@@ -4,8 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from mcp_gateway.domain.policies.endpoint import EndpointRejected, parse_endpoint
-from platform_egress import EgressPolicy
+from platform_egress import EgressPolicy, EndpointRejected, parse_endpoint
 
 PUBLIC = EgressPolicy()
 DEV = EgressPolicy.from_hosts(["localhost", "mcp-sample.internal"])

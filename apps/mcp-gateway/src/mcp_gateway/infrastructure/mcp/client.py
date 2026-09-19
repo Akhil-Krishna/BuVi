@@ -22,14 +22,9 @@ from typing import Any, Final
 
 import httpx
 
-from mcp_gateway.domain.policies.endpoint import Endpoint
 from mcp_gateway.domain.policies.tool_policy import DiscoveredTool
-from mcp_gateway.infrastructure.mcp.egress import (
-    EgressClient,
-    PinnedEndpoint,
-    UpstreamFailure,
-    content_type,
-)
+from mcp_gateway.infrastructure.mcp.egress import EgressClient, UpstreamFailure, content_type
+from platform_egress import Endpoint, PinnedEndpoint
 
 CLIENT_PROTOCOL: Final = "2025-06-18"
 SUPPORTED_PROTOCOLS: Final = frozenset({"2025-03-26", "2025-06-18", "2025-11-25"})

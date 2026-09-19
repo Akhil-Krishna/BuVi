@@ -36,10 +36,10 @@ from mcp_gateway.infrastructure.audit.sink import AuditRecord, AuditSink
 from mcp_gateway.infrastructure.db.models import Server, Tool
 from mcp_gateway.infrastructure.db.repositories.mcp_repository import McpRepository
 from mcp_gateway.infrastructure.mcp.client import ToolResult
-from mcp_gateway.infrastructure.mcp.egress import DestinationNotAllowedError, UpstreamFailure
+from mcp_gateway.infrastructure.mcp.egress import UpstreamFailure
 from platform_auth import Principal, StepUpRequiredError
 from platform_contracts import McpInvocationDenied
-from platform_egress import EgressPolicy
+from platform_egress import DestinationNotAllowedError, EgressPolicy
 from platform_observability import request_id_var
 from platform_secrets import SecretStore
 
