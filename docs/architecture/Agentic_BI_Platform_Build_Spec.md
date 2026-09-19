@@ -1190,8 +1190,8 @@ optional `Idempotency-Key` header. All responses use the error envelope in Secti
 | Dashboards | `POST /dashboards/{id}/tiles` | `dashboard:pin` + resource-tenant check | body `{artifact_id}`; dashboard owner only |
 | Dashboards | `PATCH /tiles/{id}` | `dashboard:pin` + resource-tenant check | layout/overrides; dashboard owner only; overrides limited to Section 17's `options` keys |
 | Dashboards | `POST /dashboards/{id}/share-links` | `dashboard:share`, step-up | dashboard owner only; time-boxed token, returned once |
-| Dashboards | `GET /dashboards/{id}/share-links` | `dashboard:share` + resource-tenant check | owner only; never the token |
-| Dashboards | `DELETE /dashboards/{id}/share-links/{link_id}` | `dashboard:share` + resource-tenant check | owner only; revoke now |
+| Dashboards | `GET /dashboards/{id}/share-links` | `dashboard:read` + resource-tenant check | the owner, or any `org_admin`; never the token |
+| Dashboards | `DELETE /dashboards/{id}/share-links/{link_id}` | `dashboard:read` + resource-tenant check | the owner, or any `org_admin`; revoke now. Stopping a share never needs more than starting one did |
 | Data sources | `GET/POST /data-sources` | `data:manage` | create = pending until secret set |
 | Data sources | `POST /data-sources/{id}/secret` | `data:manage`, step-up | writes to Vault via metadata-service→secrets |
 | Data sources | `POST /data-sources/{id}/test` | `data:manage` | sanitized connectivity result only |
