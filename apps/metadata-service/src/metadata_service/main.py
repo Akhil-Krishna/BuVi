@@ -41,7 +41,7 @@ from platform_auth import (
     install_service_token_verifier,
 )
 from platform_egress import EgressPolicy
-from platform_observability import RequestIdMiddleware, install_error_handlers
+from platform_observability import RequestIdMiddleware, docs_routes, install_error_handlers
 from platform_secrets import SecretStore
 
 logger = logging.getLogger(__name__)
@@ -141,6 +141,7 @@ def create_app(
             "for the BuVi platform (build spec Sections 8.2, 13.1)."
         ),
         lifespan=lifespan,
+        **docs_routes(resolved.environment),
     )
     app.state.settings = resolved
     app.state.secrets = secrets

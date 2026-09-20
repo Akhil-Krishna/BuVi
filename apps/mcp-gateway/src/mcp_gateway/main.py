@@ -43,7 +43,7 @@ from platform_auth import (
     install_service_token_verifier,
 )
 from platform_egress import EgressPolicy, resolve_host
-from platform_observability import RequestIdMiddleware, install_error_handlers
+from platform_observability import RequestIdMiddleware, docs_routes, install_error_handlers
 from platform_secrets import InMemorySecretStore, SecretStore, VaultSecretStore
 
 logger = logging.getLogger(__name__)
@@ -157,6 +157,7 @@ def create_app(
         description="Governed MCP integrations: registry, tool policy, SSRF-safe invocation "
         "(Sections 8.7, 14, 15).",
         lifespan=lifespan,
+        **docs_routes(resolved.environment),
     )
     state: Any = app.state
     state.settings = resolved

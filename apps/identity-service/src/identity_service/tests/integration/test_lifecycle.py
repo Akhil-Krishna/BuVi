@@ -465,3 +465,41 @@ async def test_a_failed_cascade_deactivates_nothing(
         f"/api/v1/admin/users/{target}", cookies={COOKIE: str(admin_session)}
     )
     assert done.status_code == 204
+
+
+async def test_request_bodies_reject_unknown_fields(
+    client: httpx.AsyncClient, fixtures: Fixtures, tenant: uuid.UUID
+) -> None:
+    """Audit check 8: a request body naming a server-controlled field is refused outright rather
+    than silently ignored, so a client never believes it set `tenant_id` or `role`."""
+    admin, session = await _admin(fixtures, tenant)
+    cookies = {COOKIE: str(session)}
+    target = await fixtures.create_user(
+        tenant_id=tenant, email="strict@acme.example.com", roles=frozenset({"client"})
+    )
+    other_tenant = await fixtures.create_tenant("strict-other")
+
+    invitation = await client.post(
+        "/api/v1/admin/invitations",
+        json={
+            "email": "new@acme.example.com",
+            "role_key": "client",
+            "tenant_id": str(other_tenant),
+        },
+        cookies=cookies,
+    )
+    assert invitation.status_code == 422, invitation.text
+
+    roles = await client.patch(
+        f"/api/v1/admin/users/{target}/roles",
+        json={"grant": ["developer"], "user_id": str(admin)},
+        cookies=cookies,
+    )
+    assert roles.status_code == 422, roles.text
+
+    key = await client.post(
+        "/api/v1/me/api-keys",
+        json={"name": "k", "created_by": str(target)},
+        cookies=cookies,
+    )
+    assert key.status_code == 422, key.text

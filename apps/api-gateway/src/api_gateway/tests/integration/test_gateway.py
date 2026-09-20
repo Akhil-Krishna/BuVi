@@ -338,6 +338,42 @@ async def test_redis_outage_fails_open_and_reports_degraded(
         )
 
 
+async def test_security_headers_are_set_on_every_response(
+    client: httpx.AsyncClient, upstreams: FakeUpstreams
+) -> None:
+    """The edge sets the hardening headers the BFF/browser boundary needs (audit check 19).
+    HSTS and CSP are deliberately absent: TLS termination and document policy are not this
+    process's to declare."""
+    for response in (
+        await client.get("/health/live"),
+        await client.get("/api/v1/me/notifications", cookies={COOKIE: "u1"}),
+        await client.get("/api/v1/nope"),  # error envelope too
+    ):
+        assert response.headers["x-content-type-options"] == "nosniff", response.url
+        assert response.headers["x-frame-options"] == "DENY", response.url
+        assert response.headers["referrer-policy"] == "no-referrer", response.url
+        assert response.headers["cache-control"] == "no-store", response.url
+        assert "strict-transport-security" not in response.headers
+        assert "content-security-policy" not in response.headers
+
+
+async def test_upstream_set_headers_are_never_clobbered(
+    client: httpx.AsyncClient, upstreams: FakeUpstreams
+) -> None:
+    """The guest share snapshot sets its own caching/referrer headers in dashboard-service and is
+    proxied through here; the defaults must only fill in what an upstream left unset."""
+    upstreams.share_headers = {
+        "Cache-Control": "private, max-age=30",
+        "Referrer-Policy": "origin",
+    }
+    response = await client.get("/api/v1/share/tok")
+    assert response.status_code == 200
+    assert response.headers["cache-control"] == "private, max-age=30"
+    assert response.headers["referrer-policy"] == "origin"
+    # ...while headers the upstream did not set are still added.
+    assert response.headers["x-content-type-options"] == "nosniff"
+
+
 async def test_health_probes(client: httpx.AsyncClient) -> None:
     assert (await client.get("/health/live")).status_code == 200
     ready = await client.get("/health/ready")

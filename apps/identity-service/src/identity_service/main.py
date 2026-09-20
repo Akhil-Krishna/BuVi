@@ -45,7 +45,7 @@ from platform_auth import (
     install_principal_resolver,
     install_service_token_verifier,
 )
-from platform_observability import RequestIdMiddleware, install_error_handlers
+from platform_observability import RequestIdMiddleware, docs_routes, install_error_handlers
 
 logger = logging.getLogger(__name__)
 
@@ -136,6 +136,7 @@ def create_app(
             "and the audit log for the BuVi platform."
         ),
         lifespan=lifespan,
+        **docs_routes(resolved.environment),
     )
     app.state.settings = resolved
     app.state.secrets = secrets

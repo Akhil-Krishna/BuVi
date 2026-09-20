@@ -2,6 +2,7 @@
   "components": {
     "schemas": {
       "ApiKeyCreateRequest": {
+        "additionalProperties": false,
         "properties": {
           "expires_at": {
             "anyOf": [
@@ -550,6 +551,7 @@
         "type": "object"
       },
       "InvitationCreateRequest": {
+        "additionalProperties": false,
         "properties": {
           "email": {
             "format": "email",
@@ -976,6 +978,7 @@
         "type": "object"
       },
       "RoleChangeRequest": {
+        "additionalProperties": false,
         "properties": {
           "grant": {
             "items": {

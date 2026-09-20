@@ -1,10 +1,11 @@
 """OpenTelemetry bootstrap, logging config, correlation and the error envelope (Sections 21, 22).
 
 Contract: `configure_logging`, `redact`, `request_id_var`, `RequestIdMiddleware`,
-`ApiError`, `error_response`, `install_error_handlers`. The SSRF-safe outbound fetch
+`ApiError`, `error_response`, `install_error_handlers`, `docs_routes`. The SSRF-safe outbound fetch
 client (Section 15/33) joins this package when the first user-directed fetch lands.
 """
 
+from platform_observability.app import docs_routes
 from platform_observability.correlation import (
     REQUEST_ID_HEADER,
     RequestIdMiddleware,
@@ -19,6 +20,7 @@ __all__ = [
     "ApiError",
     "RequestIdMiddleware",
     "configure_logging",
+    "docs_routes",
     "error_response",
     "install_error_handlers",
     "new_request_id",

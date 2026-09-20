@@ -37,7 +37,7 @@ from platform_auth import (
     install_principal_resolver,
     install_service_token_verifier,
 )
-from platform_observability import RequestIdMiddleware, install_error_handlers
+from platform_observability import RequestIdMiddleware, docs_routes, install_error_handlers
 
 logger = logging.getLogger(__name__)
 
@@ -129,6 +129,7 @@ def create_app(
         version="0.1.0",
         description="Canonical artifact store, dashboards and tiles (Sections 8.6, 16).",
         lifespan=lifespan,
+        **docs_routes(resolved.environment),
     )
     state: Any = app.state
     state.settings = resolved

@@ -58,7 +58,7 @@ from platform_auth import (
     install_service_token_verifier,
 )
 from platform_egress import EgressPolicy, Resolver, resolve_host
-from platform_observability import RequestIdMiddleware, install_error_handlers
+from platform_observability import RequestIdMiddleware, docs_routes, install_error_handlers
 from platform_secrets import InMemorySecretStore, SecretStore, VaultSecretStore
 
 logger = logging.getLogger(__name__)
@@ -178,6 +178,7 @@ def create_app(
         description="In-app, email and signed-webhook notifications from platform events "
         "(Sections 8.8, 15, 18.1).",
         lifespan=lifespan,
+        **docs_routes(resolved.environment),
     )
     state: Any = app.state
     state.settings = resolved

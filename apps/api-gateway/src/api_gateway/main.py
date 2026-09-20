@@ -21,6 +21,7 @@ from fastapi import FastAPI
 from fastapi.openapi.utils import get_openapi
 from redis.asyncio import Redis
 
+from api_gateway.api.security_headers import SecurityHeadersMiddleware
 from api_gateway.api.v1.health import router as health_router
 from api_gateway.api.v1.routes import build_router
 from api_gateway.core.config import Settings, get_settings
@@ -32,7 +33,7 @@ from api_gateway.infrastructure.http.identity_client import IdentityClient
 from api_gateway.infrastructure.http.proxy import UpstreamProxy
 from api_gateway.infrastructure.http.run_events_client import RunEventsClient
 from platform_auth import ServiceTokenClient
-from platform_observability import RequestIdMiddleware, install_error_handlers
+from platform_observability import RequestIdMiddleware, docs_routes, install_error_handlers
 
 #: Repo-level `contracts/openapi/`, used to compose downstream request/response schemas.
 DEFAULT_CONTRACTS_DIR = Path(__file__).resolve().parents[4] / "contracts" / "openapi"
@@ -183,6 +184,7 @@ def create_app(
         version="1.0.0",
         description="Public API surface of the BuVi platform (build spec Section 9).",
         lifespan=lifespan,
+        **docs_routes(resolved.environment),
     )
     app.state.settings = resolved
     app.state.rate_limit_policy = resolved.rate_limit_policy()
@@ -191,6 +193,7 @@ def create_app(
 
     # At the edge a client never chooses its request id (Section 22).
     app.add_middleware(RequestIdMiddleware, trust_inbound=False)
+    app.add_middleware(SecurityHeadersMiddleware)
     install_error_handlers(app)
     app.include_router(health_router)
     app.include_router(build_router())

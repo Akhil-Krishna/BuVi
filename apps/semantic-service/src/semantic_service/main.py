@@ -21,7 +21,7 @@ from platform_auth import (
     install_principal_resolver,
     install_service_token_verifier,
 )
-from platform_observability import RequestIdMiddleware, install_error_handlers
+from platform_observability import RequestIdMiddleware, docs_routes, install_error_handlers
 from semantic_service.api.internal import router as internal_router
 from semantic_service.api.v1.health import router as health_router
 from semantic_service.api.v1.router import api_router
@@ -92,6 +92,7 @@ def create_app(
         version="0.1.0",
         description="Approved metrics and dimensions: the semantic layer (Sections 8.3, 12).",
         lifespan=lifespan,
+        **docs_routes(resolved.environment),
     )
     state: Any = app.state
     state.settings = resolved

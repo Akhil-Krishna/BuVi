@@ -16,7 +16,7 @@ import httpx
 from fastapi import FastAPI
 
 from platform_auth import ServiceTokenClient
-from platform_observability import RequestIdMiddleware, install_error_handlers
+from platform_observability import RequestIdMiddleware, docs_routes, install_error_handlers
 from worker_runtime.api.v1.health import router as health_router
 from worker_runtime.application.services.run_dispatcher import RunDispatcher
 from worker_runtime.application.services.usage_aggregator import UsageAggregator
@@ -86,6 +86,7 @@ def create_app(
         version="0.1.0",
         description="Durable queue consumers (Section 18).",
         lifespan=lifespan,
+        **docs_routes(resolved.environment),
     )
     app.state.settings = resolved
     app.state.http_transport = http_transport

@@ -15,7 +15,7 @@ import httpx
 from fastapi import FastAPI
 
 from platform_auth import ServiceTokenVerifier, install_service_token_verifier
-from platform_observability import RequestIdMiddleware, install_error_handlers
+from platform_observability import RequestIdMiddleware, docs_routes, install_error_handlers
 from visualization_service.api.internal import router as internal_router
 from visualization_service.api.v1.health import router as health_router
 from visualization_service.core.config import Settings, get_settings
@@ -52,6 +52,7 @@ def create_app(
         version="0.1.0",
         description="ChartSpec validation and render-safety rules (Section 17).",
         lifespan=lifespan,
+        **docs_routes(resolved.environment),
     )
     state: Any = app.state
     state.settings = resolved

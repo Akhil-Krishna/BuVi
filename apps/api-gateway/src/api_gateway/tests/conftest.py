@@ -58,6 +58,8 @@ class FakeUpstreams:
     #: Per-path status override and cookie switch for idempotency tests.
     status_for: dict[str, int] = field(default_factory=dict)
     set_cookies: bool = True
+    #: Headers an owning service sets itself (e.g. the guest share snapshot's caching rules).
+    share_headers: dict[str, str] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         all_perms = frozenset(ALL_PERMISSIONS)
@@ -134,6 +136,7 @@ class FakeUpstreams:
                 ],
             )
         headers = [("x-request-id", "upstream-echo"), ("connection", "keep-alive")]
+        headers += list(self.share_headers.items())
         if self.set_cookies:
             headers += [("set-cookie", "first=1; HttpOnly"), ("set-cookie", "second=2; HttpOnly")]
         return httpx.Response(

@@ -24,7 +24,7 @@ from platform_auth import (
     install_service_token_verifier,
 )
 from platform_egress import EgressPolicy
-from platform_observability import RequestIdMiddleware, install_error_handlers
+from platform_observability import RequestIdMiddleware, docs_routes, install_error_handlers
 from platform_secrets import InMemorySecretStore, SecretStore, VaultSecretStore
 from query_gateway.api.internal import router as internal_router
 from query_gateway.api.v1.health import router as health_router
@@ -194,6 +194,7 @@ def create_app(
             "SQL validation, read-only execution, result handles and query audit (Section 13)."
         ),
         lifespan=lifespan,
+        **docs_routes(resolved.environment),
     )
     app.state.settings = resolved
     app.state.secrets = secrets

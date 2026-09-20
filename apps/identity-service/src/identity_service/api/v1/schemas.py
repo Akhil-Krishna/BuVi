@@ -188,6 +188,8 @@ class UserListResponse(BaseModel):
 
 
 class InvitationCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     email: EmailStr
     role_key: Annotated[str, Field(min_length=1, max_length=64)]
 
@@ -207,6 +209,8 @@ class InvitationResponse(BaseModel):
 
 
 class RoleChangeRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     grant: list[str] = Field(default_factory=list)
     revoke: list[str] = Field(default_factory=list)
 
@@ -244,6 +248,8 @@ class UserSessionListResponse(BaseModel):
 
 
 class ApiKeyCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     name: Annotated[str, Field(min_length=1, max_length=120)]
     scopes: list[str] = Field(default_factory=list)
     expires_at: dt.datetime | None = None
