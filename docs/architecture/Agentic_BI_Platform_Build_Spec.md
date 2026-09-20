@@ -387,10 +387,12 @@ decorative label treatment.
   start querying." / "Query failed: syntax error near line 4.") — informative, not cute, no
   illustrations required.
 
-**Implementation:** define these tokens as CSS variables / a Tailwind theme extension in
-`web/next-app` once, in `src/app/globals.css` + `tailwind.config.ts`, during Phase B1 (Section
-31) — every component pulls from the token set rather than hardcoding colors, so the palette
-stays consistent as Track B builds out the chat, SQL editor, dashboard, and admin surfaces.
+**Implementation:** define these tokens as CSS variables in `web/next-app` once, in
+`src/app/globals.css`'s `@theme` block, during Phase B1 (Section 31) — every component pulls
+from the token set rather than hardcoding colors, so the palette stays consistent as Track B
+builds out the chat, SQL editor, dashboard, and admin surfaces. This project pins `tailwindcss@4`
+(package.json), which is CSS-first — there is no `tailwind.config.ts` to extend; an earlier draft
+of this section assumed the pre-v4 JS-config convention.
 
 ### 5.2 Canonical screen reference (Stitch)
 
@@ -2749,10 +2751,12 @@ still gets the real backend `403`/`404`, the UI hiding is cosmetic only.
 
 ### Phase B1 — Auth, design system, and app shell
 
-- Define the design tokens from Section 5.1/5.2 as CSS variables / Tailwind theme extension in
-  `src/app/globals.css` + `tailwind.config.ts` before building any page — every subsequent Track
-  B phase consumes these tokens rather than hardcoding colors/spacing.
-- Build the Next.js `(auth)` route group, `proxy.ts` early gate, and the BFF session-cookie flow
+- Define the design tokens from Section 5.1/5.2 as CSS variables in `src/app/globals.css`'s
+  `@theme` block (Tailwind v4 is CSS-first; see 5.1's Implementation note) before building any
+  page — every subsequent Track B phase consumes these tokens rather than hardcoding
+  colors/spacing.
+- Build the Next.js `(auth)` route group, `src/proxy.ts` early gate (this project's `src` layout
+  places it there, not at the repo root — Next.js requires it), and the BFF session-cookie flow
   (Section 6.1) against identity-service and api-gateway exactly as they already exist from
   Track A — this phase should require zero backend changes if Phase A1/A12 were done correctly.
   Covers: `GET/POST /auth/*`, `POST /invitations/{token}/accept` (public, token-gated —

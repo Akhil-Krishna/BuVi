@@ -29,10 +29,28 @@ A6: 0007, idempotency: 0008, A5: 0006).
 Track B was replanned against the actual Track A surface and the 15 Stitch reference screens
 before any frontend code was written (ADR 0017; spec Sections 5.2, 31 Track B). 7 phases became 8
 — Data Sources and SQL Lab split apart, matching two separate Stitch screens and two genuinely
-distinct pieces of the developer workspace. Next up: Track B, Phase B1 (Auth, design system, app
-shell). The backend is frozen except for bug fixes — including the one named Track B prerequisite
-below; Track B imports `@buvi/api-client`. See Section 31 of the build spec for the full B1–B8
-list.**
+distinct pieces of the developer workspace.
+
+**Phase B1 (Auth, design system, app shell) is complete** — real Authorization Code + PKCE
+through an actual browser, Playwright-verified end to end (`web/next-app/e2e/login.spec.ts`):
+Keycloak's own login form, a real callback landing page (not identity-service's own `204`),
+session-cookie flags read from the browser's cookie jar, and the correct nav variant for a
+`client` vs. a `developer` session. Investigating the real login architecture surfaced a spec/
+code divergence — identity-service is the OIDC relying party, not the frontend — closed with a
+small, additive, allow-listed `redirect_uri` change (ADR 0018) that left the existing 257-test
+identity-service suite and `scripts/test-login.sh` unaffected. `src/proxy.ts` (Next.js 16 renamed
+`middleware.ts`), the two auth relay routes, the generic BFF proxy, TOTP/WebAuthn MFA
+verification, and the role-permission-driven `TopNav` are all in `web/next-app/src`. Not done in
+B1: the `(client)/(developer)/(admin)` route groups' real page content (that's B2 onward — B1's
+own landing page is deliberately minimal), MFA *enrollment* UI (verification only — no matching
+Stitch screen was for enrollment), and the account-settings panel (`/me/sessions`, `/me/api-keys`)
+— all explicitly carried forward below, not dropped. WebAuthn's client wiring is implemented and
+typechecked but its live-browser path is not Playwright-covered yet (no demo user has an enrolled
+WebAuthn factor after a state reset).
+
+Next up: Track B, Phase B2 (Client chat UI + dashboards). The backend is frozen except for bug
+fixes — including the Track B prerequisite below; Track B imports `@buvi/api-client`. See Section
+31 of the build spec for the full B1–B8 list.**
 
 **Frontend design reference (read before writing any Track B page):** Section 5.2 of the build
 spec names, screen by screen, which of the 15 Stitch screens (project `10440972999306255957`,
@@ -43,6 +61,19 @@ them; do not restyle a screen away from what Stitch shows, and do not invent sha
 rounded-pill badges, or emoji anywhere the Stitch set doesn't have them.
 
 **Carried forward (do not drop):**
+- **From Phase B1, deferred (not dropped):** MFA *enrollment* UI (B1 built verification, matching
+  the one Stitch screen there is for it; enrollment needs its own pass through the same TOTP/
+  WebAuthn actions in `features/auth/mfa-actions.ts`), and the personal account-settings panel
+  (`/me/sessions`, `/me/api-keys` — no Stitch screen; follow User Management's pattern per Section
+  5.2). Pick these up whenever they're next needed, not necessarily before B2.
+- **From Phase B1, a real test gap:** WebAuthn's client-side wiring (`MfaVerifyForm.tsx`,
+  `@simplewebauthn/browser`) is implemented and typechecked but has no Playwright coverage — the
+  reset demo state has no user with an enrolled WebAuthn factor. Enroll one and add a real-browser
+  test (Playwright supports WebAuthn virtual authenticators via CDP) before relying on this path.
+- **Production deployment requirement (ADR 0018):** `IDENTITY_OIDC_FRONTEND_REDIRECT_URI` must be
+  set to the deployed Next.js app's own `/callback` URL, and that same URL registered with the
+  IdP — dev's defaults (`localhost:3000/callback`, already registered in
+  `scripts/keycloak-bootstrap.sh`'s wildcard) do not carry over automatically.
 - **Track B prerequisite (small, additive backend change — Phase B2 blocks on it):** a cancelled
   analytics run (`POST /runs/{id}/cancel`) reaches the browser today as an ordinary `run.failed`
   SSE event, distinguishable from a real failure only by matching the fixed message string "The
