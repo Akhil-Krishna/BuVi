@@ -26,10 +26,34 @@ per-tenant limits are explicit Phase C1 deferrals. `packages/ts/api-client` (`@b
 Fixed on the way: the gateway contract dropped all query parameters; MFA verify had no per-account limit. Decisions:
 `docs/adr/0015-phase-a12-backend-completeness-gate.md` (A11: 0014, A10: 0013, A9: 0012, A8: 0011, A7: 0010,
 A6: 0007, idempotency: 0008, A5: 0006).
-Next up: Track B, Phase B1 (Real browser auth + design system). The backend is frozen except for bug fixes; Track B
-imports `@buvi/api-client`. See Section 31 of the build spec.**
+Track B was replanned against the actual Track A surface and the 15 Stitch reference screens
+before any frontend code was written (ADR 0017; spec Sections 5.2, 31 Track B). 7 phases became 8
+— Data Sources and SQL Lab split apart, matching two separate Stitch screens and two genuinely
+distinct pieces of the developer workspace. Next up: Track B, Phase B1 (Auth, design system, app
+shell). The backend is frozen except for bug fixes — including the one named Track B prerequisite
+below; Track B imports `@buvi/api-client`. See Section 31 of the build spec for the full B1–B8
+list.**
+
+**Frontend design reference (read before writing any Track B page):** Section 5.2 of the build
+spec names, screen by screen, which of the 15 Stitch screens (project `10440972999306255957`,
+"BuVi Enterprise BI Platform," reachable via the `stitch` MCP server) each route builds against,
+and which existing screen's pattern to follow for the handful of routes with no matching screen.
+Section 5.1's palette/token values are unchanged — the Stitch design system already agrees with
+them; do not restyle a screen away from what Stitch shows, and do not invent shadows, gradients,
+rounded-pill badges, or emoji anywhere the Stitch set doesn't have them.
 
 **Carried forward (do not drop):**
+- **Track B prerequisite (small, additive backend change — Phase B2 blocks on it):** a cancelled
+  analytics run (`POST /runs/{id}/cancel`) reaches the browser today as an ordinary `run.failed`
+  SSE event, distinguishable from a real failure only by matching the fixed message string "The
+  run was cancelled." — `AnalyticsRunEvent.status` in `platform_contracts` is
+  `Literal["started","completed","failed"]` and has no `"cancelled"` value. Add it and emit it
+  from `analytics_orchestrator`'s cancellation path before Phase B2 needs to distinguish the two
+  in the UI (spec Section 11; ADR 0017).
+- **Track B note:** the Stitch "Usage & Quotas" screen shows invoice-reconciliation and a
+  spend-cap control that nothing in the backend implements (`POST /billing/subscription` is a
+  `501` stub — see the post-GA line below). Phase B7 renders only the parts backed by
+  `GET /billing/usage` / `GET /billing/quotas`; do not wire the rest to a live action (ADR 0017).
 - **Before Phase C1 starts (required):** diagnose and fix the intermittent A5 crash-resume stall (1 failure in 15 runs;
   ADR 0014 "Conclusion", ADR 0015). Needs both the root cause named from evidence (a recurrence logs the frames it was
   awaiting; CI keeps the `backend-e2e-logs` artifact) **and** the production equivalents of the dev-only mitigations:
@@ -57,9 +81,10 @@ This project is built **backend + CrewAI first, frontend second** (Section 31.0)
 
 1. **Track A (Phases A0–A12)** — every backend microservice + the CrewAI Flow. No frontend
    code is written in this track except the one-time `create-next-app` scaffold in A0.
-2. **Track B (Phases B1–B7)** — the Next.js frontend, built only after Track A's exit gate
+2. **Track B (Phases B1–B8)** — the Next.js frontend, built only after Track A's exit gate
    (Phase A12) passes: a full automated backend test suite, green in CI, with an OpenAPI-
-   generated TypeScript client committed to `packages/ts/api-client`.
+   generated TypeScript client committed to `packages/ts/api-client`. Each phase builds against a
+   named screen from the Stitch reference set (spec Section 5.2) — read that before starting one.
 3. **Track C (C1–C2)** — production hardening, then optional Superset integration.
 
 Never skip ahead to a later phase. Never start Track B before Phase A12's DoD passes.

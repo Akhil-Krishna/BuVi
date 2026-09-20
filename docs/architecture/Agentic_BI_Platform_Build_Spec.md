@@ -392,6 +392,53 @@ decorative label treatment.
 31) — every component pulls from the token set rather than hardcoding colors, so the palette
 stays consistent as Track B builds out the chat, SQL editor, dashboard, and admin surfaces.
 
+### 5.2 Canonical screen reference (Stitch)
+
+15 screens were designed in Stitch (project `10440972999306255957`, "BuVi Enterprise BI
+Platform") against a design system whose tokens agree with 5.1's exactly (same hex palette, same
+Inter/JetBrains Mono pairing, `roundness: ROUND_FOUR` → 2–4px corner radius, no shadow on resting
+surfaces, no gradients, no emoji) but go further at the component level — exact button/table/
+badge/code-editor-chrome specs, a fixed 48px top nav, and a breakpoint matrix down to 768px. That
+design-system document is the tie-breaker for any pixel-level question 5.1 doesn't answer;
+**5.1's palette values are not changed by it** — they already agree.
+
+**Rule for every Track B phase:** before building a screen, open its named Stitch screen by title
+below and match its layout, density, and component treatment. **If a route has no matching
+screen, follow the layout pattern of the closest existing screen** (its table/panel/badge/form
+treatment) rather than inventing a new visual language for it — do not add card shadows,
+rounded-pill badges, gradients, or emoji anywhere, including on routes with no Stitch reference.
+
+| Stitch screen (exact title) | Route group / phase | Notes |
+|---|---|---|
+| SSO Login | `(auth)/login` — B1 | |
+| MFA Verification | `(auth)` MFA enroll/verify/challenge — B1 | also the visual reference for step-up re-auth prompts used across B3–B7 |
+| Top Navigation - Client Role View | shell chrome, `client` role — B1, consumed by B2 | |
+| Top Navigation - Developer & Admin View | shell chrome, `developer`/`org_admin` roles — B1, consumed by B3–B7 | |
+| AI Analytics Chat | `(client)/chat` — B2 | execution trace = Section 11's stages |
+| Dashboards | `(client)/dashboards` grid — B2 | |
+| Executive Revenue & Margin Synthesis — Dashboard View | `(client)/dashboards/[id]` detail/tiles — B2 | source for the "Pin to Dashboard" and share-link-creation affordances |
+| Executive Revenue & Margin Synthesis — Shared Read-Only View | `(guest)/share/[token]` — B8 | no app chrome; must render correctly with zero authenticated session |
+| Business Metrics Catalog | `(developer)/semantic` — B5 | metric/dimension lifecycle (draft → approved → deprecated) |
+| Data Sources | `(developer)/data` — B3 | connection CRUD, secret entry, test, sync, sql-grants, table/column browse |
+| SQL Lab | `(developer)/sql` — B4 | validate/execute/history, "Send to Chat/Chart" |
+| MCP Server Governance & Tool Integrations | `(developer)/mcp` + admin approval — B6 | |
+| Usage & Quotas | `(admin)/billing` — B7 | **see caveat below** |
+| Audit Log | `(admin)/audit` — B7 | |
+| User Management | `(admin)/users` — B7 | also covers invitations, roles, sessions-revoke, MFA reset |
+
+**No matching screen exists for:** personal account settings (`/me/sessions`, `/me/mfa`,
+`/me/api-keys` — B1, follow User Management's row/detail-panel pattern), tenant policies
+(`/admin/policies` — B7, follow User Management's pattern), and webhook administration
+(`/admin/webhooks` — B8, follow MCP Server Governance's list/detail pattern, since both are
+"register an external integration, show its config, never show its secret again" screens).
+
+**Caveat — Usage & Quotas shows more than the backend implements.** The mock includes invoice
+reconciliation and a spend-cap control. `POST /billing/subscription` is a documented `501` stub
+(no payment provider exists yet — Section 31 post-GA backlog). Phase B7 renders the parts backed
+by real data (`GET /billing/usage`, `GET /billing/quotas`) and must not wire the invoice/spend-cap
+controls to a live action — a screen existing in the mock is not the same as the feature existing
+in the backend.
+
 ---
 
 ## 6. Authentication: complete production design
@@ -1383,6 +1430,20 @@ On the SSE stream each event is sent with `id: <seq>` and `event: <stage>.<statu
 `execution.completed`, `run.completed`), so a reconnecting client resumes with `Last-Event-ID`.
 A run ends with exactly one `run.completed` or `run.failed` event.
 
+**Cancellation currently rides the `run.failed` event, not a distinct one.** `Run.status` in the
+database has a `cancelled` value (Phase A5/A9), but the wire type
+(`platform_contracts.AnalyticsRunEvent.status`) is `Literal["started","completed","failed"]` —
+`"cancelled"` is not a valid value on the SSE contract today, so a `POST /runs/{id}/cancel`
+(Section 9) reaches the browser as an ordinary `run.failed` event whose fixed `message` happens
+to read "The run was cancelled." (`FailureCode.CANCELLED`). There is no other field the client can
+switch on: matching that exact string is the only way to render cancellation differently from a
+real failure, which is fragile and against this document's own instruction to key UI behavior off
+typed data, not message text. **Phase B2 must not build against a `run.cancelled` event that does
+not exist.** Closing this gap — adding `"cancelled"` to the wire `status` literal and emitting it
+from the cancellation path in `analytics_orchestrator`'s `run_executor.py` — is a small, additive,
+backend-only change (a new literal value, not a contract removal) and is tracked as a Phase B2
+prerequisite rather than done here, since Track A is otherwise frozen to bug fixes only.
+
 Use **Server-Sent Events (SSE)** for the browser stream (`GET /runs/{id}/events`) — the need is
 one-way server→client progress. FastAPI supports SSE via `StreamingResponse`; back it with a
 Redis pub/sub channel keyed by `run_id` so any api-gateway pod can serve the stream regardless of
@@ -2216,7 +2277,7 @@ The plan below is split into three tracks, run **in order**:
 | Track | Contains | Frontend code touched? |
 |---|---|---|
 | **Track A — Backend + CrewAI** (A0–A12) | Every microservice, every database schema, the full CrewAI Flow, query gateway security, MCP gateway, admin/notification/billing APIs | **No.** `web/next-app` is scaffolded once in A0 and not touched again until Track B. |
-| **Track B — Frontend** (B1–B7) | The entire Next.js app, consuming the OpenAPI client generated from Track A's already-tested contracts | Yes — this is the only track that writes frontend code. |
+| **Track B — Frontend** (B1–B8) | The entire Next.js app, consuming the OpenAPI client generated from Track A's already-tested contracts | Yes — this is the only track that writes frontend code. |
 | **Track C — Hardening** (C1–C2) | Cross-cutting production readiness, optional Superset | Both, but only fixes/polish, no new features. |
 
 **Why this order is safe (and not just faster to type):** because Sections 6–24 of this document
@@ -2421,7 +2482,7 @@ mkdir -p apps web/next-app packages/python packages/ts infra/{docker,compose,kub
   caching is a Phase C1 hardening requirement.
 - **DoD:** a defined "Revenue" metric is used by the chat flow instead of the agent guessing an
   aggregation expression; groundedness eval (Section 25) shows metric usage tracked per run;
-  `GET/POST /semantic/metrics` is fully testable over HTTP. (The metric-management UI is Phase B4.)
+  `GET/POST /semantic/metrics` is fully testable over HTTP. (The metric-management UI is Phase B5.)
 
 ### Phase A8 — Additional database connectors (MySQL)
 
@@ -2555,7 +2616,7 @@ flag). A10 completes authorization:
     query-gateway; a Redis outage falls back to the per-process limit, never to none).
   - A breach is a documented error: `429 QUERY_CONCURRENCY_LIMITED` at the API, and
     `QUERY_CONCURRENCY_LIMITED` for a run after a bounded retry, never `UPSTREAM_UNAVAILABLE`.
-- **Public SQL API** (no earlier phase built it, and Phase B3 needs it):
+- **Public SQL API** (no earlier phase built it, and Phase B4 needs it):
   - `POST /sql/validate`, `POST /sql/execute` (purpose `sql_editor`) and `GET /sql/history`,
     through query-gateway's existing validator and executor;
   - per-connection grants for `sql:execute` (`metadata.data_source_grants`; `org_admin` needs
@@ -2574,7 +2635,7 @@ flag). A10 completes authorization:
   - a share link serves its snapshot until it expires or is revoked, then `404`;
   - a developer without a per-connection grant gets `403` from `/sql/execute`.
 
-  **No admin console UI exists yet — that is Phase B6.**
+  **No admin console UI exists yet — that is Phase B7.**
 
 ### Phase A11 — Notification service, webhooks, billing usage (API only)
 
@@ -2652,65 +2713,147 @@ flag). A10 completes authorization:
 
 ### Track B — Frontend (Next.js only; backend is frozen except for bug fixes)
 
-### Phase B1 — Real browser auth + design system setup
+Replanned in ADR 0017 against the actual Track A surface (70 routes across 9 services, not the
+smaller set the v6 spec assumed) and against the 15 Stitch reference screens catalogued in
+Section 5.2. 7 phases became 8: Data Sources and SQL Lab were one oversized phase before and are
+now two, matching two separate Stitch screens and two genuinely distinct pieces of the developer
+workspace (connection/credential management vs. query execution). Every phase below names its
+literal Stitch screen — open it before writing the page; do not restyle it into something else,
+and do not invent a new visual language for the handful of routes with no matching screen
+(Section 5.2 says which existing screen's pattern to follow instead).
 
-- Define the design tokens from Section 5.1 as CSS variables / Tailwind theme extension in
+Every phase's DoD includes: matches its named Stitch screen's layout/density/component treatment
+(not just "works"); every list/table endpoint's empty state renders the direct, instructive copy
+Section 5.1 requires — no illustrations, no "No data yet! 🎉"; and every role-gated action re-does
+the Section 7.4 check — a `client`-role user hitting a `developer`/`org_admin` route directly
+still gets the real backend `403`/`404`, the UI hiding is cosmetic only.
+
+### Phase B1 — Auth, design system, and app shell
+
+- Define the design tokens from Section 5.1/5.2 as CSS variables / Tailwind theme extension in
   `src/app/globals.css` + `tailwind.config.ts` before building any page — every subsequent Track
   B phase consumes these tokens rather than hardcoding colors/spacing.
 - Build the Next.js `(auth)` route group, `proxy.ts` early gate, and the BFF session-cookie flow
   (Section 6.1) against identity-service and api-gateway exactly as they already exist from
   Track A — this phase should require zero backend changes if Phase A1/A12 were done correctly.
+  Covers: `GET/POST /auth/*`, `POST /invitations/{token}/accept` (public, token-gated —
+  Section 6.7's email-match rule applies), MFA enrollment/verify/challenge.
+- Build the two app-shell chrome variants (top nav + role-scoped side nav) and the personal
+  account settings panel (`/me/sessions`, `/me/mfa`, `/me/api-keys` — no dedicated Stitch screen;
+  follow User Management's row/detail-panel pattern per Section 5.2) that every later phase's
+  pages render inside.
+- **Stitch screens:** SSO Login; MFA Verification; Top Navigation - Client Role View; Top
+  Navigation - Developer & Admin View.
 - **DoD:** a human logs in through a real browser via Keycloak (full Authorization Code + PKCE,
   not the test-only direct grant from A1), lands on a role-appropriate page, and logs out; the
   session cookie is HttpOnly/Secure/SameSite in the actual browser's dev tools, not just in a test
-  assertion; the login page itself already reflects the Section 5.1 palette/typography, not
-  default shadcn/Tailwind styling.
+  assertion; the shell nav shows only the sections a role's Section 7.1 permissions allow (a
+  `billing_admin` sees Usage & Quotas and nothing else; an `auditor` sees only read-only
+  sections); a user can revoke one of their own sessions and see it disappear from `/me/sessions`.
 
-### Phase B2 — Client Chat UI + Dashboards
+### Phase B2 — Client chat + dashboards
 
 - Build `(client)/chat`: message input, SSE-driven execution trace UI (Section 11's
   `AnalyticsRunEvent` types), ECharts render of the returned `ChartSpec`, "Pin to Dashboard"
-  action, `(client)/dashboards` grid view — all calling the generated client from Phase A12.
+  action — all calling the generated client from Phase A12.
+- Build `(client)/dashboards` (grid view, `GET /dashboards`) and `(client)/dashboards/[id]`
+  (detail with tiles, `POST /dashboards/{id}/tiles`, `PATCH /tiles/{id}`, and share-link
+  create/list/revoke — `dashboard:share` is a step-up operation, Section 7.3).
+- A cancelled run (`POST /runs/{id}/cancel`) currently arrives as an ordinary `run.failed` SSE
+  event whose message text is the fixed string "The run was cancelled." (Section 11 caveat). Until
+  the backend prerequisite there is fixed, treat that exact message as the one non-error terminal
+  state and everything else under `run.failed` as a real error — do not string-match on any other
+  substring, and re-check this the moment Section 11's prerequisite lands.
+- **Stitch screens:** AI Analytics Chat; Dashboards; Executive Revenue & Margin Synthesis —
+  Dashboard View.
 - **DoD:** Section 32's "first vertical slice" user journey works end-to-end through the real
   browser UI, for a `client`-role demo user, with the execution trace visibly streaming, and no
-  backend code needed to change to make it work.
+  backend code needed to change to make it work; a genuine query failure and a user-initiated
+  cancellation are visually distinguishable to the user despite riding the same SSE event today.
 
-### Phase B3 — Developer SQL Editor
+### Phase B3 — Data sources & catalog
 
-- Build `(developer)/sql` against the same `POST /sql/validate` / `POST /sql/execute` routes —
-  no separate execution path from the chat flow's query-gateway integration.
-- Add query history view, schema explorer sourced from metadata-service, "Send to Chat/Chart."
-- **DoD:** a `developer`-role user can browse the sample-sales-db catalog, write/execute SQL, see
-  results, and send a result to the chart flow in the real UI; a `client`-role user gets a
-  UI-level "not available" state *and* still gets a real `403` if they hit the route directly
-  (Section 7.4 — the UI hiding is cosmetic, the A10-tested `403` is the real control).
+- Build `(developer)/data`: connection list/create (`GET/POST /data-sources`), secret entry
+  (`POST /data-sources/{id}/secret`, step-up), test (`POST /data-sources/{id}/test`, sanitized
+  result only), sync (`POST /data-sources/{id}/sync`), per-connection `sql:execute` grants
+  (`GET/POST/DELETE /data-sources/{id}/sql-grants*`, `org_admin` only), and the table/column
+  browser (`GET /data-sources/{id}/tables*`).
+- **Stitch screen:** Data Sources.
+- **DoD:** a `developer` can add a connection, see it `pending` until a secret is set, test it,
+  sync its catalog, and browse tables/columns in the real UI; the connection's credential is never
+  rendered back to the browser in any form (Section 37); an `org_admin` can grant/revoke a
+  specific user's `sql:execute` on one connection and a `client`-role user never sees this screen.
 
-### Phase B4 — Semantic management UI
+### Phase B4 — SQL Lab
 
-- Build `(developer)/semantic` (or fold into `(developer)/data`) against `GET/POST
-  /semantic/metrics` (already complete and tested since Phase A7).
-- **DoD:** a `developer` can define/edit a metric in the browser and see the next chat run use it.
+- Build `(developer)/sql` against `POST /sql/validate` / `POST /sql/execute` / `GET /sql/history`
+  — no separate execution path from the chat flow's query-gateway integration.
+- Add "Send to Chat/Chart" from a result set.
+- **Stitch screen:** SQL Lab.
+- **DoD:** a `developer`-role user can browse the sample-sales-db catalog (via B3's browser),
+  write/execute SQL, see results, and send a result to the chart flow in the real UI; a
+  `client`-role user gets a UI-level "not available" state *and* still gets a real `403` if they
+  hit the route directly (Section 7.4); execution above the export row threshold prompts step-up
+  in the browser, matching the A10-tested server behavior exactly.
 
-### Phase B5 — MCP UI
+### Phase B5 — Semantic management
 
-- Build `(developer)/mcp` (registration form) and the admin approval surface for it against the
-  already-complete Phase A9 endpoints.
-- **DoD:** registering a server shows `pending_approval` in the UI; approving it (as admin) makes
-  its read tools invokable from the developer UI, matching the Phase A9 API test results exactly.
+- Build `(developer)/semantic` against `GET/POST /semantic/metrics`, `POST
+  /semantic/metrics/{id}/approve`, `POST /semantic/metrics/{id}/deprecate`, `GET/POST
+  /semantic/dimensions` (already complete and tested since Phase A7).
+- **Stitch screen:** Business Metrics Catalog.
+- **DoD:** a `developer` can define/edit a metric in the browser, move it `draft` → `approved` →
+  `deprecated`, and see the next chat run use an approved metric.
 
-### Phase B6 — Admin console UI
+### Phase B6 — MCP governance
 
-- Build `(admin)/{users,roles,connections,audit,billing}` against the Phase A10/A11 endpoints.
+- Build `(developer)/mcp` (registration form, declared tool manifest) and the admin
+  approve/reject/disable/grant surface against the already-complete Phase A9/A10 endpoints
+  (`GET/POST /mcp/servers*`, `.../approve`, `.../reject`, `.../disable`, `.../tools/{tool}/grants*`
+  , `.../tools/{tool}/invoke`).
+- **Stitch screen:** MCP Server Governance & Tool Integrations.
+- **DoD:** registering a server shows `pending_approval` in the UI; approving it (as admin, with
+  step-up) makes its read tools invokable from the developer UI; a `write`/`admin` tool prompts
+  step-up before invoke, matching the Phase A9/A10 API test results exactly; a rejected or
+  disabled server's tools are not invokable even if the browser still has the page open.
+
+### Phase B7 — Admin console
+
+- Build `(admin)/users` (`GET/POST /admin/invitations`, `GET/PATCH /admin/users*`, role
+  grant/revoke, session-revoke, MFA reset — all step-up), `(admin)/policies` (`GET/PATCH
+  /admin/policies`, step-up; no dedicated screen — follow User Management's pattern per 5.2),
+  `(admin)/audit` (`GET /admin/audit`), and `(admin)/billing` (`GET /billing/usage`, `GET
+  /billing/quotas`).
 - Wire step-up re-auth prompts in the UI for every action Phase A10 already protects server-side.
+- Render `(admin)/billing` per Section 5.2's caveat: the usage/quota data is real and live; the
+  mock's invoice-reconciliation and spend-cap controls are not wired to any action, since
+  `POST /billing/subscription` is a documented `501` (post-GA — no payment provider exists).
+- Configure `auditor` and `billing_admin` as reduced, read-only configurations of these same
+  screens (Section 7.1's permission matrix is narrow enough for each that neither needs its own
+  screen) — no destructive action, no secret field, ever renders for either role, and this is
+  enforced by the same server-side checks as everyone else, not by hiding the button.
+- **Stitch screens:** User Management; Audit Log; Usage & Quotas.
 - **DoD:** every admin action available in the UI is backed by a passing Phase A10 authorization
-  test; there is no admin UI action that lacks a corresponding server-side test from Track A.
+  test; there is no admin UI action that lacks a corresponding server-side test from Track A; the
+  system refuses to demote/delete a tenant's last `org_admin` in the browser exactly as it does at
+  the API (Section 2); an `auditor` session shows read-only across audit/connections/dashboards
+  and cannot reach a mutating action even by URL.
 
-### Phase B7 — Notifications UI, guest share-link UI
+### Phase B8 — Notifications, webhooks, guest share
 
-- Build in-app notification center against Phase A11; build `(guest)/share/[token]` against the
-  share-link endpoints (Section 9).
-- **DoD:** notifications appear/mark-read correctly; a signed share link opens a read-only
-  dashboard snapshot for an unauthenticated visitor and expires correctly.
+- Build the in-app notification center (`GET /me/notifications`, `POST
+  /me/notifications/{id}/read`) against Phase A11.
+- Build `(admin)/webhooks` (`GET/POST /admin/webhooks`, `DELETE /admin/webhooks/{id}`, step-up on
+  create, signing secret shown exactly once) — no dedicated screen; follow MCP Server Governance's
+  list/detail pattern per Section 5.2.
+- Build `(guest)/share/[token]` against `GET /share/{token}` — unauthenticated, no app chrome.
+- **Stitch screens:** Executive Revenue & Margin Synthesis — Shared Read-Only View (guest);
+  MCP Server Governance & Tool Integrations (pattern reference for the webhooks list, per 5.2).
+- **DoD:** notifications appear/mark-read correctly and someone else's notification id is a real
+  `404` if hit directly; a webhook's signing secret is shown once at creation and never again,
+  including on refresh; a signed share link opens a read-only dashboard snapshot for an
+  unauthenticated visitor with zero app chrome and expires/revokes correctly (Section 6.7's
+  deactivation cascade — a deactivated user's share links stop resolving).
 
 ---
 

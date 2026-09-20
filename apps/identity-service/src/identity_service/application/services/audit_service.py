@@ -24,7 +24,7 @@ from identity_service.infrastructure.db.repositories.identity_repository import 
 )
 
 # --- Event types -------------------------------------------------------------
-# Stable strings; the admin audit API filters on them and Phase B6 renders them.
+# Stable strings; the admin audit API filters on them and Phase B7 renders them.
 
 EVENT_LOGIN: Final = "auth.login"
 EVENT_LOGIN_FAILED: Final = "auth.login_failed"
