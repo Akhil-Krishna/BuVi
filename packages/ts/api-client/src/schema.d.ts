@@ -4193,7 +4193,9 @@ export interface operations {
     };
     get_auth_login: {
         parameters: {
-            query?: never;
+            query?: {
+                redirect_uri?: string | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -6300,7 +6302,9 @@ export interface operations {
     };
     post_invitations_token_accept: {
         parameters: {
-            query?: never;
+            query?: {
+                redirect_uri?: string | null;
+            };
             header?: never;
             path: {
                 token: string;

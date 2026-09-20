@@ -51,9 +51,11 @@ class OidcIdentity:
 
 
 class OidcClient(Protocol):
-    def authorization_url(self, *, challenge: str, state: str, nonce: str) -> str: ...
+    def authorization_url(
+        self, *, challenge: str, state: str, nonce: str, redirect_uri: str
+    ) -> str: ...
 
-    async def exchange_code(self, *, code: str, verifier: str) -> OidcTokens: ...
+    async def exchange_code(self, *, code: str, verifier: str, redirect_uri: str) -> OidcTokens: ...
 
     async def verify_id_token(self, id_token: str, *, nonce: str | None = None) -> OidcIdentity: ...
 
@@ -68,7 +70,6 @@ class KeycloakOidcClient:
         self._issuer = settings.oidc_issuer.rstrip("/")
         self._client_id = settings.oidc_client_id
         self._client_secret = settings.oidc_client_secret.get_secret_value()
-        self._redirect_uri = settings.oidc_redirect_uri
         self._scopes = settings.oidc_scopes
         self._metadata: dict[str, Any] | None = None
         self._jwks: KeySet | None = None
@@ -102,17 +103,22 @@ class KeycloakOidcClient:
 
     # --- flow -----------------------------------------------------------
 
-    def authorization_url(self, *, challenge: str, state: str, nonce: str) -> str:
+    def authorization_url(
+        self, *, challenge: str, state: str, nonce: str, redirect_uri: str
+    ) -> str:
         """Build the authorization request (step 2 of Section 6.1).
 
         Uses the issuer's conventional endpoint rather than awaiting discovery,
-        so building a redirect never blocks on an IdP round trip.
+        so building a redirect never blocks on an IdP round trip. `redirect_uri` is
+        the caller's choice (validated by `AuthService` against its two-value
+        allow-list, ADR 0018) -- this client trusts its caller and does not
+        re-validate, the same division of responsibility as every other domain check.
         """
         params = httpx.QueryParams(
             {
                 "client_id": self._client_id,
                 "response_type": "code",
-                "redirect_uri": self._redirect_uri,
+                "redirect_uri": redirect_uri,
                 "scope": self._scopes,
                 "state": state,
                 "nonce": nonce,
@@ -122,11 +128,13 @@ class KeycloakOidcClient:
         )
         return f"{self._issuer}/protocol/openid-connect/auth?{params}"
 
-    async def exchange_code(self, *, code: str, verifier: str) -> OidcTokens:
+    async def exchange_code(self, *, code: str, verifier: str, redirect_uri: str) -> OidcTokens:
         """Redeem the authorization code (step 5 of Section 6.1).
 
         Server-to-server only. A failure never surfaces the IdP's response body:
         it can name the realm, client and grant configuration (Section 21).
+        `redirect_uri` MUST be byte-identical to the one used in `authorization_url`
+        for this same transaction -- OAuth requires it, and Keycloak enforces it.
         """
         metadata = await self._discover()
         response = await self._client.post(
@@ -134,7 +142,7 @@ class KeycloakOidcClient:
             data={
                 "grant_type": "authorization_code",
                 "code": code,
-                "redirect_uri": self._redirect_uri,
+                "redirect_uri": redirect_uri,
                 "client_id": self._client_id,
                 "client_secret": self._client_secret,
                 "code_verifier": verifier,

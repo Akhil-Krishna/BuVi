@@ -11,7 +11,7 @@ from __future__ import annotations
 import datetime as dt
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Path, Request, Response, status
+from fastapi import APIRouter, Depends, Path, Query, Request, Response, status
 
 from identity_service.api.v1.auth import start_login_response
 from identity_service.core.config import Settings
@@ -34,11 +34,14 @@ async def accept_invitation(
     settings: AppSettings,
     repository: PreAuthRepo,
     token: Annotated[str, Path(min_length=16, max_length=256)],
+    redirect_uri: Annotated[str | None, Query(max_length=2048)] = None,
 ) -> Response:
     """**Public, token-gated.** Start the IdP login that will redeem this invitation.
 
     Unknown, expired, revoked and already-used tokens all return the same
     `INVITATION_INVALID`, so the response cannot reveal which invitations exist.
+    `redirect_uri` follows the same two-value allow-list as `GET /auth/login`
+    (ADR 0018).
     """
     token_hash = hash_token(token)
     invitation = await repository.find_pending_invitation_by_token_hash(token_hash)
@@ -49,5 +52,6 @@ async def accept_invitation(
         settings,
         repository,
         status_code=status.HTTP_303_SEE_OTHER,
+        redirect_uri=redirect_uri,
         invitation_token_hash=token_hash,
     )

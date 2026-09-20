@@ -192,7 +192,13 @@ class Settings(BaseSettings):
     oidc_client_id: str = "buvi-platform"
     oidc_client_secret: SecretStr = SecretStr("dev-client-secret")
     #: Public callback URL. The browser reaches identity-service through api-gateway.
+    #: This is the default used when a caller starts login without naming one -- the
+    #: scripted DoD flows (`test_login.py`) rely on exactly this value never moving.
     oidc_redirect_uri: str = "http://localhost:8000/api/v1/auth/callback"
+    #: The Next.js BFF's own callback route (Section 4.2, ADR 0018). `GET /auth/login`
+    #: accepts a `redirect_uri` query param, but only if it equals this exact value or
+    #: `oidc_redirect_uri` above -- an allow-list of two, not an open redirect.
+    oidc_frontend_redirect_uri: str = "http://localhost:3000/callback"
     oidc_scopes: str = "openid profile email"
     oidc_admin_base_url: str = "http://localhost:8080"
 

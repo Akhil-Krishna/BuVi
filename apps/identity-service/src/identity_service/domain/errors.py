@@ -90,6 +90,16 @@ class UserNotActiveError(DomainError):
     message = "This account is not active."
 
 
+class InvalidRedirectUriError(DomainError):
+    """A caller of `GET /auth/login` named a `redirect_uri` outside the two-value
+    allow-list (Section 6.1; ADR 0018). Rejected before any redirect to the IdP, so
+    this can never become an open redirect regardless of Keycloak's own client config."""
+
+    code = "INVALID_REDIRECT_URI"
+    status_code = 400
+    message = "This sign-in redirect is not recognized."
+
+
 # --- MFA (Section 6.6) -------------------------------------------------------
 
 

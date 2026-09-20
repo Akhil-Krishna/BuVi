@@ -72,21 +72,28 @@ class StubOidcClient:
             raw_claims={},
         )
         self.exchange_calls: list[dict[str, str]] = []
+        self.authorization_calls: list[dict[str, str]] = []
         self.ended_sessions: list[str] = []
         self.fail_exchange = False
 
-    def authorization_url(self, *, challenge: str, state: str, nonce: str) -> str:
+    def authorization_url(
+        self, *, challenge: str, state: str, nonce: str, redirect_uri: str
+    ) -> str:
+        self.authorization_calls.append({"redirect_uri": redirect_uri, "state": state})
         return (
             "https://idp.test/realms/buvi/protocol/openid-connect/auth"
             f"?code_challenge={challenge}&code_challenge_method=S256&state={state}&nonce={nonce}"
+            f"&redirect_uri={redirect_uri}"
         )
 
-    async def exchange_code(self, *, code: str, verifier: str) -> OidcTokens:
+    async def exchange_code(self, *, code: str, verifier: str, redirect_uri: str) -> OidcTokens:
         from identity_service.domain.errors import OidcExchangeFailedError
 
         if self.fail_exchange:
             raise OidcExchangeFailedError()
-        self.exchange_calls.append({"code": code, "verifier": verifier})
+        self.exchange_calls.append(
+            {"code": code, "verifier": verifier, "redirect_uri": redirect_uri}
+        )
         return OidcTokens(
             access_token="stub-access-token",
             refresh_token="stub-refresh-token",

@@ -448,22 +448,41 @@ OIDC identity provider, never a hand-rolled token protocol.
 
 ### 6.1 Browser login flow (OIDC Authorization Code + PKCE, BFF pattern)
 
+**identity-service is the OIDC relying party, not Next.js** (ADR 0018 — this differs from an
+earlier draft of this section, which assumed Next.js itself held the Keycloak client secret and
+called its token endpoint; Track A built the token exchange, PKCE challenge, and transaction
+cookie entirely inside identity-service instead, which is what steps 2–6 below describe as
+built). Next.js's `(auth)/login` and `(auth)/callback` route handlers are thin, server-side-only
+relays around identity-service's `/auth/login` and `/auth/callback` — the browser is never sent
+to api-gateway directly, only to Next.js and, unavoidably, to Keycloak's own login UI.
+
 1. User opens the Next.js app. Unauthenticated → `proxy.ts` redirects to `(auth)/login`.
-2. Next.js server route builds the OIDC authorization request (PKCE `code_verifier` stored
-   server-side in a short-lived, HttpOnly, Secure cookie) and redirects the browser to Keycloak.
+2. Next.js's `(auth)/login/route.ts` calls identity-service's `GET /auth/login` server-side
+   (passing its own callback URL as `?redirect_uri=`, checked against a two-value allow-list —
+   ADR 0018), reads the resulting redirect + transaction cookie, and relays both to the browser:
+   the browser is redirected to Keycloak, and receives the transaction cookie from Next.js's own
+   origin. The PKCE `code_verifier`, `state`, and `nonce` live in that cookie throughout —
+   HttpOnly, Secure, short-lived.
 3. User authenticates at Keycloak (password, or upstream SSO if the tenant has SAML/OIDC
    federation configured — Section 6.4).
-4. Keycloak redirects to `(auth)/callback/route.ts` with an authorization code.
-5. The Next.js server (not the browser) exchanges the code for tokens directly with Keycloak's
-   token endpoint. The response (access token, refresh token, ID token) never touches browser
-   JavaScript.
+4. Keycloak redirects to `(auth)/callback/route.ts` with an authorization code — this route,
+   not any api-gateway path, is the registered OIDC redirect URI for the real browser flow.
+5. Next.js's callback route forwards `?code&state` and the transaction cookie to identity-
+   service's `GET /auth/callback` server-side; identity-service (not Next.js, and not the
+   browser) exchanges the code for tokens directly with Keycloak's token endpoint. The token set
+   (access token, refresh token, ID token) never touches browser JavaScript, and never touches
+   Next.js's own code either — only identity-service and the database that stores it by
+   reference ever see it.
 6. An **application session** is created: a random opaque session token whose SHA-256 is stored
-   in `identity.sessions.token_hash` (Section 8.1), mapped to the token set, and a browser cookie
-   containing only that token — never the session row id —
-   `HttpOnly`, `Secure`, `SameSite=Lax` (or `Strict` for admin routes), scoped to the app path.
-7. All subsequent browser requests go only to the Next.js origin. The BFF looks up the session,
-   attaches a short-lived access token (or performs on-behalf-of token exchange) when calling
-   `api-gateway`.
+   in `identity.sessions.token_hash` (Section 8.1), mapped to the token set. identity-service
+   returns it once (`204` + `Set-Cookie`); Next.js's callback route re-issues that same value as
+   its own cookie to the browser — `HttpOnly`, `Secure`, `SameSite=Lax`, scoped to the app path
+   — and only then redirects the browser to a real page (identity-service's own `204` is not
+   something a browser should ever render directly).
+7. All subsequent browser requests go only to the Next.js origin. The generic BFF proxy
+   (`app/api/[...path]/route.ts`) forwards the session cookie as-is to `api-gateway` — there is
+   no access-token attachment or on-behalf-of exchange in Next.js; `api-gateway` accepts the
+   session cookie directly and introspects it against identity-service server-to-server.
 8. `api-gateway` validates issuer, audience, signature, expiry, and required claims (`tenant_id`,
    `roles`) on every request before routing.
 9. Refresh happens server-side transparently when the access token nears expiry; if the refresh

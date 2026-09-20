@@ -137,6 +137,80 @@ async def test_login_rejects_a_callback_with_no_transaction_cookie(
     assert response.json()["error"]["code"] == "OIDC_STATE_MISMATCH"
 
 
+# --- Frontend redirect_uri allow-list (ADR 0018) ------------------------------
+
+FRONTEND_REDIRECT_URI = "http://localhost:3000/callback"
+DEFAULT_REDIRECT_URI = "http://localhost:8000/api/v1/auth/callback"
+
+
+async def test_login_with_no_redirect_uri_behaves_exactly_as_before(
+    client: httpx.AsyncClient, oidc: StubOidcClient
+) -> None:
+    """The scripted DoD flows never pass `redirect_uri` -- confirm the default path
+    is untouched by this feature's addition."""
+    response = await client.get("/api/v1/auth/login", follow_redirects=False)
+    assert response.status_code == 307
+    assert oidc.authorization_calls[-1]["redirect_uri"] == DEFAULT_REDIRECT_URI
+
+
+async def test_login_accepts_the_frontend_redirect_uri_end_to_end(
+    client: httpx.AsyncClient, fixtures: Fixtures, oidc: StubOidcClient
+) -> None:
+    """Next.js's `(auth)/callback` route asks for its own callback URL; the exact
+    same value must reach both the authorization request and the token exchange."""
+    tenant_id = await fixtures.create_tenant("redirect-acme")
+    await fixtures.create_user(
+        tenant_id=tenant_id,
+        email="redirectuser@acme.example.com",
+        roles=frozenset({"client"}),
+        idp_subject="idp-redirect-1",
+    )
+    oidc.identity = type(oidc.identity)(
+        subject="idp-redirect-1",
+        email="redirectuser@acme.example.com",
+        display_name="Redirect User",
+        tenant_slug="redirect-acme",
+        roles=frozenset({"client"}),
+        raw_claims={},
+    )
+
+    response = await client.get(
+        "/api/v1/auth/login",
+        params={"redirect_uri": FRONTEND_REDIRECT_URI},
+        follow_redirects=False,
+    )
+    assert response.status_code == 307
+    assert f"redirect_uri={FRONTEND_REDIRECT_URI}" in response.headers["location"]
+    location = response.headers["location"]
+    state = re.search(r"state=([^&]+)", location)
+    assert state is not None
+    txn = _cookie_value(_set_cookie_header(response, TXN_COOKIE))
+
+    callback = await client.get(
+        "/api/v1/auth/callback",
+        params={"code": "authz-code", "state": state.group(1)},
+        cookies={TXN_COOKIE: txn},
+    )
+    assert callback.status_code == 204
+    assert oidc.exchange_calls[-1]["redirect_uri"] == FRONTEND_REDIRECT_URI
+
+
+async def test_login_rejects_an_unrecognized_redirect_uri(
+    client: httpx.AsyncClient, oidc: StubOidcClient
+) -> None:
+    """Not an open redirect: a value outside the two-item allow-list is refused
+    before any transaction cookie is set or the IdP is ever contacted."""
+    response = await client.get(
+        "/api/v1/auth/login",
+        params={"redirect_uri": "https://evil.example.com/steal"},
+        follow_redirects=False,
+    )
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "INVALID_REDIRECT_URI"
+    assert response.headers.get_list("set-cookie") == []
+    assert oidc.authorization_calls == []
+
+
 async def test_login_refuses_a_token_for_an_unknown_tenant(
     client: httpx.AsyncClient, oidc: StubOidcClient
 ) -> None:

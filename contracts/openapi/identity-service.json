@@ -2002,8 +2002,27 @@
     },
     "/api/v1/auth/login": {
       "get": {
-        "description": "**Public.** Redirect to the IdP with a fresh PKCE challenge (Section 9).",
+        "description": "**Public.** Redirect to the IdP with a fresh PKCE challenge (Section 9).\n\n`redirect_uri` is optional and, when given, MUST equal the Next.js BFF's\ncallback route (`Settings.oidc_frontend_redirect_uri`) -- anything else is\n`400 INVALID_REDIRECT_URI` (ADR 0018). Omitted, this behaves exactly as before:\nthe scripted DoD flows (`test_login.py`) never pass it and are unaffected.",
         "operationId": "login_api_v1_auth_login_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "redirect_uri",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 2048,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Redirect Uri"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -2012,6 +2031,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "summary": "Login",
@@ -2179,7 +2208,7 @@
     },
     "/api/v1/invitations/{token}/accept": {
       "post": {
-        "description": "**Public, token-gated.** Start the IdP login that will redeem this invitation.\n\nUnknown, expired, revoked and already-used tokens all return the same\n`INVITATION_INVALID`, so the response cannot reveal which invitations exist.",
+        "description": "**Public, token-gated.** Start the IdP login that will redeem this invitation.\n\nUnknown, expired, revoked and already-used tokens all return the same\n`INVITATION_INVALID`, so the response cannot reveal which invitations exist.\n`redirect_uri` follows the same two-value allow-list as `GET /auth/login`\n(ADR 0018).",
         "operationId": "accept_invitation_api_v1_invitations__token__accept_post",
         "parameters": [
           {
@@ -2191,6 +2220,23 @@
               "minLength": 16,
               "title": "Token",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "redirect_uri",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 2048,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Redirect Uri"
             }
           }
         ],

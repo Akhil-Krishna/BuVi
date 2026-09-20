@@ -21,6 +21,7 @@ from identity_service.application.services.audit_service import AuditService
 from identity_service.application.services.session_service import SessionService
 from identity_service.core.config import Settings
 from identity_service.domain.errors import (
+    InvalidRedirectUriError,
     InvitationEmailMismatchError,
     InvitationInvalidError,
     OidcStateMismatchError,
@@ -42,6 +43,10 @@ class LoginRedirect:
 
     authorization_url: str
     challenge: PkceChallenge
+    #: Parked alongside the verifier/state/nonce so `complete_login` can reuse the
+    #: exact same value the authorization request used (OAuth requires a byte-exact
+    #: match; ADR 0018).
+    redirect_uri: str
 
 
 @dataclass(frozen=True)
@@ -69,15 +74,32 @@ class AuthService:
         self._audit = audit
         self._settings = settings
 
-    def begin_login(self) -> LoginRedirect:
-        """Step 2 of Section 6.1: build the authorization request."""
+    def begin_login(self, *, redirect_uri: str | None = None) -> LoginRedirect:
+        """Step 2 of Section 6.1: build the authorization request.
+
+        `redirect_uri` lets a caller other than the default (the gateway's own
+        callback, used by the scripted DoD flows) name the Next.js BFF's callback
+        route instead (ADR 0018). It is checked against a two-value allow-list --
+        `None` and any other string are rejected -- so this can never become an
+        open redirect no matter what a caller sends.
+        """
+        chosen = self._resolve_redirect_uri(redirect_uri)
         challenge = create_pkce_challenge()
         url = self._oidc.authorization_url(
             challenge=challenge.challenge,
             state=challenge.state,
             nonce=challenge.nonce,
+            redirect_uri=chosen,
         )
-        return LoginRedirect(authorization_url=url, challenge=challenge)
+        return LoginRedirect(authorization_url=url, challenge=challenge, redirect_uri=chosen)
+
+    def _resolve_redirect_uri(self, requested: str | None) -> str:
+        if requested is None:
+            return self._settings.oidc_redirect_uri
+        allowed = {self._settings.oidc_redirect_uri, self._settings.oidc_frontend_redirect_uri}
+        if requested not in allowed:
+            raise InvalidRedirectUriError()
+        return requested
 
     async def complete_login(
         self,
@@ -87,6 +109,7 @@ class AuthService:
         expected_state: str,
         verifier: str,
         nonce: str,
+        redirect_uri: str,
         ip_address: str | None,
         user_agent: str | None,
         invitation_token_hash: str | None = None,
@@ -94,12 +117,19 @@ class AuthService:
         """Steps 4-6 of Section 6.1.
 
         `state` is compared before the code is spent: an attacker-supplied
-        callback should cost nothing at the IdP.
+        callback should cost nothing at the IdP. `redirect_uri` is re-validated
+        against the same allow-list as `begin_login` -- the transaction cookie is
+        HttpOnly and server-set, but nothing about that guarantees this call ever
+        actually originated from `begin_login`; the exchange must not spend a real
+        authorization code against an unrecognized redirect_uri regardless.
         """
         if not returned_state or returned_state != expected_state:
             raise OidcStateMismatchError()
+        redirect_uri = self._resolve_redirect_uri(redirect_uri)
 
-        tokens = await self._oidc.exchange_code(code=code, verifier=verifier)
+        tokens = await self._oidc.exchange_code(
+            code=code, verifier=verifier, redirect_uri=redirect_uri
+        )
         identity = await self._oidc.verify_id_token(tokens.id_token, nonce=nonce)
 
         if invitation_token_hash:

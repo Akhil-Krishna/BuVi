@@ -101,18 +101,21 @@ def start_login_response(
     repository: IdentityRepository,
     *,
     status_code: int,
+    redirect_uri: str | None = None,
     invitation_token_hash: str | None = None,
 ) -> Response:
     """Redirect to the IdP with a fresh PKCE challenge and park the transaction.
 
-    The HttpOnly transaction cookie holds the PKCE verifier, state and nonce and,
-    for an invitation, only the *hash* of the invitation token (Section 6.2).
+    The HttpOnly transaction cookie holds the PKCE verifier, state, nonce and the
+    resolved `redirect_uri` (ADR 0018) and, for an invitation, only the *hash* of
+    the invitation token (Section 6.2).
     """
-    redirect = build_auth_service(request, repository).begin_login()
+    redirect = build_auth_service(request, repository).begin_login(redirect_uri=redirect_uri)
     payload = {
         "verifier": redirect.challenge.verifier,
         "state": redirect.challenge.state,
         "nonce": redirect.challenge.nonce,
+        "redirect_uri": redirect.redirect_uri,
     }
     if invitation_token_hash:
         payload["invitation"] = invitation_token_hash
@@ -133,10 +136,25 @@ def start_login_response(
 
 
 @router.get("/auth/login", include_in_schema=True)
-async def login(request: Request, settings: AppSettings, repository: PreAuthRepo) -> Response:
-    """**Public.** Redirect to the IdP with a fresh PKCE challenge (Section 9)."""
+async def login(
+    request: Request,
+    settings: AppSettings,
+    repository: PreAuthRepo,
+    redirect_uri: Annotated[str | None, Query(max_length=2048)] = None,
+) -> Response:
+    """**Public.** Redirect to the IdP with a fresh PKCE challenge (Section 9).
+
+    `redirect_uri` is optional and, when given, MUST equal the Next.js BFF's
+    callback route (`Settings.oidc_frontend_redirect_uri`) -- anything else is
+    `400 INVALID_REDIRECT_URI` (ADR 0018). Omitted, this behaves exactly as before:
+    the scripted DoD flows (`test_login.py`) never pass it and are unaffected.
+    """
     return start_login_response(
-        request, settings, repository, status_code=status.HTTP_307_TEMPORARY_REDIRECT
+        request,
+        settings,
+        repository,
+        status_code=status.HTTP_307_TEMPORARY_REDIRECT,
+        redirect_uri=redirect_uri,
     )
 
 
@@ -164,6 +182,7 @@ async def callback(
         expected_state=str(transaction.get("state", "")),
         verifier=str(transaction.get("verifier", "")),
         nonce=str(transaction.get("nonce", "")),
+        redirect_uri=str(transaction.get("redirect_uri", "")),
         ip_address=client_ip(request),
         user_agent=request.headers.get("user-agent"),
         invitation_token_hash=str(transaction.get("invitation") or "") or None,
