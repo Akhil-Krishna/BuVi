@@ -289,6 +289,41 @@ async def test_tenant_bucket_caps_all_users_of_a_tenant(
         ).status_code == 200
 
 
+async def test_a_request_denied_by_the_tenant_bucket_does_not_spend_the_users_own_budget(
+    settings: Settings, upstreams: FakeUpstreams, redis_url: str
+) -> None:
+    """Section 20/24: buckets are consumed in sequence (user, then tenant); a request the tenant
+    bucket denies must not also permanently spend a token from the user's own bucket -- otherwise
+    a noisy tenant-mate silently drains every well-behaved user's individual budget too."""
+    import redis.asyncio as aioredis
+
+    tight = settings.model_copy(
+        update={
+            "rate_user_capacity": 5,
+            "rate_user_refill_per_second": 0.0001,
+            "rate_tenant_capacity": 2,
+            "rate_tenant_refill_per_second": 0.0001,
+        }
+    )
+    async for _, client in build_client(tight, upstreams):
+        for _ in range(2):
+            assert (
+                await client.get("/api/v1/me/notifications", cookies={COOKIE: "u1"})
+            ).status_code == 200
+        denied = await client.get("/api/v1/me/notifications", cookies={COOKIE: "u1"})
+        assert denied.status_code == 429
+        assert denied.json()["error"]["details"]["scope"] == "tenant"
+
+        store = aioredis.Redis.from_url(redis_url)
+        tokens = float(
+            await store.hget("rl:user:11111111-1111-1111-1111-111111111111:u-1", "tokens")
+        )
+        await store.aclose()
+    # Only the 2 successful requests may have spent a user-bucket token; the tenant-denied
+    # third request must not have spent a third one.
+    assert tokens == pytest.approx(3, abs=0.01), tokens
+
+
 async def test_redis_outage_fails_open_and_reports_degraded(
     settings: Settings, upstreams: FakeUpstreams
 ) -> None:

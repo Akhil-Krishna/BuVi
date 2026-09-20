@@ -361,6 +361,11 @@ REGISTRY: tuple[Control, ...] = (
                 "api-gateway",
                 "integration/test_gateway.py::test_tenant_bucket_caps_all_users_of_a_tenant",
             ),
+            t(
+                "api-gateway",
+                "integration/test_gateway.py::"
+                "test_a_request_denied_by_the_tenant_bucket_does_not_spend_the_users_own_budget",
+            ),
         ),
         deferred="Phase C1: per-tenant MCP invocation concurrency and per-minute limits",
         notes="MCP calls already share the gateway's per-tenant rate bucket.",

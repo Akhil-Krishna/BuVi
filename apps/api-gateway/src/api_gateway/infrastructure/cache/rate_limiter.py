@@ -45,6 +45,22 @@ redis.call('PEXPIRE', KEYS[1], math.ceil(capacity / rate * 1000) + 1000)
 return {allowed, retry_ms}
 """  # noqa: S105 - Lua source, not a secret
 
+#: Give back a token this process took from a bucket, in the same request, that a *later*
+#: bucket then denied -- a multi-bucket `consume()` must not have a request it ultimately
+#: refused permanently spend the budget of the buckets it happened to clear first (a noisy
+#: tenant must not silently drain each of its users' own per-user budgets on every request
+#: of theirs the *tenant* bucket -- not they -- denies).
+TOKEN_BUCKET_REFUND_LUA: Final = """
+local capacity = tonumber(ARGV[1])
+local cost = tonumber(ARGV[2])
+local tokens = tonumber(redis.call('HGET', KEYS[1], 'tokens'))
+if tokens == nil then
+  return 0
+end
+redis.call('HSET', KEYS[1], 'tokens', tostring(math.min(capacity, tokens + cost)))
+return 1
+"""  # noqa: S105 - Lua source, not a secret
+
 
 @dataclass(frozen=True)
 class Decision:
@@ -62,10 +78,19 @@ class RedisRateLimiter:
     def __init__(self, redis: Redis, *, fail_open: bool) -> None:
         self._redis = redis
         self._script = redis.register_script(TOKEN_BUCKET_LUA)
+        self._refund_script = redis.register_script(TOKEN_BUCKET_REFUND_LUA)
         self._fail_open = fail_open
 
     async def consume(self, buckets: list[Bucket]) -> Decision:
-        """Take one token from each bucket; deny on the first empty one."""
+        """Take one token from each bucket in order; deny on the first empty one.
+
+        A request denied partway through has already spent a token in every bucket that
+        cleared before the one that refused it -- those are refunded, so a bucket further
+        down the chain (e.g. the shared tenant bucket) can never permanently drain a bucket
+        that comes before it (e.g. one user's own budget) on a request that bucket did not
+        itself deny.
+        """
+        taken: list[Bucket] = []
         try:
             for bucket in buckets:
                 allowed, retry_ms = await self._script(
@@ -73,11 +98,13 @@ class RedisRateLimiter:
                     args=[bucket.rule.capacity, bucket.rule.refill_per_second, 1],
                 )
                 if int(allowed) != 1:
+                    await self._refund(taken)
                     return Decision(
                         allowed=False,
                         retry_after_seconds=max(1, math.ceil(int(retry_ms) / 1000)),
                         scope=bucket.rule.scope,
                     )
+                taken.append(bucket)
         except RedisError as exc:
             logger.warning(
                 "rate limiter unavailable",
@@ -85,6 +112,18 @@ class RedisRateLimiter:
             )
             return Decision(allowed=self._fail_open, retry_after_seconds=1, scope="unavailable")
         return Decision(allowed=True)
+
+    async def _refund(self, buckets: list[Bucket]) -> None:
+        """Best effort: a lost refund only costs a little of the bucket's own future budget,
+        the same way a lost lease would -- it never turns into an incorrect *allow*."""
+        for bucket in buckets:
+            try:
+                await self._refund_script(keys=[bucket.key], args=[bucket.rule.capacity, 1])
+            except RedisError:
+                logger.warning(
+                    "rate limit refund failed",
+                    extra={"context": {"bucket": bucket.rule.name}},
+                )
 
     async def ping(self) -> bool:
         try:
