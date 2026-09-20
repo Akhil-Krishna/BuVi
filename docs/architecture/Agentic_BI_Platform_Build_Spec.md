@@ -2733,6 +2733,22 @@ flag). A10 completes authorization:
   - `require` still encrypts.
 
   Today `verify-full` uses only the system trust store and has not been exercised live (ADR 0011).
+- **Entry requirement (before C1 starts):** the intermittent Phase A5 crash-resume stall is
+  diagnosed and fixed (ADR 0014, ADR 0015). A resumed run once stalled with no I/O until its
+  stage timeout; it has not reproduced (1 failure in 15 runs), so Phase A12 shipped detection,
+  not a fix. Closing it requires **both**:
+  - the root cause, named from evidence (the stage timeout now logs the frames it was awaiting,
+    Postgres logs lock waits with their blocker, and CI keeps every flow's service logs);
+  - the production equivalents of the dev-only mitigations, because the failure class is not
+    dev-only: a client that vanishes without a FIN (node loss, partition, a stateful
+    load balancer or connection pooler dropping state) leaves its backend idle in transaction
+    holding row locks until TCP keepalive detection -- `tcp_keepalives_idle` defaults to the
+    system value (7200 s on Linux) and `idle_in_transaction_session_timeout` defaults to `0`.
+    So the platform database needs `idle_in_transaction_session_timeout` and explicit
+    `tcp_keepalives_*` (Section 28), and platform sessions need a `lock_timeout` (customer-facing
+    connections already set one). Proven by a test that kills a lock holder and shows the waiter
+    fails fast instead of hanging.
+
 - Run every item in Section 24's checklist as an explicit test or manual review sign-off recorded
   in `docs/runbooks/security-review-<date>.md`.
   - Phase A12's registry (`tests/system/section_24.py`) lists the items still deferred here:
