@@ -55,6 +55,7 @@
 
 ## The A5 crash-resume stall (ADR 0014 "Open")
 
+- **Status: a Phase C1 entry requirement** (spec d54d322); ADR 0014 records why the trigger is dev-only while the failure class is not, and what production must set.
 - **Result:** 8 further looped runs with a lock-wait watcher polling `pg_stat_activity` every 2 s gave 8 passes, 0 lock waits and 0 stuck transactions. That is 14 passes and 1 failure in total. It does not reproduce on demand, so it is **not** declared fixed.
 - **So that a recurrence explains itself and cannot hang long:**
   - a stage timeout now logs `stage timed out` with the innermost frames it was awaiting (file, line and function only);

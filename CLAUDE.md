@@ -30,9 +30,12 @@ Next up: Track B, Phase B1 (Real browser auth + design system). The backend is f
 imports `@buvi/api-client`. See Section 31 of the build spec.**
 
 **Carried forward (do not drop):**
-- **Watch the A5 crash-resume stall (ADR 0014 "Open", ADR 0015):** 1 failure in 15 runs, not reproducible on demand.
-  A recurrence now logs `stage timed out` with the frames it was awaiting, and Postgres logs lock waits and releases a
-  dead client's locks after 60s; if it recurs in CI, the `backend-e2e-logs` artifact holds the evidence -- fix it then.
+- **Before Phase C1 starts (required):** diagnose and fix the intermittent A5 crash-resume stall (1 failure in 15 runs;
+  ADR 0014 "Conclusion", ADR 0015). Needs both the root cause named from evidence (a recurrence logs the frames it was
+  awaiting; CI keeps the `backend-e2e-logs` artifact) **and** the production equivalents of the dev-only mitigations:
+  `idle_in_transaction_session_timeout` and `tcp_keepalives_*` on the platform database, and a `lock_timeout` on
+  platform sessions. The trigger (Docker Desktop's port forwarder) is dev-only; the class (a client that vanishes
+  without a FIN holds row locks until keepalive detection, 2h by default on Linux) is not.
 - **Phase C1 hardening (required for C1's DoD):** semantic-lookup caching. Cache the approved-definition context and the metadata agent-context packet per tenant/data source with a TTL and invalidation on approve/deprecate/sync; correctness must not depend on the cache (spec Phase C1; ADR 0010).
 - **Post-GA backlog (not in Tracks A–C):** subscriptions/invoicing (`POST /billing/subscription`, b537537);
   `query.completed` with async query/export execution; storage-bytes metering (ADR 0014). Four-eyes semantic approval as a tenant policy (ADR 0013). Snowflake/BigQuery/Redshift connectors (need vendor sandboxes in CI; spec "Post-GA backlog"; ADR 0011). Also: ratio metrics, metric filters, and multi-table metrics over approved `join_rules`, with join-rule management. Any extension must keep the metric-vs-SQL check exact (parsed), never presence-based (spec "Post-GA backlog"; ADR 0010).
@@ -60,6 +63,34 @@ This project is built **backend + CrewAI first, frontend second** (Section 31.0)
 3. **Track C (C1–C2)** — production hardening, then optional Superset integration.
 
 Never skip ahead to a later phase. Never start Track B before Phase A12's DoD passes.
+
+## Debugging
+
+For anything that's failing, broken, or erroring — a test, a live flow, a CI run, an unexpected
+status code — use the `.claude/skills/backend-debugging/SKILL.md` skill rather than
+re-deriving triage from scratch. It's loaded automatically when a task looks like debugging; you
+can also invoke it directly if it doesn't trigger. It covers request/run correlation, the shared
+error-envelope codes and what they actually mean in this codebase, the live-flow reset/state
+pitfalls already hit in A8/A10/A11, known CI-vs-local drift causes, and how to handle a bug that
+turns out to be security-relevant rather than a plain defect.
+
+Before opening an investigation, always check this file's "Carried forward" list above — a
+failure may be a tracked, already-understood item (the A5 crash-resume stall, the 5,000-user seat
+ceiling, etc.), not a new bug worth re-diagnosing from zero.
+
+Fastest local triage, in order:
+
+```bash
+docker compose -f infra/compose/docker-compose.dev.yml ps      # every service Up?
+brew services stop redis                                       # kills cross-run rate-limit leakage
+lsof -ti:8000 | xargs kill 2>/dev/null                          # frees api-gateway's port if squatted
+make backend-e2e                                                # the full Track A regression, one command
+```
+
+A bug found while debugging is handled exactly like a bug found while building a phase: fix it,
+add a regression test, and record it in the current or a new ADR — see "When something in the
+spec seems wrong or missing" below. A debugging session does not get a lighter standard of proof
+than a phase does.
 
 ## Working on a phase
 
