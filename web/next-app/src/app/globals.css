@@ -1,26 +1,88 @@
 @import "tailwindcss";
 
+/*
+ * Design tokens (build spec Sections 5.1, 5.2; Stitch design system, project
+ * 10440972999306255957). Enterprise BI, not a marketing site: no gradients, no
+ * shadow on resting surfaces, no rounded-pill anything, no emoji. Every
+ * component pulls from these tokens rather than hardcoding a color or a
+ * spacing value, so the palette stays consistent as Track B grows.
+ *
+ * This is intentionally NOT a dark-mode-aware token set. The Stitch design
+ * system is single-mode (light, blue/white) by design for this product, the
+ * same way Superset/Metabase do not ship a marketing-site-style dark theme --
+ * a dense data tool's palette is a legibility decision, not a preference.
+ */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --color-bg: #ffffff;
+  --color-bg-subtle: #f5f7fa;
+  --color-border: #d9dee4;
+  --color-text-primary: #12213a;
+  --color-text-secondary: #5b6b82;
+  --color-primary: #1e4fb8;
+  --color-primary-hover: #173d8f;
+  --color-accent: #0e7cd6;
+  --color-success: #1e8e5a;
+  --color-warning: #b7791f;
+  --color-danger: #c62828;
+
+  /* Stitch design-system additions beyond 5.1's base palette (component-level
+     tie-breakers -- 5.2). */
+  --color-success-bg: #edf7f2;
+  --color-success-border: #a3d9be;
+  --color-warning-bg: #fef7ed;
+  --color-warning-border: #f6d3a1;
+  --color-danger-bg: #fdf2f2;
+  --color-danger-border: #f8b4b4;
+  --color-row-hover: #ebf3fc;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
+  --color-bg: var(--color-bg);
+  --color-bg-subtle: var(--color-bg-subtle);
+  --color-border: var(--color-border);
+  --color-text-primary: var(--color-text-primary);
+  --color-text-secondary: var(--color-text-secondary);
+  --color-primary: var(--color-primary);
+  --color-primary-hover: var(--color-primary-hover);
+  --color-accent: var(--color-accent);
+  --color-success: var(--color-success);
+  --color-warning: var(--color-warning);
+  --color-danger: var(--color-danger);
+  --color-success-bg: var(--color-success-bg);
+  --color-success-border: var(--color-success-border);
+  --color-warning-bg: var(--color-warning-bg);
+  --color-warning-border: var(--color-warning-border);
+  --color-danger-bg: var(--color-danger-bg);
+  --color-danger-border: var(--color-danger-border);
+  --color-row-hover: var(--color-row-hover);
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  /* Section 5.1: Inter for UI text, a monospace face only where content is
+     genuinely data (SQL, IDs, tabular numerics). Loaded and self-hosted by
+     next/font in the root layout; these fall back to system stacks if that
+     variable is somehow absent (e.g. a component rendered outside the root
+     layout in a test). */
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: var(--font-jetbrains-mono), ui-monospace, "SFMono-Regular", Menlo, monospace;
+
+  /* Stitch: roundness locked to 2-4px; never rounded-full outside a true
+     circular control (avatar). */
+  --radius-sm: 0.125rem;
+  --radius-md: 0.25rem;
+  --radius-lg: 0.375rem;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--color-bg-subtle);
+  color: var(--color-text-primary);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Tabular figures for anything numeric, matching the Stitch spec's "strict
+   decimal column alignment" rule -- applied globally so a future data table
+   does not need to remember to opt in. */
+table,
+.font-mono {
+  font-variant-numeric: tabular-nums;
 }
