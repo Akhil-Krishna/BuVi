@@ -40,13 +40,12 @@ code divergence — identity-service is the OIDC relying party, not the frontend
 small, additive, allow-listed `redirect_uri` change (ADR 0018) that left the existing 257-test
 identity-service suite and `scripts/test-login.sh` unaffected. `src/proxy.ts` (Next.js 16 renamed
 `middleware.ts`), the two auth relay routes, the generic BFF proxy, TOTP/WebAuthn MFA
-verification, and the role-permission-driven `TopNav` are all in `web/next-app/src`. Not done in
-B1: the `(client)/(developer)/(admin)` route groups' real page content (that's B2 onward — B1's
-own landing page is deliberately minimal), MFA *enrollment* UI (verification only — no matching
-Stitch screen was for enrollment), and the account-settings panel (`/me/sessions`, `/me/api-keys`)
-— all explicitly carried forward below, not dropped. WebAuthn's client wiring is implemented and
-typechecked but its live-browser path is not Playwright-covered yet (no demo user has an enrolled
-WebAuthn factor after a state reset).
+verification, and the role-permission-driven `TopNav` are all in `web/next-app/src`.
+Account settings (`/account`) cover the caller's own sessions with self-revoke and MFA factor management, and MFA enrollment is built for both TOTP (QR + manual
+key) and WebAuthn. WebAuthn is covered in a real browser through CDP virtual authenticators —
+enrol, sign out, sign back in, satisfy the gate — with the negative case too. Not done in B1: the
+`(client)/(developer)/(admin)` route groups' real page content (that's B2 onward — B1's own
+landing page is deliberately minimal) and `/me/api-keys`, carried forward below.
 
 Next up: Track B, Phase B2 (Client chat UI + dashboards). The backend is frozen except for bug
 fixes — including the Track B prerequisite below; Track B imports `@buvi/api-client`. See Section
@@ -61,15 +60,19 @@ them; do not restyle a screen away from what Stitch shows, and do not invent sha
 rounded-pill badges, or emoji anywhere the Stitch set doesn't have them.
 
 **Carried forward (do not drop):**
-- **From Phase B1, deferred (not dropped):** MFA *enrollment* UI (B1 built verification, matching
-  the one Stitch screen there is for it; enrollment needs its own pass through the same TOTP/
-  WebAuthn actions in `features/auth/mfa-actions.ts`), and the personal account-settings panel
-  (`/me/sessions`, `/me/api-keys` — no Stitch screen; follow User Management's pattern per Section
-  5.2). Pick these up whenever they're next needed, not necessarily before B2.
-- **From Phase B1, a real test gap:** WebAuthn's client-side wiring (`MfaVerifyForm.tsx`,
-  `@simplewebauthn/browser`) is implemented and typechecked but has no Playwright coverage — the
-  reset demo state has no user with an enrolled WebAuthn factor. Enroll one and add a real-browser
-  test (Playwright supports WebAuthn virtual authenticators via CDP) before relying on this path.
+- **Still open from Phase B1 (small):** API keys (`/me/api-keys`) are the one part of the
+  account-settings panel not built — sessions and MFA factors are. Creating one is a step-up
+  operation returning the secret exactly once (Section 9), so it needs the show-once treatment
+  the webhook secret will also need in B8; do them with the same component.
+- **Running the browser E2E suite:** it needs `make up`, identity-service, api-gateway and
+  `npm run dev`, and api-gateway must be started with a raised auth-tier limit
+  (`GATEWAY_RATE_AUTH_IP_CAPACITY=200 GATEWAY_RATE_AUTH_IP_REFILL_PER_SECOND=20`) — the exact
+  commands are in `web/next-app/playwright.config.ts`'s header. The default limit is tuned for a
+  human at a login form; a dozen-plus real OIDC round trips queue behind it for minutes. The
+  limiter keeps its production defaults everywhere else and keeps its own coverage in
+  `scripts/test_login.py`'s burst check. Each spec resets only its own demo user's factors,
+  sessions and `mfa_verification_failed` audit rows (those rows are the 15-minute per-account
+  lockout state), so specs are order-independent and the suite is idempotent.
 - **Production deployment requirement (ADR 0018):** `IDENTITY_OIDC_FRONTEND_REDIRECT_URI` must be
   set to the deployed Next.js app's own `/callback` URL, and that same URL registered with the
   IdP — dev's defaults (`localhost:3000/callback`, already registered in
