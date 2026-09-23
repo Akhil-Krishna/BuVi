@@ -3,6 +3,7 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { CALLBACK_URL, GATEWAY_URL, TRANSACTION_COOKIE } from "@/lib/config";
+import { issuedCookieOptions } from "@/lib/cookie-options";
 import { fetchRedirect } from "./gateway-redirect";
 import { parseSetCookie } from "./cookie-relay";
 
@@ -19,10 +20,15 @@ export async function beginLogin(): Promise<never> {
 
   const response = await fetchRedirect(url);
   if (response.status !== 307 && response.status !== 303) {
-    throw new Error(`identity-service /auth/login returned ${response.status}`);
+    // Never an unhandled error page: the visitor is sent back to the sign-in
+    // screen with a reason they can act on. 429 is the auth tier's per-IP
+    // limit (Section 16) and means "wait", not "something is broken".
+    console.warn("[auth/login] could not start sign-in", { status: response.status });
+    redirect(response.status === 429 ? "/login?error=rate_limited" : "/login?error=sign_in_failed");
   }
   if (!response.location) {
-    throw new Error("identity-service /auth/login did not return a redirect target");
+    console.warn("[auth/login] no redirect target returned");
+    redirect("/login?error=sign_in_failed");
   }
 
   const transaction = response.setCookies
@@ -30,13 +36,11 @@ export async function beginLogin(): Promise<never> {
     .find((parsed) => parsed !== null);
   if (transaction) {
     const store = await cookies();
-    store.set(TRANSACTION_COOKIE, transaction.value, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      path: "/",
-      maxAge: transaction.maxAgeSeconds,
-    });
+    store.set(
+      TRANSACTION_COOKIE,
+      transaction.value,
+      issuedCookieOptions(transaction.maxAgeSeconds)
+    );
   }
 
   redirect(response.location);

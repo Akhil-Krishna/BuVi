@@ -1,9 +1,9 @@
 "use server";
 
-import { cookies } from "next/headers";
-import { GATEWAY_URL, SESSION_COOKIE } from "@/lib/config";
+import { revalidatePath } from "next/cache";
+import { callGateway, GatewayError } from "@/lib/api/gateway";
 
-/** Mirrors `identity_service.api.v1.schemas` MFA response shapes (Section 9). */
+/** Mirrors `identity_service.api.v1.schemas` MFA shapes (Sections 6.6, 9). */
 export type MfaEnrollResult = {
   method: "totp" | "webauthn";
   secret: string | null;
@@ -11,35 +11,6 @@ export type MfaEnrollResult = {
   options: Record<string, unknown> | null;
 };
 export type MfaChallengeResult = { options: Record<string, unknown> };
-export type MfaVerifyResult =
-  | { ok: true; method: "totp" | "webauthn"; step_up_expires_at: string }
-  | { ok: false; code: string; message: string };
-
-async function sessionCookieHeader(): Promise<string | null> {
-  const token = (await cookies()).get(SESSION_COOKIE)?.value;
-  return token ? `${SESSION_COOKIE}=${token}` : null;
-}
-
-async function callGateway<T>(
-  path: string,
-  body?: unknown,
-  method: "GET" | "POST" = "POST"
-): Promise<T> {
-  const cookie = await sessionCookieHeader();
-  const response = await fetch(new URL(path, GATEWAY_URL), {
-    method,
-    headers: { "content-type": "application/json", ...(cookie ? { cookie } : {}) },
-    body: body === undefined ? undefined : JSON.stringify(body),
-    cache: "no-store",
-  });
-  if (!response.ok) {
-    const problem = await response.json().catch(() => null);
-    throw new Error(problem?.error?.message ?? `Request failed (${response.status})`);
-  }
-  return (await response.json()) as T;
-}
-
-/** Section 6.6/7.3: the caller's enrolled factors -- never secret material. */
 export type MfaFactor = {
   id: string;
   method: "totp" | "webauthn";
@@ -47,38 +18,76 @@ export type MfaFactor = {
   confirmed_at: string | null;
 };
 
-export async function listMfaFactors(): Promise<MfaFactor[]> {
-  return callGateway<MfaFactor[]>("/api/v1/me/mfa", undefined, "GET");
+/** Every MFA mutation returns this shape rather than throwing, so a client
+ * component can render the platform's own refusal (`STEP_UP_REQUIRED`,
+ * `MFA_VERIFICATION_FAILED`, ...) by `code` -- never by message text. */
+export type MfaOutcome<T = void> =
+  | ({ ok: true } & (T extends void ? Record<never, never> : { data: T }))
+  | { ok: false; code: string; message: string };
+
+function failure(error: unknown): { ok: false; code: string; message: string } {
+  if (error instanceof GatewayError) {
+    return { ok: false, code: error.code, message: error.message };
+  }
+  return { ok: false, code: "UNKNOWN", message: "Something went wrong. Try again." };
 }
 
-/** Section 6.6: begin TOTP or WebAuthn enrollment. */
-export async function beginMfaEnrollment(method: "totp" | "webauthn"): Promise<MfaEnrollResult> {
-  return callGateway<MfaEnrollResult>("/api/v1/auth/mfa/enroll", { method });
+/** Section 6.6: the first factor needs only a session; any later factor needs
+ * a fresh step-up, which identity-service enforces -- this just surfaces it. */
+export async function beginMfaEnrollment(
+  method: "totp" | "webauthn"
+): Promise<MfaOutcome<MfaEnrollResult>> {
+  try {
+    const data = await callGateway<MfaEnrollResult>("/api/v1/auth/mfa/enroll", {
+      method: "POST",
+      body: { method },
+    });
+    return { ok: true, data };
+  } catch (error) {
+    return failure(error);
+  }
 }
 
-/** Phase A10: WebAuthn assertion options for a step-up or a login challenge. */
-export async function beginMfaChallenge(): Promise<MfaChallengeResult> {
-  return callGateway<MfaChallengeResult>("/api/v1/auth/mfa/challenge");
+/** Phase A10: WebAuthn assertion options for a login challenge or a step-up. */
+export async function beginMfaChallenge(): Promise<MfaOutcome<MfaChallengeResult>> {
+  try {
+    const data = await callGateway<MfaChallengeResult>("/api/v1/auth/mfa/challenge", {
+      method: "POST",
+    });
+    return { ok: true, data };
+  } catch (error) {
+    return failure(error);
+  }
 }
 
-/** Completes enrollment or a challenge; opens the Section 7.3 step-up window. */
+/** Completes an enrollment or a challenge; opens the Section 7.3 step-up window. */
 export async function verifyMfa(input: {
   method: "totp" | "webauthn";
   code?: string;
   credential?: Record<string, unknown>;
   label?: string;
-}): Promise<MfaVerifyResult> {
+}): Promise<MfaOutcome> {
   try {
-    const result = await callGateway<{ method: "totp" | "webauthn"; step_up_expires_at: string }>(
-      "/api/v1/auth/mfa/verify",
-      input
-    );
-    return { ok: true, ...result };
+    await callGateway("/api/v1/auth/mfa/verify", { method: "POST", body: input });
+    revalidatePath("/account");
+    return { ok: true };
   } catch (error) {
-    return {
-      ok: false,
-      code: "MFA_VERIFICATION_FAILED",
-      message: error instanceof Error ? error.message : "Verification failed.",
-    };
+    return failure(error);
+  }
+}
+
+export async function listMfaFactors(): Promise<MfaFactor[]> {
+  return callGateway<MfaFactor[]>("/api/v1/me/mfa");
+}
+
+/** Section 7.3: removing one of your own factors is a step-up operation. A
+ * caller without a fresh step-up gets `STEP_UP_REQUIRED` back, not a crash. */
+export async function removeMfaFactor(id: string): Promise<MfaOutcome> {
+  try {
+    await callGateway(`/api/v1/me/mfa/${id}`, { method: "DELETE" });
+    revalidatePath("/account");
+    return { ok: true };
+  } catch (error) {
+    return failure(error);
   }
 }

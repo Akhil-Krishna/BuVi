@@ -11,6 +11,16 @@ import { beginMfaChallenge, verifyMfa } from "./mfa-actions";
  * re-auth prompt (B3-B7) -- Section 7.3's `STEP_UP_REQUIRED` refusal reuses
  * this exact component rather than a bespoke modal per phase.
  */
+/** Renders the platform's refusal by `code`, never by message text (Section 21).
+ * Being rate limited is "wait", not "wrong code" -- telling a user their code
+ * was wrong when it was not is how people end up re-enrolling needlessly. */
+function refusalText(code: string): string {
+  if (code === "RATE_LIMITED" || code === "MFA_TOO_MANY_ATTEMPTS") {
+    return "Too many attempts. Wait a moment and try again.";
+  }
+  return "That code was not accepted. Try again.";
+}
+
 export function MfaVerifyForm({ hasWebauthn }: { hasWebauthn: boolean }) {
   const router = useRouter();
   const [code, setCode] = useState("");
@@ -26,7 +36,7 @@ export function MfaVerifyForm({ hasWebauthn }: { hasWebauthn: boolean }) {
         router.replace("/");
         router.refresh();
       } else {
-        setError("That code was not accepted. Try again.");
+        setError(refusalText(result.code));
       }
     });
   }
@@ -36,8 +46,12 @@ export function MfaVerifyForm({ hasWebauthn }: { hasWebauthn: boolean }) {
     startTransition(async () => {
       try {
         const challenge = await beginMfaChallenge();
+        if (!challenge.ok) {
+          setError("A security key challenge could not be started.");
+          return;
+        }
         const credential = await startAuthentication({
-          optionsJSON: challenge.options as unknown as Parameters<
+          optionsJSON: challenge.data.options as unknown as Parameters<
             typeof startAuthentication
           >[0]["optionsJSON"],
         });
@@ -49,7 +63,7 @@ export function MfaVerifyForm({ hasWebauthn }: { hasWebauthn: boolean }) {
           router.replace("/");
           router.refresh();
         } else {
-          setError("That security key was not accepted.");
+          setError(refusalText(result.code));
         }
       } catch {
         setError("The security key prompt was cancelled or failed.");

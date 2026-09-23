@@ -20,7 +20,9 @@ export function TopNav({ session }: { session: Session }) {
         ))}
       </nav>
       <div className="flex items-center gap-3">
-        <span className="text-sm text-text-secondary">{session.email}</span>
+        <a href="/account" className="text-sm text-text-secondary hover:text-text-primary">
+          {session.email}
+        </a>
         <form action={logout}>
           <button
             type="submit"

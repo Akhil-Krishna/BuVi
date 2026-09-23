@@ -1,4 +1,6 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
+import { clearMfaAndSessions, DEMO } from "./reset";
+import { signIn, signOut } from "./sign-in";
 
 /**
  * Phase B1 DoD: the real Authorization Code + PKCE flow, through an actual
@@ -7,18 +9,19 @@ import { test, expect } from "@playwright/test";
  * client-side convenience object. Demo users/passwords match
  * `scripts/test_login.py` (Phase A1's own DoD script) exactly.
  */
-const PASSWORD = "Demo-Passw0rd!23";
 
-async function signInThroughKeycloak(page: import("@playwright/test").Page, username: string) {
+test.beforeAll(() => clearMfaAndSessions(DEMO.client, DEMO.developer));
+
+/** Signs in, first proving the browser really is sent to Keycloak's authorize
+ * endpoint -- the one assertion specific to this spec, which exists to prove
+ * the OIDC redirect itself rather than just its outcome. */
+async function signInThroughKeycloak(page: Page, username: string) {
   await page.goto("/");
-  await expect(page).toHaveURL(/\/login$/);
-
+  await expect(page).toHaveURL(/\/login/);
   await page.getByRole("button", { name: "Continue with SSO" }).click();
   await expect(page).toHaveURL(/\/realms\/buvi\/protocol\/openid-connect\/auth/);
-
-  await page.locator("#username").fill(username);
-  await page.locator("#password").fill(PASSWORD);
-  await page.locator("#kc-login").click();
+  await page.goBack();
+  await signIn(page, username);
 }
 
 test("a client-role user completes the full OIDC flow and sees the client nav", async ({
@@ -30,7 +33,7 @@ test("a client-role user completes the full OIDC flow and sees the client nav", 
   // The callback route must land the browser on a real page, not the 204
   // identity-service itself returns.
   await expect(page).toHaveURL("http://localhost:3000/");
-  await expect(page.getByText("Signed in as")).toBeVisible();
+  await expect(page.getByRole("heading", { name: /Signed in as/ })).toBeVisible();
 
   // Client nav: Chat + Dashboards, never the developer/admin items.
   await expect(page.getByRole("link", { name: "Chat" })).toBeVisible();
@@ -51,8 +54,7 @@ test("a client-role user completes the full OIDC flow and sees the client nav", 
   // No JWT/refresh-token shape ever reaches the browser (Section 6.2).
   expect(session!.value.split(".").length).not.toBe(3);
 
-  await page.getByRole("button", { name: "Sign out" }).click();
-  await expect(page).toHaveURL(/\/login$/);
+  await signOut(page);
   const afterLogout = await context.cookies();
   expect(afterLogout.find((c) => c.name === "buvi_session")).toBeUndefined();
 });
