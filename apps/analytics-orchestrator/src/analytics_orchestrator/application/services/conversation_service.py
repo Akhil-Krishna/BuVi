@@ -180,10 +180,10 @@ class ConversationService:
     async def _end_without_execution(self, run: Run, status: str, code: FailureCode) -> None:
         run = await self._repository.get_run(run.tenant_id, run.id, for_update=True) or run
         event = await self._repository.append_event(
-            run, stage="run", status="failed", message=MESSAGES[code], artifact_id=None
+            run, stage="run", status=status, message=MESSAGES[code], artifact_id=None
         )
         state = dict(run.flow_state or {})
-        state["emitted_events"] = [*state.get("emitted_events", []), "run.failed"]
+        state["emitted_events"] = [*state.get("emitted_events", []), f"run.{status}"]
         await self._repository.finish_run(run, status, code.value, state)
         await self._repository.commit()
         try:
@@ -192,7 +192,7 @@ class ConversationService:
                     run_id=str(run.id),
                     seq=event.seq,
                     stage="run",
-                    status="failed",
+                    status=status,
                     message=event.message,
                     created_at=event.created_at,
                 )

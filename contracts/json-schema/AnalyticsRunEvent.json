@@ -52,7 +52,8 @@
       "enum": [
         "started",
         "completed",
-        "failed"
+        "failed",
+        "cancelled"
       ],
       "title": "Status",
       "type": "string"

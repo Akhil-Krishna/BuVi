@@ -856,31 +856,39 @@ class RunExecutor:
                 ),
                 None,
             )
-            emitted = current.emitted_events
-            if (
-                failed_stage
-                and failed_stage != "run"
-                and f"{failed_stage}.started" in emitted
-                and f"{failed_stage}.failed" not in emitted
-            ):
-                published.append(
-                    await repository.append_event(
-                        run, stage=failed_stage, status="failed", message=text, artifact_id=None
-                    )
-                )
-                emitted.append(f"{failed_stage}.failed")
-            if "run.failed" not in emitted and "run.completed" not in emitted:
-                published.append(
-                    await repository.append_event(
-                        run, stage="run", status="failed", message=text, artifact_id=None
-                    )
-                )
-                emitted.append("run.failed")
             final_status = (
                 "cancelled"
                 if run.status == "cancelled" or code is FailureCode.CANCELLED
                 else "failed"
             )
+            emitted = current.emitted_events
+            if (
+                failed_stage
+                and failed_stage != "run"
+                and f"{failed_stage}.started" in emitted
+                and f"{failed_stage}.{final_status}" not in emitted
+            ):
+                published.append(
+                    await repository.append_event(
+                        run,
+                        stage=failed_stage,
+                        status=final_status,
+                        message=text,
+                        artifact_id=None,
+                    )
+                )
+                emitted.append(f"{failed_stage}.{final_status}")
+            if (
+                "run.failed" not in emitted
+                and "run.completed" not in emitted
+                and "run.cancelled" not in emitted
+            ):
+                published.append(
+                    await repository.append_event(
+                        run, stage="run", status=final_status, message=text, artifact_id=None
+                    )
+                )
+                emitted.append(f"run.{final_status}")
             await repository.finish_run(
                 run, final_status, code.value, current.model_dump(mode="json")
             )

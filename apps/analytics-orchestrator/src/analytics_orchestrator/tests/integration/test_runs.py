@@ -359,7 +359,7 @@ async def test_cancellation_of_queued_and_running_runs(
     queued = await harness.start_run(who)
     cancelled = await harness.client.post(f"/api/v1/runs/{queued}/cancel", headers=who.headers)
     assert cancelled.status_code == 202 and cancelled.json()["status"] == "cancelled"
-    assert await run_events(platform_db, queued) == ["run.failed"]
+    assert await run_events(platform_db, queued) == ["run.cancelled"]
     assert (await harness.execute(who, queued)).json()["status"] == "cancelled"
     again = await harness.client.post(f"/api/v1/runs/{queued}/cancel", headers=who.headers)
     assert again.status_code == 409
@@ -379,7 +379,7 @@ async def test_cancellation_of_queued_and_running_runs(
     assert await run_events(platform_db, running_run) == [
         "intent.started",
         "intent.completed",
-        "run.failed",
+        "run.cancelled",
     ]
     assert "RetrieveSchema" not in harness.provider.calls and harness.services.query_calls == []
 

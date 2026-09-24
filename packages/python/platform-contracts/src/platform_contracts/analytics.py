@@ -91,7 +91,7 @@ class AnalyticsRunEvent(BaseModel):
     run_id: str
     seq: int = Field(ge=1)
     stage: RunStage
-    status: Literal["started", "completed", "failed"]
+    status: Literal["started", "completed", "failed", "cancelled"]
     message: str = Field(max_length=300)
     artifact_id: str | None = None
     created_at: dt.datetime
