@@ -91,7 +91,7 @@ export function SessionList({ sessions }: { sessions: UserSession[] }) {
                     disabled={pendingId === session.id}
                     className="rounded-sm border border-border px-2 py-1 text-xs text-danger hover:bg-danger hover:text-white disabled:opacity-50"
                   >
-                    {session.current ? "Revoke this session" : "Revoke"}
+                    {session.current ? "Revoke this session" : "Revoke session"}
                   </button>
                 </td>
               </tr>

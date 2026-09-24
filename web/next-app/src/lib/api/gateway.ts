@@ -17,14 +17,19 @@ export class GatewayError extends Error {
   constructor(
     readonly status: number,
     readonly code: string,
-    message: string
+    message: string,
+    // Section 21: e.g. STEP_UP_REQUIRED's `{method: "webauthn" | "any"}` --
+    // structured, so a caller can branch on it without parsing `message`.
+    readonly details: Record<string, unknown> = {}
   ) {
     super(message);
     this.name = "GatewayError";
   }
 }
 
-type ErrorEnvelope = { error?: { code?: string; message?: string } };
+type ErrorEnvelope = {
+  error?: { code?: string; message?: string; details?: Record<string, unknown> };
+};
 
 export async function callGateway<T>(
   path: string,
@@ -48,7 +53,8 @@ export async function callGateway<T>(
       envelope?.error?.code ?? "UNKNOWN",
       // Section 21: branch on `code`, never on `message`. The message is for a
       // human reading a log, not for control flow here or in any caller.
-      envelope?.error?.message ?? `Request failed (${response.status})`
+      envelope?.error?.message ?? `Request failed (${response.status})`,
+      envelope?.error?.details ?? {}
     );
   }
 

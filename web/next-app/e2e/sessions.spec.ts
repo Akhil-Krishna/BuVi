@@ -28,11 +28,11 @@ test("revoking another session signs that browser out; revoking your own signs y
 
   // Exactly one row is the current session; the other is the second browser.
   await expect(page.getByText("This session", { exact: true })).toHaveCount(1);
-  await expect(page.getByRole("button", { name: "Revoke", exact: true })).toHaveCount(1);
+  await expect(page.getByRole("button", { name: "Revoke session" })).toHaveCount(1);
 
   // --- Revoke the *other* session ---
-  await page.getByRole("button", { name: "Revoke", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Revoke", exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "Revoke session" }).click();
+  await expect(page.getByRole("button", { name: "Revoke session" })).toHaveCount(0);
   // This browser is unaffected -- it still has its own valid session.
   await expect(page.getByRole("heading", { name: "Account" })).toBeVisible();
 

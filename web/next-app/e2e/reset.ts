@@ -1,14 +1,18 @@
 import { execFileSync } from "node:child_process";
 
 /**
- * Put one demo user back to "no MFA factors, no live sessions, not locked out".
+ * Put one demo user back to "no MFA factors, no live sessions, no API keys,
+ * not locked out".
  *
  * Every Python live flow starts with `reset_demo_state` so that "each resets
- * demo state, so order does not matter" (`make test-live`). These specs enrol
- * factors and deliberately submit one wrong code, so they need the same
- * property: without it, whichever spec ran first would decide whether the next
- * one's sign-in lands on the app or on the MFA gate, and running a single spec
- * alone would behave differently again.
+ * demo state, so order does not matter" (`make test-live`). These specs
+ * enrol factors, mint API keys, and deliberately submit one wrong code, so
+ * they need the same property: without it, whichever spec ran first would
+ * decide whether the next one's sign-in lands on the app or on the MFA gate,
+ * a create-key assertion would match a key an earlier *run* left behind
+ * (found the hard way: `api-keys.spec.ts` accumulated a second `ci-pipeline`
+ * row across two suite runs before `identity.api_keys` was added here), and
+ * running a single spec alone would behave differently again.
  *
  * The audit rows matter as much as the factors. `MfaService._throttle` counts
  * `auth.mfa_verification_failed` events over a 15-minute window
@@ -30,6 +34,7 @@ export function clearMfaAndSessions(...emails: string[]): void {
   const sql = `
     DELETE FROM identity.mfa_credentials WHERE user_id IN (${scope});
     DELETE FROM identity.sessions WHERE user_id IN (${scope});
+    DELETE FROM identity.api_keys WHERE owner_user_id IN (${scope});
     DELETE FROM identity.audit_events
      WHERE event_type = 'auth.mfa_verification_failed'
        AND actor_user_id IN (${scope});

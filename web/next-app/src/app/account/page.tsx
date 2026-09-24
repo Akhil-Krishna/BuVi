@@ -1,5 +1,7 @@
 import { redirect } from "next/navigation";
 import { TopNav } from "@/components/layout/TopNav";
+import { ApiKeyPanel } from "@/features/account/ApiKeyPanel";
+import { listApiKeys } from "@/features/account/api-key-actions";
 import { MfaPanel } from "@/features/account/MfaPanel";
 import { SessionList } from "@/features/account/SessionList";
 import { listSessions } from "@/features/account/session-actions";
@@ -25,7 +27,12 @@ export default async function AccountPage() {
     redirect("/mfa");
   }
 
-  const [sessions, factors] = await Promise.all([listSessions(), listMfaFactors()]);
+  const [sessions, factors, apiKeys] = await Promise.all([
+    listSessions(),
+    listMfaFactors(),
+    listApiKeys(),
+  ]);
+  const hasWebauthn = factors.some((factor) => factor.method === "webauthn");
 
   return (
     <div className="flex min-h-screen flex-col bg-bg-subtle">
@@ -50,6 +57,19 @@ export default async function AccountPage() {
             Revoking a session signs that browser out immediately.
           </p>
           <SessionList sessions={sessions} />
+        </section>
+
+        <section className="mt-10">
+          <h2 className="text-base font-semibold text-text-primary">API keys</h2>
+          <p className="mt-1 mb-3 text-sm text-text-secondary">
+            For scripts and service integrations. A key can never do more than you can.
+          </p>
+          <ApiKeyPanel
+            apiKeys={apiKeys}
+            scopeOptions={session.permissions}
+            hasWebauthn={hasWebauthn}
+            hasAnyFactor={factors.length > 0}
+          />
         </section>
       </main>
     </div>

@@ -18,10 +18,14 @@ export default async function MfaPage() {
 
   const factors = await listMfaFactors();
   const hasWebauthn = factors.some((factor) => factor.method === "webauthn");
+  // Section 6.6/7.3: a `webauthn_required` session (org_admin under tenant
+  // policy, platform_super_admin) must not be offered TOTP as a fallback --
+  // that would let a factor the policy forbids satisfy the gate anyway.
+  const requireWebauthn = session.step_up_method === "webauthn";
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-bg-subtle px-4">
-      <MfaVerifyForm hasWebauthn={hasWebauthn} />
+      <MfaVerifyForm hasWebauthn={hasWebauthn} requireWebauthn={requireWebauthn} />
     </main>
   );
 }
