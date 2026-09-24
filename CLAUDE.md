@@ -41,11 +41,15 @@ small, additive, allow-listed `redirect_uri` change (ADR 0018) that left the exi
 identity-service suite and `scripts/test-login.sh` unaffected. `src/proxy.ts` (Next.js 16 renamed
 `middleware.ts`), the two auth relay routes, the generic BFF proxy, TOTP/WebAuthn MFA
 verification, and the role-permission-driven `TopNav` are all in `web/next-app/src`.
-Account settings (`/account`) cover the caller's own sessions with self-revoke and MFA factor management, and MFA enrollment is built for both TOTP (QR + manual
-key) and WebAuthn. WebAuthn is covered in a real browser through CDP virtual authenticators —
-enrol, sign out, sign back in, satisfy the gate — with the negative case too. Not done in B1: the
-`(client)/(developer)/(admin)` route groups' real page content (that's B2 onward — B1's own
-landing page is deliberately minimal) and `/me/api-keys`, carried forward below.
+Account settings (`/account`) cover the caller's own sessions with self-revoke, MFA
+factor management (TOTP + WebAuthn enrollment), and API keys (list/create/revoke, secret shown
+exactly once) — all three parts of the account-settings panel Section 5.2 scoped to B1 are now
+built. WebAuthn is covered in a real browser through CDP virtual authenticators — enrol, sign
+out, sign back in, satisfy the gate — with the negative case too. Minting a key requires a fresh
+step-up (Section 7.3); the same reusable `MfaVerifyForm` handles it inline, and a session with no
+enrolled factor at all is told to enrol one rather than shown a bare refusal. B1 is now fully
+closed. Not done in B1: the `(client)/(developer)/(admin)` route groups' real page content --
+that's B2 onward, and B1's own landing page is deliberately minimal.
 
 Next up: Track B, Phase B2 (Client chat UI + dashboards). The backend is frozen except for bug
 fixes — including the Track B prerequisite below; Track B imports `@buvi/api-client`. See Section
@@ -60,10 +64,18 @@ them; do not restyle a screen away from what Stitch shows, and do not invent sha
 rounded-pill badges, or emoji anywhere the Stitch set doesn't have them.
 
 **Carried forward (do not drop):**
-- **Still open from Phase B1 (small):** API keys (`/me/api-keys`) are the one part of the
-  account-settings panel not built — sessions and MFA factors are. Creating one is a step-up
-  operation returning the secret exactly once (Section 9), so it needs the show-once treatment
-  the webhook secret will also need in B8; do them with the same component.
+- **B8 note:** `/account`'s API key create flow (`ApiKeyPanel`, show-once secret display, inline
+  step-up via `MfaVerifyForm`) is the pattern to reuse for the webhook signing secret in B8 —
+  same shape, same "shown once, never again" rule (Section 6.8/9).
+- **Before Phase C1 starts (required):** Keycloak's realm and the identity Postgres schema must
+  be backed up and restored as one consistency domain, never independently (ADR 0019). Found
+  live: a Docker Desktop restart brought Postgres back with its volume intact but Keycloak
+  without one, leaving `identity.users.idp_subject` pointing at Keycloak subjects that no longer
+  existed — every affected user was refused login with `403 USER_NOT_ACTIVE` ("not provisioned
+  for any organization"), a message that reads like a normal authorization decision, not a
+  restore-consistency symptom. C1's DR restore drill must restore both from the same point and
+  prove a real login for a pre-existing user succeeds afterward, not just that both services
+  start.
 - **Running the browser E2E suite:** it needs `make up`, identity-service, api-gateway and
   `npm run dev`, and api-gateway must be started with a raised auth-tier limit
   (`GATEWAY_RATE_AUTH_IP_CAPACITY=200 GATEWAY_RATE_AUTH_IP_REFILL_PER_SECOND=20`) — the exact
