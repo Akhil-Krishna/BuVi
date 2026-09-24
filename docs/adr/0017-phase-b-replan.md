@@ -61,11 +61,21 @@ and must drive it, not the reverse.
    noted as a Phase B2 prerequisite rather than performed under this ADR (Track A is otherwise
    frozen to bug fixes; this rewrite's scope is Track B planning, not Track A code).
 
+   **Resolved in Phase B2.** `AnalyticsRunEvent.status` gained `"cancelled"`; `run_executor.py`'s
+   `_fail()` and `conversation_service.py`'s `_end_without_execution()` (the queued-run cancel
+   path, which had the same bug independently — it hardcoded the *event's* status to `"failed"`
+   even when the *run's* own status was being set to `"cancelled"`) both emit the run's real
+   terminal status instead of always `"failed"`. Migration `0003_run_events_cancelled_status`
+   widens `analytics.run_events`'s DB check constraint. `web/next-app`'s chat UI now branches on
+   `AnalyticsRunEvent.status` directly (Section 11's own rule) rather than the message-string
+   fallback this section described.
+
 ## Consequences
 
 - Track B's phase count changes from 7 to 8; CLAUDE.md's "Next up" line and Section 31.0 must be
   read against the new list, not the old one.
-- No backend change follows from this ADR. Track A remains frozen except for bug fixes.
+- No backend change follows from this ADR directly. Track A remains frozen except for bug fixes —
+  the one exception is the already-flagged Phase B2 prerequisite above, resolved when B2 shipped.
 - Auditor and billing_admin (Section 7.1) have no dedicated Stitch screens; Phase B7 reuses the
   Admin console's own components in a reduced, read-only configuration for them rather than
   building separate screens — their permission matrix is narrow enough that this is a

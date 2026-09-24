@@ -51,9 +51,29 @@ enrolled factor at all is told to enrol one rather than shown a bare refusal. B1
 closed. Not done in B1: the `(client)/(developer)/(admin)` route groups' real page content --
 that's B2 onward, and B1's own landing page is deliberately minimal.
 
-Next up: Track B, Phase B2 (Client chat UI + dashboards). The backend is frozen except for bug
-fixes — including the Track B prerequisite below; Track B imports `@buvi/api-client`. See Section
-31 of the build spec for the full B1–B8 list.**
+**Phase B2 (Client chat UI + dashboards) is complete** — Section 32's first vertical slice, proven
+end to end in a real browser (`web/next-app/e2e/chat-and-dashboards.spec.ts`): a chat message
+streams a live 6-step execution trace over real SSE (`useRunStream`, native `EventSource` through
+the BFF proxy), renders the resulting `ChartSpec` with direct `echarts` (no wrapper package --
+`echarts-for-react` has no React 19 peer range yet), pins the artifact to a new or existing
+dashboard, and the dashboard grid/detail pages render its tiles on the same 12-column grid
+`dashboard-service` positions them on. The Track B prerequisite (Section 11's `run.cancelled` wire
+event) is closed as a small, additive backend change — `AnalyticsRunEvent.status` gained
+`"cancelled"`, `run_executor.py`/`conversation_service.py` emit it instead of overloading
+`run.failed`, migration `0003_run_events_cancelled_status` widens the DB check constraint — so a
+cancellation is now told apart from a real failure by typed status alone, not the fragile
+message-string match the spec's Phase B2 text anticipated as a fallback. `dashboard:share`'s
+step-up gate reuses the same `MfaVerifyForm` pattern API keys already established. Chat has no
+conversation-history sidebar the Stitch mock shows: there is no `GET /conversations` list endpoint
+(Section 9's chat surface is create-and-post only), so each browser tab's conversation is created
+lazily and lives only for that tab — the same class of "mock shows more than the backend
+implements" gap as B7's Usage & Quotas caveat, not an oversight. Phase B3 (`(developer)/data`) does
+not exist yet, so the chat vertical slice's own precondition (an active data source) is provisioned
+by `scripts/provision_demo_data_source.py`, called from the spec's own `beforeAll` — idempotent,
+mirrors `scripts/test_analytics_run.py`'s `admin_with_sample_sales()`.
+
+Next up: Track B, Phase B3 (Data sources & catalog). See Section 31 of the build spec for the full
+B1–B8 list.**
 
 **Frontend design reference (read before writing any Track B page):** Section 5.2 of the build
 spec names, screen by screen, which of the 15 Stitch screens (project `10440972999306255957`,
@@ -89,17 +109,14 @@ rounded-pill badges, or emoji anywhere the Stitch set doesn't have them.
   set to the deployed Next.js app's own `/callback` URL, and that same URL registered with the
   IdP — dev's defaults (`localhost:3000/callback`, already registered in
   `scripts/keycloak-bootstrap.sh`'s wildcard) do not carry over automatically.
-- **Track B prerequisite (small, additive backend change — Phase B2 blocks on it):** a cancelled
-  analytics run (`POST /runs/{id}/cancel`) reaches the browser today as an ordinary `run.failed`
-  SSE event, distinguishable from a real failure only by matching the fixed message string "The
-  run was cancelled." — `AnalyticsRunEvent.status` in `platform_contracts` is
-  `Literal["started","completed","failed"]` and has no `"cancelled"` value. Add it and emit it
-  from `analytics_orchestrator`'s cancellation path before Phase B2 needs to distinguish the two
-  in the UI (spec Section 11; ADR 0017).
 - **Track B note:** the Stitch "Usage & Quotas" screen shows invoice-reconciliation and a
   spend-cap control that nothing in the backend implements (`POST /billing/subscription` is a
   `501` stub — see the post-GA line below). Phase B7 renders only the parts backed by
   `GET /billing/usage` / `GET /billing/quotas`; do not wire the rest to a live action (ADR 0017).
+- **Track B note (B3 dependency):** Phase B2's own E2E coverage provisions its data source through
+  `scripts/provision_demo_data_source.py` because `(developer)/data` doesn't exist yet. Once B3
+  ships that UI, retire the script (or point it at the UI's own flow) rather than letting two ways
+  to connect `sample-sales-db` drift apart.
 - **Before Phase C1 starts (required):** diagnose and fix the intermittent A5 crash-resume stall (1 failure in 15 runs;
   ADR 0014 "Conclusion", ADR 0015). Needs both the root cause named from evidence (a recurrence logs the frames it was
   awaiting; CI keeps the `backend-e2e-logs` artifact) **and** the production equivalents of the dev-only mitigations:
