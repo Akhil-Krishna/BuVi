@@ -1,0 +1,30 @@
+import { ChatPanel } from "@/features/chat/ChatPanel";
+import { listDashboards } from "@/features/dashboards/actions";
+import { getSession } from "@/lib/auth/session";
+
+/** Stitch "AI Analytics Chat" (Section 5.2), Section 32's vertical-slice
+ * journey: message -> SSE execution trace -> chart -> pin to dashboard. */
+export default async function ChatPage() {
+  const session = await getSession();
+  if (!session?.permissions.includes("chat:use")) {
+    return (
+      <div>
+        <h1 className="text-xl font-semibold text-text-primary">Chat</h1>
+        <p className="mt-2 text-sm text-text-secondary">
+          Your role does not include access to the analytics chat.
+        </p>
+      </div>
+    );
+  }
+
+  const dashboards = await listDashboards();
+
+  return (
+    <div className="flex flex-1 flex-col">
+      <h1 className="text-xl font-semibold text-text-primary">Chat</h1>
+      <div className="mt-4 flex flex-1 flex-col">
+        <ChatPanel dashboards={dashboards} />
+      </div>
+    </div>
+  );
+}

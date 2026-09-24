@@ -6,13 +6,27 @@ import { defineConfig } from "@playwright/test";
  * `httpx`-as-browser flow `scripts/test_login.py` uses (that proves the
  * backend; this proves the browser sees the right cookies and pages).
  *
- * Needs `make up` plus identity-service, api-gateway, and this app's own dev
- * server already running -- this suite does not start them itself, the same
- * division the Python live-flow scripts use (`make test-login` starts the
- * backend services it needs; this does not reach into Track A's job).
+ * Needs `make up` plus every backend service Phase B2's chat flow touches,
+ * and this app's own dev server, already running -- this suite does not
+ * start them itself, the same division the Python live-flow scripts use
+ * (`make test-login` starts the backend services it needs; this does not
+ * reach into Track A's job).
  *
  *   uv run --package identity-service uvicorn identity_service.main:create_app \
  *     --factory --port 8001                      # IDENTITY_REQUIRE_GATEWAY_TOKEN=true
+ *   uv run --package metadata-service uvicorn metadata_service.main:create_app \
+ *     --factory --port 8002
+ *   uv run --package query-gateway uvicorn query_gateway.main:create_app --factory --port 8003
+ *   uv run --package semantic-service uvicorn semantic_service.main:create_app \
+ *     --factory --port 8008
+ *   uv run --package visualization-service uvicorn visualization_service.main:create_app \
+ *     --factory --port 8006
+ *   uv run --package dashboard-service uvicorn dashboard_service.main:create_app \
+ *     --factory --port 8007
+ *   ANALYTICS_SCRIPTED_LATENCY_SECONDS=1.5 \
+ *     uv run --package analytics-orchestrator uvicorn analytics_orchestrator.main:create_app \
+ *     --factory --port 8004
+ *   uv run --package worker-runtime uvicorn worker_runtime.main:create_app --factory --port 8005
  *   GATEWAY_RATE_AUTH_IP_CAPACITY=200 GATEWAY_RATE_AUTH_IP_REFILL_PER_SECOND=20 \
  *     uv run --package api-gateway uvicorn api_gateway.main:create_app --factory --port 8000
  *   npm run dev                                   # BUVI_GATEWAY_URL, BUVI_CALLBACK_URL
@@ -26,6 +40,12 @@ import { defineConfig } from "@playwright/test";
  * asserts a burst is refused with `429` and a `Retry-After`. The helpers in
  * `e2e/sign-in.ts` still wait a limit out if they meet one, so the suite is
  * correct either way -- just slower without this.
+ *
+ * `ANALYTICS_SCRIPTED_LATENCY_SECONDS` (Section 23's scripted development
+ * provider; `analytics_orchestrator/core/config.py`) is what gives
+ * `chat-and-dashboards.spec.ts`'s cancellation test a real window to click
+ * Cancel before the run finishes on its own -- at the default `0`, a scripted
+ * run can complete in well under a browser round trip.
  */
 export default defineConfig({
   testDir: "./e2e",
