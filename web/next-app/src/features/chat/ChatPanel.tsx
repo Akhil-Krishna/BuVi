@@ -42,12 +42,26 @@ type Turn = {
  * once, when its `run.*` terminal event arrives (Section 11: the typed
  * status there, not string-matching its message, is what tells a real
  * failure from a user-initiated cancellation). */
-export function ChatPanel({ dashboards }: { dashboards: Dashboard[] }) {
+export function ChatPanel({
+  dashboards,
+  initialPrompt,
+  initialDataSourceId,
+}: {
+  dashboards: Dashboard[];
+  /** SQL Lab's "Send to Chat/Chart" (Section 31 Phase B4) arrives here: the
+   * query-gateway result itself has no chat endpoint to land in (chat only
+   * ever takes free text), so the honest bridge is seeding the composer with
+   * the same data source and a natural-language prompt, then letting the
+   * real chat pipeline run from there -- not a second, fake execution path. */
+  initialPrompt?: string;
+  initialDataSourceId?: string | null;
+}) {
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
   const [activePrompt, setActivePrompt] = useState("");
   const [turns, setTurns] = useState<Turn[]>([]);
-  const [input, setInput] = useState("");
+  const [input, setInput] = useState(initialPrompt ?? "");
+  const [dataSourceId] = useState<string | null>(initialDataSourceId ?? null);
   const [sendError, setSendError] = useState<string | null>(null);
   const [pinningRunId, setPinningRunId] = useState<string | null>(null);
   const [isSending, startSendTransition] = useTransition();
@@ -119,7 +133,7 @@ export function ChatPanel({ dashboards }: { dashboards: Dashboard[] }) {
     if (!content || isSending) return;
     setSendError(null);
     startSendTransition(async () => {
-      const result = await sendChatMessage(conversationId, content, null);
+      const result = await sendChatMessage(conversationId, content, dataSourceId);
       if (!result.ok) {
         setSendError(result.message);
         return;
