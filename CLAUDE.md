@@ -94,18 +94,22 @@ whatever function requires a resource to already be in the state it produces can
 
 **Phase B4 (SQL Lab) is complete** — proven end to end in a real browser (`web/next-app/e2e/
 sql-lab.spec.ts`): a `developer` browses the catalog (B3's table browser, reused as-is, not
-rebuilt), writes and runs SQL against `query-gateway`'s real validate/execute/history endpoints —
-the exact same validator and executor the chat flow uses, never a second path — sees results, and
-sends one to the chart flow; running with a row limit above `export_step_up_rows` (10,000 by
-default) prompts step-up in the browser, matching `query_service.py`'s server check exactly; a
-`client`-role session never reaches the page. Built as a plain styled `<textarea>` (Tab-to-indent,
-⌘/Ctrl+Enter to run) rather than pulling in a code-editor dependency the stack matrix names only
-for charts, not SQL — professional layout and density instead of a heavier dependency. "Send to
-Chat/Chart" is an honest handoff, not a fake shortcut: chat has no endpoint that accepts injected
-SQL or result rows (Section 9's chat surface is `content` + optional `data_source_id` only), so it
-seeds `/chat`'s composer with the same data source and a natural-language prompt and lets the real
-chat pipeline run from there — `ChatPanel` gained `initialPrompt`/`initialDataSourceId` props for
-exactly this, reachable only via `/chat?prompt=&dataSourceId=` and otherwise inert.
+rebuilt), writes and runs SQL in a real CodeMirror 6 editor (`@uiw/react-codemirror` +
+`@codemirror/lang-sql`, line numbers and SQL syntax highlighting themed from this app's own
+tokens, not a bundled dark theme) against `query-gateway`'s real validate/execute/history
+endpoints — the exact same validator and executor the chat flow uses, never a second path — sees
+results, and sends one to the chart flow; running with a row limit above `export_step_up_rows`
+(10,000 by default) prompts step-up in the browser, matching `query_service.py`'s server check
+exactly; a `client`-role session never reaches the page. "Send to Chat/Chart" is an honest handoff,
+not a fake shortcut: chat has no endpoint that accepts injected SQL or result rows (Section 9's
+chat surface is `content` + optional `data_source_id` only), so it seeds `/chat`'s composer with
+the same data source and a natural-language prompt and lets the real chat pipeline regenerate SQL
+from scratch — `ChatPanel` gained `initialPrompt`/`initialDataSourceId` props for exactly this,
+reachable only via `/chat?prompt=&dataSourceId=` and otherwise inert. A true skip-regeneration
+endpoint was investigated directly against `run_executor.py`/`analytics_flow.py` and found
+non-trivial (it touches `_authorize_query`'s real Section 7.2 check and Section 32's hardcoded
+9-stage SSE sequence, not just UI) — tracked as a named Phase C1 candidate, not built here
+(ADR 0020).
 
 Two real test-idempotency bugs caught while writing `sql-lab.spec.ts`, both about async client
 state that isn't a server prop: the SQL grants panel's own async fetch had a "Loading" heading and
@@ -129,6 +133,15 @@ rounded-pill badges, or emoji anywhere the Stitch set doesn't have them.
 - **B8 note:** `/account`'s API key create flow (`ApiKeyPanel`, show-once secret display, inline
   step-up via `MfaVerifyForm`) is the pattern to reuse for the webhook signing secret in B8 —
   same shape, same "shown once, never again" rule (Section 6.8/9).
+- **Phase C1 candidate (ADR 0020):** SQL Lab's "Send to Chat/Chart" (B4) reseeds the chat composer
+  and lets the full pipeline regenerate SQL from scratch, rather than skipping straight to
+  execution with the already-validated query. A true skip-regeneration entry point needs a CrewAI
+  `@router()` branch, a synthesized `SchemaContext`/`AnalyticsRequest` for the stages it bypasses
+  (`_authorize_query`'s real Section 7.2 check trusts `schema_context`, so this touches Track A
+  security surface, not just UX), and a decision on what its SSE events look like against Section
+  32's hardcoded 9-stage sequence — investigated directly against `run_executor.py` and judged
+  non-trivial for a Track B phase; do not build it without going through the same design/test
+  rigor as any other change to query authorization.
 - **Before Phase C1 starts (required):** Keycloak's realm and the identity Postgres schema must
   be backed up and restored as one consistency domain, never independently (ADR 0019). Found
   live: a Docker Desktop restart brought Postgres back with its volume intact but Keycloak
