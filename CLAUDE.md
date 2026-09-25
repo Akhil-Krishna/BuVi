@@ -118,8 +118,27 @@ grants (unlike sessions/factors/API keys) are out of `clearMfaAndSessions`'s sco
 suite run found the developer pre-granted from the first run's own setup — both fixed by waiting
 for the grants fetch to settle before deciding whether to grant.
 
-Next up: Track B, Phase B5 (Semantic management). See Section 31 of the build spec for the full
-B1–B8 list.**
+**Phase B5 (Semantic management) is complete** — proven end to end in a real browser (`web/next-app/
+e2e/semantic.spec.ts`): a `developer` defines a metric through a structured expression builder
+(aggregation + column dropdowns composing Section 8.3's `AGG([DISTINCT] column)` grammar, never a
+free-SQL field — the Stitch mock's "Filter Clause" is omitted on purpose, since metric filters are
+post-GA), moves it `draft` → `approved` → `deprecated`, and the next chat run demonstrably uses an
+approved metric — proven not by a chart appearing (the scripted provider's generic fallback could
+produce a similar-looking chart by coincidence) but by reading `dashboard.artifacts.validated_sql`
+directly: it contains `COUNT(...)` and the metric's own name-derived alias, which the generic
+fallback (hardcoded to `SUM`, aliased `"revenue"`) could never produce. Dimensions have no matching
+Stitch screen, so they reuse the same screen as a second tab (Section 5.2's fallback rule). Zero
+backend changes: semantic-service has been built and tested since Phase A7.
+
+A real test-hygiene bug, not a product bug, cost a wasted debugging pass: a metric approved by one
+suite run stays approved indefinitely (`clearMfaAndSessions` resets factors/sessions/API keys, not
+semantic definitions), so a second run left two approved metrics sharing the same synonym, and the
+scripted provider's lexical matcher resolved both — query-gateway then rejected the resulting
+ambiguous plan (`QUERY_REJECTED`). Fixed by giving the spec its own fixture-reset step, the same
+discipline `e2e/reset.ts` already applies elsewhere.
+
+Next up: Track B, Phase B6 (MCP governance). See Section 31 of the build spec for the full B1–B8
+list.**
 
 **Frontend design reference (read before writing any Track B page):** Section 5.2 of the build
 spec names, screen by screen, which of the 15 Stitch screens (project `10440972999306255957`,
