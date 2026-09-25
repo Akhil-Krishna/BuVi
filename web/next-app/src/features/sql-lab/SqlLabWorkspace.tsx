@@ -1,42 +1,17 @@
 "use client";
 
-import { useMemo, useRef, useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { MfaVerifyForm } from "@/features/auth/MfaVerifyForm";
 import type { DataSource, TableSummary } from "@/features/data-sources/types";
 import { executeSql, validateSql } from "./actions";
+import { SqlEditor } from "./SqlEditor";
 import type { SqlExecuteResult, SqlHistoryItem, SqlValidateResult } from "./types";
 
 const ROW_LIMITS = [100, 1_000, 10_000, 25_000, 50_000];
 
 function formatWhen(value: string): string {
   return new Date(value).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
-}
-
-/** Tab key inserts two spaces instead of moving focus off the editor -- the
- * one affordance that separates a code editor from a plain text box without
- * pulling in a full editor dependency (Section 5's stack matrix names one
- * for charts, not for SQL). */
-function handleEditorKeyDown(
-  event: React.KeyboardEvent<HTMLTextAreaElement>,
-  sql: string,
-  setSql: (value: string) => void,
-  onRun: () => void
-) {
-  if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
-    event.preventDefault();
-    onRun();
-    return;
-  }
-  if (event.key === "Tab") {
-    event.preventDefault();
-    const target = event.currentTarget;
-    const { selectionStart, selectionEnd } = target;
-    setSql(`${sql.slice(0, selectionStart)}  ${sql.slice(selectionEnd)}`);
-    requestAnimationFrame(() => {
-      target.selectionStart = target.selectionEnd = selectionStart + 2;
-    });
-  }
 }
 
 /**
@@ -69,7 +44,6 @@ export function SqlLabWorkspace({
   const [pendingStepUp, setPendingStepUp] = useState(false);
   const [requireWebauthn, setRequireWebauthn] = useState(false);
   const [isPending, startTransition] = useTransition();
-  const editorRef = useRef<HTMLTextAreaElement>(null);
 
   const tablesForSource = useMemo(
     () => tables.filter((table) => table.data_source_id === dataSourceId),
@@ -81,7 +55,6 @@ export function SqlLabWorkspace({
       (current) =>
         `${current}${current && !current.endsWith(" ") ? " " : ""}${table.schema_name}.${table.table_name}`
     );
-    editorRef.current?.focus();
   }
 
   function runValidate() {
@@ -205,15 +178,11 @@ export function SqlLabWorkspace({
 
       <div className="flex flex-1 flex-col gap-3">
         <div className="border border-border bg-bg">
-          <textarea
-            ref={editorRef}
+          <SqlEditor
             value={sql}
-            onChange={(event) => setSql(event.target.value)}
-            onKeyDown={(event) => handleEditorKeyDown(event, sql, setSql, runExecute)}
-            spellCheck={false}
+            onChange={setSql}
+            onRun={runExecute}
             placeholder="select * from sales.orders limit 100;"
-            rows={10}
-            className="w-full resize-y border-0 bg-bg px-4 py-3 font-mono text-sm text-text-primary outline-none"
           />
           <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border bg-bg-subtle px-3 py-2">
             <div className="flex items-center gap-2">

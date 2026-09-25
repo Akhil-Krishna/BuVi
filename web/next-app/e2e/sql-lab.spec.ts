@@ -1,18 +1,33 @@
 import { createHmac } from "node:crypto";
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 import { clearMfaAndSessions, DEMO } from "./reset";
 import { signIn } from "./sign-in";
 
 /**
  * Phase B4 DoD, in a real browser: a developer browses the catalog (B3's
- * browser, reused here), writes/executes SQL, sees results, and sends a
- * result to the chart flow; execution above the export row threshold
- * (10,000 rows -- query_service.py's `export_step_up_rows`) prompts step-up;
- * a client-role session never reaches the page. Runs against the real
- * `sample-sales-db` Postgres instance `provision_demo_data_source.py`
- * connects (shared with `chat-and-dashboards.spec.ts`'s precondition).
+ * browser, reused here), writes/executes SQL through a real CodeMirror 6
+ * editor (line numbers, SQL syntax highlighting, not a plain textarea), sees
+ * results, and sends a result to the chart flow; execution above the export
+ * row threshold (10,000 rows -- query_service.py's `export_step_up_rows`)
+ * prompts step-up; a client-role session never reaches the page. Runs
+ * against the real `sample-sales-db` Postgres instance
+ * `provision_demo_data_source.py` connects (shared with
+ * `chat-and-dashboards.spec.ts`'s precondition).
  */
 test.describe.configure({ mode: "serial" });
+
+const SELECT_ALL = process.platform === "darwin" ? "Meta+A" : "Control+A";
+
+/** CodeMirror is a contenteditable widget, not a `<textarea>` -- `.fill()`
+ * bypasses its own document model, so this clicks in, selects everything
+ * with the editor's own keymap binding, and types the replacement. */
+async function fillSqlEditor(page: Page, text: string): Promise<void> {
+  const content = page.locator(".cm-content");
+  await content.click();
+  await page.keyboard.press(SELECT_ALL);
+  await page.keyboard.press("Backspace");
+  await page.keyboard.type(text);
+}
 
 test.beforeAll(async ({ browser }) => {
   clearMfaAndSessions(DEMO.developer, DEMO.admin);
@@ -72,18 +87,67 @@ function totp(base32Secret: string, atMs = Date.now()): string {
   return (binary % 1_000_000).toString().padStart(6, "0");
 }
 
-test("a developer validates, runs, and sends a result to the chart flow", async ({ page }) => {
+test("the SQL editor is CodeMirror 6: line numbers and real syntax highlighting", async ({
+  page,
+}, testInfo) => {
   await signIn(page, "demo-developer");
   await page.goto("/sql");
   await expect(page.getByRole("heading", { name: "SQL Lab" })).toBeVisible();
 
+  // A plain <textarea> has none of this structure -- these are CodeMirror 6's
+  // own stable core class names (@codemirror/view's base theme), not
+  // anything this app's theme invented.
+  await expect(page.locator(".cm-editor")).toBeVisible();
+  // CodeMirror also renders a hidden measurement gutter element (for sizing
+  // the column before real content lays out) alongside the visible ones --
+  // `:visible` filters to what an actual user sees.
+  const gutter = page.locator(".cm-lineNumbers .cm-gutterElement:visible");
+  await expect(gutter.first()).toBeVisible();
+
+  await fillSqlEditor(page, "select id, name\nfrom sales.regions\norder by id");
+
+  // Three lines typed -> three line-number cells (CodeMirror 6 renders one
+  // gutter element per visible line, "1".."3" here).
+  await expect(gutter).toHaveCount(3);
+  await expect(gutter.nth(0)).toHaveText("1");
+  await expect(gutter.nth(2)).toHaveText("3");
+
+  // Real syntax highlighting, not a screenshot-only claim: the "select"
+  // keyword token must actually be painted in this app's own keyword color
+  // (SqlEditor.tsx's theme), distinct from plain identifier text -- proves
+  // @codemirror/lang-sql's SQL grammar is tokenizing, not just the base
+  // editor chrome rendering.
+  const keywordColor = await page
+    .locator(".cm-content .cm-line")
+    .first()
+    .locator("span", { hasText: "select" })
+    .first()
+    .evaluate((el) => getComputedStyle(el).color);
+  const identifierColor = await page
+    .locator(".cm-content .cm-line")
+    .first()
+    .locator("span", { hasText: "id" })
+    .first()
+    .evaluate((el) => getComputedStyle(el).color);
+  expect(keywordColor).toBe("rgb(30, 79, 184)"); // #1e4fb8, this app's keyword color
+  expect(keywordColor).not.toBe(identifierColor);
+
+  await testInfo.attach("sql-editor-codemirror", {
+    body: await page.locator(".cm-editor").screenshot(),
+    contentType: "image/png",
+  });
+});
+
+test("a developer validates, runs, and sends a result to the chart flow", async ({ page }) => {
+  await signIn(page, "demo-developer");
+  await page.goto("/sql");
+
   // The catalog browser (B3) is reused here, not rebuilt.
   await expect(page.getByText("sales.regions")).toBeVisible();
   await page.getByText("sales.regions").click();
+  await expect(page.locator(".cm-content")).toContainText("sales.regions");
 
-  const editor = page.getByPlaceholder("select * from sales.orders limit 100;");
-  await expect(editor).toHaveValue(/sales\.regions/);
-  await editor.fill("select id, name from sales.regions order by id");
+  await fillSqlEditor(page, "select id, name from sales.regions order by id");
 
   await page.getByRole("button", { name: "Validate" }).click();
   await expect(page.getByText(/^Valid\. References: /)).toBeVisible();
@@ -104,9 +168,7 @@ test("running above the export row threshold prompts step-up", async ({ page }) 
   await signIn(page, "demo-developer");
   await page.goto("/sql");
 
-  await page
-    .getByPlaceholder("select * from sales.orders limit 100;")
-    .fill("select * from sales.regions");
+  await fillSqlEditor(page, "select * from sales.regions");
   await page.getByLabel("Row limit").selectOption("25000");
   await page.getByRole("button", { name: "Run" }).click();
 
@@ -123,9 +185,7 @@ test("running above the export row threshold prompts step-up", async ({ page }) 
   await expect(page.getByText("Authenticator app added.")).toBeVisible();
 
   await page.goto("/sql");
-  await page
-    .getByPlaceholder("select * from sales.orders limit 100;")
-    .fill("select * from sales.regions");
+  await fillSqlEditor(page, "select * from sales.regions");
   await page.getByLabel("Row limit").selectOption("25000");
   await page.getByRole("button", { name: "Run" }).click();
   await expect(page.getByText(/ rows in \d+ms/)).toBeVisible({ timeout: 15_000 });
