@@ -200,8 +200,43 @@ B6, caught here before a run instead of after; (2) the last-org-admin assertions
 message ("You cannot remove the organization administrator role from your own account." / "...
 delete your own account.") — fixed by asserting the message the code actually produces.
 
-Next up: Track B, Phase B8 (Notifications, webhooks, guest share). See Section 31 of the build
-spec for the full B1–B8 list.**
+**Phase B8 (Notifications, webhooks, guest share) is complete — Track B is now fully closed** —
+proven end to end in a real browser (`web/next-app/e2e/b8.spec.ts`). A compact notification bell
+lives in the shared `TopNav` for every authenticated role alike (no dedicated Stitch screen for
+it — Phase A11's `GET /me/notifications` has no permission gate beyond being signed in), server-
+fetched in both `(client)` and `(developer)` layouts and passed down, matching every other list in
+this app rather than a client-side poll. `(developer)/webhooks` follows MCP Server Governance's
+list/detail pattern (Section 5.2's explicit fallback rule): register (step-up), the signing secret
+shown once and never again, disable (step-up) — gated on `user:manage` as a proxy for the real
+server-side check, `require_org_admin`, a role check rather than a named Section 7.1 permission.
+`(guest)/share/[token]` reuses B2's `ChartRenderer`/`parseChartSpec` directly against the
+snapshot's already-inlined `chart_spec`/`data` (no per-tile artifact fetch, since a guest has no
+session to fetch with) and deliberately has no `(guest)/layout.tsx`, so it gets zero chrome beyond
+the root `<html>/<body>`. Zero backend changes -- notification-service and dashboard-service's
+share-link/snapshot surface have both been built and tested since Phase A11.
+
+A real gap, caught by reasoning about the guest flow before ever loading it, not by a failing
+test: `proxy.ts`'s `PUBLIC_PATHS` never included `/share`, so an unauthenticated visitor would have
+been bounced to `/login` before the guest page ever rendered — fixed by adding it alongside
+`/login`/`/callback`/`/invitations`.
+
+Two real test-hygiene bugs, both the same class already seen in B5-B7 and both caught by direct
+DB inspection before touching any code: (1) the dashboard-pin notification `provision_demo_
+dashboard.py` produces is a fixed row from an idempotent pin, not something a re-run regenerates —
+a second suite run found it already `read_at`-set from the first run's own mark-as-read, so the
+"is it unread" assertion failed on a real notification with no product bug behind it; fixed with a
+`resetPinNotification()` step. (2) `SharePanel`'s table lists a dashboard's entire link history,
+active or revoked -- a second run's `getByText("Revoked")` matched both the new run's freshly-
+revoked link and the previous run's leftover row, a strict-mode violation. What looked at first
+like a deeper bug (a revoked token's guest page still rendering after a second full-suite run) was
+chased all the way down to a raw curl-equivalent proof that the backend was correct, before the
+real cause turned out to be this same accumulation -- worth recording as a reminder that a
+convincing-looking caching mystery is still worth ruling out the mundane fixture-hygiene
+explanation on first. Fixed by giving the spec its own `resetShareLinks()`.
+
+Next up: Track C, Phase C1 (Production hardening). See Section 31 of the build spec for the full
+B1–B8 list, and this file's "Carried forward" list above for every item C1 requires before it can
+start.**
 
 **Frontend design reference (read before writing any Track B page):** Section 5.2 of the build
 spec names, screen by screen, which of the 15 Stitch screens (project `10440972999306255957`,
