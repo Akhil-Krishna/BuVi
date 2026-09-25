@@ -165,8 +165,43 @@ left on that account from unrelated manual testing put it behind a step-up chall
 never reaching `/mcp` at all. Fixed by resetting both accounts, same as B1's `clearMfaAndSessions`
 was always meant to be called.
 
-Next up: Track B, Phase B7 (Admin console). See Section 31 of the build spec for the full B1–B8
-list.**
+**Phase B7 (Admin console) is complete** — proven end to end in a real browser (`web/next-app/
+e2e/admin.spec.ts`): `(developer)/users`, `/policies`, `/audit`, `/billing` all reuse the existing
+`(developer)` route group and its session/MFA guard rather than a separate `(admin)` group (Section
+4.2's tree names one, but nothing in the actual build requires it — Next.js route groups never
+appear in the URL, and B3–B6 already established this same shell as the shared "developer/admin
+workspace"). An org_admin invites a user, grants/revokes another user's roles, force-revokes their
+sessions, and resets their MFA — all real `user:manage`/`role:manage` + step-up calls against
+Phase A10's already-tested endpoints. Self-targeting is refused unconditionally, a stronger
+invariant than the DoD's literal wording ("refuses to demote/delete a tenant's last `org_admin`"):
+`assert_not_self_target` (`roles.py`) blocks removing your own `org_admin` role or deleting your
+own account regardless of whether you're the tenant's last admin, closing a whole class of
+last-admin race conditions the DoD's count-based framing doesn't even need. Policies toggle and
+persist across a reload; Billing renders only `GET /billing/usage`/`GET /billing/quotas` per
+Section 5.2's caveat (no invoice/spend-cap UI, since `POST /billing/subscription` is a `501`
+stub). Zero backend changes — every endpoint has been built and tested since Phase A10.
+
+No demo Keycloak identity exists anywhere in this codebase for `auditor`/`billing_admin` (Track
+A's own test suite only ever exercises those roles by constructing a `Principal` directly, never
+through a real login) — standing one up would mean touching frozen Track A bootstrap infra for one
+UI nuance. Instead, the DoD's "an auditor session shows read-only access" point reuses the suite's
+own real role-grant action: it temporarily grants `demo-developer` the `auditor` role (proving the
+UI's own grant path in the process), signs in as that session, and confirms Audit becomes reachable
+and read-only while Users/Policies stay refused by permission, not by hiding a link — then reverts
+the grant in `afterAll` so no other spec's `demo-developer` session is affected.
+
+Two real bugs, both in the test: (1) the initial version assumed a step-up "Verify" prompt appears
+before every mutating action, but Section 7.3's 5-minute freshness window means only the first
+action after this test's own TOTP enrollment actually shows one — every action after that rides
+the still-fresh window and succeeds directly, the exact wrong assumption already caught once in
+B6, caught here before a run instead of after; (2) the last-org-admin assertions expected
+`LAST_ORG_ADMIN`'s tenant-count message, but `change_roles`/`delete_user` both check
+`assert_not_self_target` first, which refuses unconditionally with a different, more specific
+message ("You cannot remove the organization administrator role from your own account." / "...
+delete your own account.") — fixed by asserting the message the code actually produces.
+
+Next up: Track B, Phase B8 (Notifications, webhooks, guest share). See Section 31 of the build
+spec for the full B1–B8 list.**
 
 **Frontend design reference (read before writing any Track B page):** Section 5.2 of the build
 spec names, screen by screen, which of the 15 Stitch screens (project `10440972999306255957`,
