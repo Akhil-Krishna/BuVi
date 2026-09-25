@@ -137,7 +137,35 @@ scripted provider's lexical matcher resolved both — query-gateway then rejecte
 ambiguous plan (`QUERY_REJECTED`). Fixed by giving the spec its own fixture-reset step, the same
 discipline `e2e/reset.ts` already applies elsewhere.
 
-Next up: Track B, Phase B6 (MCP governance). See Section 31 of the build spec for the full B1–B8
+**Phase B6 (MCP governance) is complete** — proven end to end in a real browser (`web/next-app/
+e2e/mcp.spec.ts`) against the real sample MCP server (`platform_testing.mcp`, :8765): a developer
+registers a server with a declared tool manifest (name + `ToolClass` per tool), it shows
+`pending_approval`; an org_admin approves it with step-up, after which its `read_metadata` tool is
+grantable and invokable; the `write` tool is also grantable freely but genuinely refuses invoke
+without a *fresh* step-up (Section 7.3's 5-minute window forced to have lapsed via direct DB
+backdating of `identity.sessions.mfa_verified_at`, so the test exercises real re-authentication
+rather than riding the still-fresh step-up from the same session's earlier TOTP enrollment); and
+disabling the server makes its tools refused from the same still-open page. Zero backend changes
+— mcp-gateway has been built and tested since Phase A9/A10.
+
+Four real bugs found and fixed, all in the test, none in the product: (1) no MCP fixture reset
+between suite runs meant a leftover `approved` server's status text substring-matched the
+`getByRole("button", {name: "Approve"})` query on a later run — fixed with a `resetMcpFixtures()`
+following the same discipline as B5's `resetSemanticFixtures()`; (2) the generic `div`-containing-
+matching-`p`-text locator pattern matched every ancestor `div` up the tree, not just the specific
+tool/server row — fixed with `data-testid="tool-row-{name}"` / `"server-row-{name}"`, the same
+precedented fix B5 used for its own text-ambiguity case; (3) the initial test asserted a step-up
+prompt always appears on a write-tool invoke, which is only true once the 5-minute freshness
+window has actually lapsed — the first attempt rode the fresh step-up from the test's own earlier
+TOTP enrollment and silently passed the wrong assertion path, so the DB-backdating fix above was
+needed to make the test prove the real invariant instead of a coincidence of timing; (4) the
+`beforeAll` reset only cleared `demo-admin`'s factors/sessions, not `demo-client`'s, even though the
+second test signs in as `demo-client` and assumes a direct, ungated landing — a stray MFA factor
+left on that account from unrelated manual testing put it behind a step-up challenge instead,
+never reaching `/mcp` at all. Fixed by resetting both accounts, same as B1's `clearMfaAndSessions`
+was always meant to be called.
+
+Next up: Track B, Phase B7 (Admin console). See Section 31 of the build spec for the full B1–B8
 list.**
 
 **Frontend design reference (read before writing any Track B page):** Section 5.2 of the build
