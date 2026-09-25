@@ -6,6 +6,7 @@ import { MfaPanel } from "@/features/account/MfaPanel";
 import { SessionList } from "@/features/account/SessionList";
 import { listSessions } from "@/features/account/session-actions";
 import { listMfaFactors } from "@/features/auth/mfa-actions";
+import { listNotifications } from "@/features/notifications/actions";
 import { getSession } from "@/lib/auth/session";
 
 /**
@@ -27,16 +28,21 @@ export default async function AccountPage() {
     redirect("/mfa");
   }
 
-  const [sessions, factors, apiKeys] = await Promise.all([
+  const [sessions, factors, apiKeys, notifications] = await Promise.all([
     listSessions(),
     listMfaFactors(),
     listApiKeys(),
+    listNotifications(),
   ]);
   const hasWebauthn = factors.some((factor) => factor.method === "webauthn");
 
   return (
     <div className="flex min-h-screen flex-col bg-bg-subtle">
-      <TopNav session={session} />
+      <TopNav
+        session={session}
+        notifications={notifications.items}
+        unreadCount={notifications.unread}
+      />
       <main className="mx-auto w-full max-w-4xl flex-1 px-4 py-8">
         <h1 className="text-xl font-semibold text-text-primary">Account</h1>
         <p className="mt-1 text-sm text-text-secondary">

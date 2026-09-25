@@ -16,7 +16,7 @@ import { SESSION_COOKIE } from "@/lib/config";
  * belong to each route group's own layout, which already has to fetch the
  * session to render the shell in the first place.
  */
-const PUBLIC_PATHS = ["/login", "/callback", "/invitations"];
+const PUBLIC_PATHS = ["/login", "/callback", "/invitations", "/share"];
 
 export function proxy(request: NextRequest): NextResponse {
   const { pathname } = request.nextUrl;

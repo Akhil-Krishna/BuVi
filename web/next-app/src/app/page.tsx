@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { TopNav } from "@/components/layout/TopNav";
+import { listNotifications } from "@/features/notifications/actions";
 import { getSession } from "@/lib/auth/session";
 
 /**
@@ -16,10 +17,11 @@ export default async function HomePage() {
   if (session.mfa_enabled && !session.mfa_verified) {
     redirect("/mfa");
   }
+  const { items, unread } = await listNotifications();
 
   return (
     <div className="flex min-h-screen flex-col bg-bg-subtle">
-      <TopNav session={session} />
+      <TopNav session={session} notifications={items} unreadCount={unread} />
       <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-8">
         <h1 className="text-xl font-semibold text-text-primary">
           Signed in as {session.display_name}

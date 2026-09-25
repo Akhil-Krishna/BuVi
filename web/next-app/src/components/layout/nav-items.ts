@@ -21,6 +21,10 @@ export const DEVELOPER_ADMIN_ITEMS: NavItem[] = [
   { label: "Policies", href: "/policies", permission: "policy:manage" },
   { label: "Audit", href: "/audit", permission: "audit:read" },
   { label: "Billing", href: "/billing", permission: "billing:read" },
+  // Webhooks are an `org_admin` role check server-side (`require_org_admin`),
+  // not a named Section 7.1 permission -- `user:manage` is reused as the nav
+  // gate since only `org_admin` holds it.
+  { label: "Webhooks", href: "/webhooks", permission: "user:manage" },
 ];
 
 /** "Client Role View" vs "Developer & Admin View" -- the two Stitch nav

@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { redirect } from "next/navigation";
 import { TopNav } from "@/components/layout/TopNav";
+import { listNotifications } from "@/features/notifications/actions";
 import { getSession } from "@/lib/auth/session";
 
 /** Shared shell for Section 32's client-role journey (chat, dashboards) --
@@ -15,10 +16,11 @@ export default async function ClientLayout({ children }: { children: ReactNode }
   if (session.mfa_enabled && !session.mfa_verified) {
     redirect("/mfa");
   }
+  const { items, unread } = await listNotifications();
 
   return (
     <div className="flex min-h-screen flex-col bg-bg-subtle">
-      <TopNav session={session} />
+      <TopNav session={session} notifications={items} unreadCount={unread} />
       <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col px-4 py-8">{children}</main>
     </div>
   );

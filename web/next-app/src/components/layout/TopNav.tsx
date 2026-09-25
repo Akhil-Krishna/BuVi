@@ -1,8 +1,18 @@
 import { logout } from "@/features/auth/logout";
+import { NotificationBell } from "@/features/notifications/NotificationBell";
+import type { Notification } from "@/features/notifications/types";
 import type { Session } from "@/lib/auth/session";
 import { navItemsFor } from "./nav-items";
 
-export function TopNav({ session }: { session: Session }) {
+export function TopNav({
+  session,
+  notifications,
+  unreadCount,
+}: {
+  session: Session;
+  notifications: Notification[];
+  unreadCount: number;
+}) {
   const items = navItemsFor(session);
 
   return (
@@ -20,6 +30,7 @@ export function TopNav({ session }: { session: Session }) {
         ))}
       </nav>
       <div className="flex items-center gap-3">
+        <NotificationBell initialItems={notifications} initialUnread={unreadCount} />
         <a href="/account" className="text-sm text-text-secondary hover:text-text-primary">
           {session.email}
         </a>
