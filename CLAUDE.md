@@ -72,8 +72,27 @@ not exist yet, so the chat vertical slice's own precondition (an active data sou
 by `scripts/provision_demo_data_source.py`, called from the spec's own `beforeAll` — idempotent,
 mirrors `scripts/test_analytics_run.py`'s `admin_with_sample_sales()`.
 
-Next up: Track B, Phase B3 (Data sources & catalog). See Section 31 of the build spec for the full
-B1–B8 list.**
+**Phase B3 (Data sources & catalog) is complete** — proven end to end in a real browser
+(`web/next-app/e2e/data-sources.spec.ts`): a `developer` connects a Postgres data source, sees it
+stay `pending` through credential entry (`data_source_service.py`'s `set_secret` deliberately does
+not activate it — only a successful test does), tests it, syncs its catalog, and browses tables and
+columns; an `org_admin` grants and revokes a specific tenant user's `sql:execute` on that one
+connection; a `client`-role session never reaches the page. Zero backend changes this phase — the
+full API surface (`metadata-service`) was already built and tested since Phase A3. Built as one
+page with inline per-row expansion (list/create/secret/test/sync/tables/grants), not nested routes,
+matching Section 4.2's file tree literally (`(developer)/data/page.tsx` only, unlike `(client)`'s
+tree which explicitly listed a `dashboards/[dashboardId]` route for B2).
+
+Two real reactivity bugs caught by testing, both the same class: a value fetched once by a client
+component on row-expand (the table list, the sql-grant list) never re-fetched after a mutation
+changed it, because `router.refresh()` only re-renders server-component props — it does nothing for
+state a client component fetched itself. Fixed by keying `TableBrowser` on `last_sync_at` (remounts
+-> refetches after a sync) and giving `SqlGrantsPanel` an explicit `onChanged` callback instead of
+relying on `router.refresh()`. Also caught before writing any test: Test/Sync were wired disabled
+while `status === "pending"`, but testing is how a connection *leaves* pending in the first place —
+whatever function requires a resource to already be in the state it produces can never be reached.
+
+Next up: Track B, Phase B4 (SQL Lab). See Section 31 of the build spec for the full B1–B8 list.**
 
 **Frontend design reference (read before writing any Track B page):** Section 5.2 of the build
 spec names, screen by screen, which of the 15 Stitch screens (project `10440972999306255957`,
@@ -113,10 +132,12 @@ rounded-pill badges, or emoji anywhere the Stitch set doesn't have them.
   spend-cap control that nothing in the backend implements (`POST /billing/subscription` is a
   `501` stub — see the post-GA line below). Phase B7 renders only the parts backed by
   `GET /billing/usage` / `GET /billing/quotas`; do not wire the rest to a live action (ADR 0017).
-- **Track B note (B3 dependency):** Phase B2's own E2E coverage provisions its data source through
-  `scripts/provision_demo_data_source.py` because `(developer)/data` doesn't exist yet. Once B3
-  ships that UI, retire the script (or point it at the UI's own flow) rather than letting two ways
-  to connect `sample-sales-db` drift apart.
+- **Track B note (resolved):** `(developer)/data` shipped in B3 with its own dedicated coverage
+  (`e2e/data-sources.spec.ts`, a unique `e2e-source-*` connection per run). `chat-and-dashboards.
+  spec.ts` keeps using `scripts/provision_demo_data_source.py` for its own precondition rather than
+  switching to the UI -- a chat test driving B3's UI just to get a data source would blur which
+  feature actually broke on a failure, the opposite of what B1-B3's per-spec-resets-its-own-state
+  discipline is for.
 - **Before Phase C1 starts (required):** diagnose and fix the intermittent A5 crash-resume stall (1 failure in 15 runs;
   ADR 0014 "Conclusion", ADR 0015). Needs both the root cause named from evidence (a recurrence logs the frames it was
   awaiting; CI keeps the `backend-e2e-logs` artifact) **and** the production equivalents of the dev-only mitigations:
