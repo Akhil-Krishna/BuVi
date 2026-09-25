@@ -92,7 +92,30 @@ relying on `router.refresh()`. Also caught before writing any test: Test/Sync we
 while `status === "pending"`, but testing is how a connection *leaves* pending in the first place —
 whatever function requires a resource to already be in the state it produces can never be reached.
 
-Next up: Track B, Phase B4 (SQL Lab). See Section 31 of the build spec for the full B1–B8 list.**
+**Phase B4 (SQL Lab) is complete** — proven end to end in a real browser (`web/next-app/e2e/
+sql-lab.spec.ts`): a `developer` browses the catalog (B3's table browser, reused as-is, not
+rebuilt), writes and runs SQL against `query-gateway`'s real validate/execute/history endpoints —
+the exact same validator and executor the chat flow uses, never a second path — sees results, and
+sends one to the chart flow; running with a row limit above `export_step_up_rows` (10,000 by
+default) prompts step-up in the browser, matching `query_service.py`'s server check exactly; a
+`client`-role session never reaches the page. Built as a plain styled `<textarea>` (Tab-to-indent,
+⌘/Ctrl+Enter to run) rather than pulling in a code-editor dependency the stack matrix names only
+for charts, not SQL — professional layout and density instead of a heavier dependency. "Send to
+Chat/Chart" is an honest handoff, not a fake shortcut: chat has no endpoint that accepts injected
+SQL or result rows (Section 9's chat surface is `content` + optional `data_source_id` only), so it
+seeds `/chat`'s composer with the same data source and a natural-language prompt and lets the real
+chat pipeline run from there — `ChatPanel` gained `initialPrompt`/`initialDataSourceId` props for
+exactly this, reachable only via `/chat?prompt=&dataSourceId=` and otherwise inert.
+
+Two real test-idempotency bugs caught while writing `sql-lab.spec.ts`, both about async client
+state that isn't a server prop: the SQL grants panel's own async fetch had a "Loading" heading and
+"already granted" state that looked identical the instant a check ran too early, and per-connection
+grants (unlike sessions/factors/API keys) are out of `clearMfaAndSessions`'s scope, so a second
+suite run found the developer pre-granted from the first run's own setup — both fixed by waiting
+for the grants fetch to settle before deciding whether to grant.
+
+Next up: Track B, Phase B5 (Semantic management). See Section 31 of the build spec for the full
+B1–B8 list.**
 
 **Frontend design reference (read before writing any Track B page):** Section 5.2 of the build
 spec names, screen by screen, which of the 15 Stitch screens (project `10440972999306255957`,
