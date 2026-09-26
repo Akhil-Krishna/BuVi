@@ -67,8 +67,16 @@ class Settings(BaseSettings):
 
     # --- ModelRouter (Section 23) ---------------------------------------------------------
     #: `scripted` is a deterministic, offline provider for development and tests only.
-    llm_provider: Literal["anthropic", "scripted"] = "scripted"
+    #: `openai_compatible` is any server speaking OpenAI's `/chat/completions` (ADR 0022) --
+    #: a self-hosted or gateway-fronted model, configured by the three settings below.
+    llm_provider: Literal["anthropic", "openai_compatible", "scripted"] = "scripted"
     llm_model: str = "claude-opus-5"
+    #: `openai_compatible` only: the API base (the part before `/chat/completions`) and its key.
+    llm_base_url: str | None = None
+    llm_api_key: SecretStr = SecretStr("")
+    #: How structured output is requested. Downgrade if a server rejects `json_schema`; the schema
+    #: is stated in the system prompt regardless, and Pydantic validation is the real gate.
+    llm_response_format: Literal["json_schema", "json_object", "none"] = "json_schema"
     #: Used on provider error, timeout or refusal -- never silently for cost (Section 23).
     llm_fallback_model: str | None = "claude-opus-4-8"
     llm_max_tokens_per_call: int = Field(default=4_096, ge=256, le=32_000)
@@ -102,8 +110,16 @@ class Settings(BaseSettings):
         if self.environment not in ("staging", "prod"):
             return
         problems: list[str] = []
-        if self.llm_provider != "anthropic":
+        if self.llm_provider == "scripted":
             problems.append("llm_provider is the scripted development provider")
+        if self.llm_provider == "openai_compatible":
+            if not self.llm_base_url:
+                problems.append("llm_provider is openai_compatible but llm_base_url is unset")
+            if not self.llm_api_key.get_secret_value():
+                problems.append("llm_provider is openai_compatible but llm_api_key is unset")
+            if self.llm_base_url and self.llm_base_url.startswith("http://"):
+                # A model call carries tenant schema and question text: it may not leave in clear.
+                problems.append("llm_base_url is plaintext http (Section 24: TLS in transit)")
         if self.service_client_secret.get_secret_value().startswith("dev-"):
             problems.append("service_client_secret is still the development value")
         if not self.require_gateway_token:

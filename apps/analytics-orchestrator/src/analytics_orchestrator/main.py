@@ -70,6 +70,19 @@ def _provider(settings: Settings, injected: ModelProvider | None) -> ModelProvid
         from analytics_orchestrator.infrastructure.llm.anthropic_provider import AnthropicProvider
 
         return AnthropicProvider(timeout_seconds=settings.stage_timeout_seconds)
+    if settings.llm_provider == "openai_compatible":
+        from analytics_orchestrator.infrastructure.llm.openai_compatible_provider import (
+            OpenAICompatibleProvider,
+        )
+
+        if not settings.llm_base_url:
+            raise RuntimeError("llm_provider is openai_compatible but llm_base_url is unset")
+        return OpenAICompatibleProvider(
+            base_url=settings.llm_base_url,
+            api_key=settings.llm_api_key.get_secret_value(),
+            timeout_seconds=settings.stage_timeout_seconds,
+            response_format_mode=settings.llm_response_format,
+        )
     return ScriptedProvider(latency_seconds=settings.scripted_latency_seconds)
 
 
