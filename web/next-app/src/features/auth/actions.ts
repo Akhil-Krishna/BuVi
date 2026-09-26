@@ -18,7 +18,21 @@ export async function beginLogin(): Promise<never> {
   const url = new URL("/api/v1/auth/login", GATEWAY_URL);
   url.searchParams.set("redirect_uri", CALLBACK_URL);
 
-  const response = await fetchRedirect(url);
+  // A connection failure (api-gateway down, wrong `BUVI_GATEWAY_URL`, DNS) rejects rather than
+  // returning a status, and would otherwise surface as an opaque "no message was provided"
+  // Server Components error -- breaking this function's own contract of never rendering an
+  // unhandled error page. `redirect()` throws to work, so it stays outside the try.
+  let response: Awaited<ReturnType<typeof fetchRedirect>>;
+  try {
+    response = await fetchRedirect(url);
+  } catch (error) {
+    console.warn("[auth/login] api-gateway is not reachable", {
+      gateway: url.origin,
+      cause: error instanceof Error ? error.message : String(error),
+    });
+    redirect("/login?error=service_unavailable");
+  }
+
   if (response.status !== 307 && response.status !== 303) {
     // Never an unhandled error page: the visitor is sent back to the sign-in
     // screen with a reason they can act on. 429 is the auth tier's per-IP

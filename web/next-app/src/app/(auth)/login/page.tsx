@@ -10,6 +10,10 @@ const MESSAGES: Record<string, string> = {
   sign_in_failed: "Sign-in could not be completed. Please try again.",
   rate_limited: "Too many sign-in attempts. Wait a moment and try again.",
   signed_out: "You have been signed out.",
+  // Distinct from `sign_in_failed` on purpose: "the gateway did not answer at all" is an
+  // operational fault, not something the visitor can fix by retrying the form. Locally it
+  // almost always means the backend services are not running (`scripts/run-local.sh`).
+  service_unavailable: "Sign-in is unavailable right now. The platform services are not reachable.",
 };
 
 export default async function LoginPage({

@@ -13,6 +13,7 @@ dist/
 coverage.xml
 htmlcov/
 .kombai/
+.claude/
 
 # --- Node / Next.js ---------------------------------------------------------
 node_modules/
@@ -40,3 +41,6 @@ next-env.d.ts
 .terraform/
 *.tfstate
 *.tfstate.*
+
+# Local run state (scripts/run-local.sh): logs and pidfiles
+.run-local/
