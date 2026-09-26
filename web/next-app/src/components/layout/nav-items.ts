@@ -12,7 +12,11 @@ export const CLIENT_ITEMS: NavItem[] = [
   { label: "Dashboards", href: "/dashboards", permission: "dashboard:read" },
 ];
 
-export const DEVELOPER_ADMIN_ITEMS: NavItem[] = [
+/** The developer/admin-only surfaces -- everything a `client` never sees. Kept separate from
+ * `DEVELOPER_ADMIN_ITEMS` because this list, not the combined one, is what decides which nav
+ * *variant* a session gets: if the check below looked at the combined list, a pure `client`
+ * (who holds `chat:use`) would match and be handed the wide developer chrome. */
+const DEVELOPER_ADMIN_ONLY: NavItem[] = [
   { label: "Data Sources", href: "/data", permission: "catalog:read" },
   { label: "SQL Lab", href: "/sql", permission: "sql:execute" },
   { label: "Semantic", href: "/semantic", permission: "semantic:manage" },
@@ -27,12 +31,23 @@ export const DEVELOPER_ADMIN_ITEMS: NavItem[] = [
   { label: "Webhooks", href: "/webhooks", permission: "user:manage" },
 ];
 
+/** The developer/admin nav is a *superset* of the client one (ADR 0023).
+ *
+ * Section 5.2 has two separate Stitch nav screens, and B1 read that as two mutually exclusive
+ * navs -- so a `developer`, who genuinely holds `chat:use`, `dashboard:read`, `dashboard:pin` and
+ * `dashboard:share`, was shown no way to reach Chat or Dashboards even though every route and
+ * server-side check allowed it. Building a chart in chat and pinning it is a core developer
+ * workflow, so the wide nav now starts with the client items; `navItemsFor`'s permission filter
+ * still decides what each session actually sees, which keeps an `auditor` (holds `dashboard:read`,
+ * not `chat:use`) to Dashboards without Chat. */
+export const DEVELOPER_ADMIN_ITEMS: NavItem[] = [...CLIENT_ITEMS, ...DEVELOPER_ADMIN_ONLY];
+
 /** "Client Role View" vs "Developer & Admin View" -- the two Stitch nav
  * screens (Section 5.2). A user with only `client`-tier permissions gets the
  * client chrome; anyone with any developer/admin-tier permission gets the
  * other, wider one. */
 export function navVariantFor(session: Pick<Session, "permissions">): "client" | "developer-admin" {
-  const hasDeveloperAdminAccess = DEVELOPER_ADMIN_ITEMS.some(
+  const hasDeveloperAdminAccess = DEVELOPER_ADMIN_ONLY.some(
     (item) => item.permission && session.permissions.includes(item.permission)
   );
   return hasDeveloperAdminAccess ? "developer-admin" : "client";

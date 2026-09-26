@@ -65,7 +65,11 @@ test("a developer-role user sees the developer/admin nav, not the client one", a
 
   await expect(page.getByRole("link", { name: "SQL Lab" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Data Sources" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Chat" })).toHaveCount(0);
+  // ADR 0023: the developer nav is a superset of the client one. A developer holds `chat:use`
+  // and `dashboard:read`, and building a chart in chat then pinning it is a core developer
+  // workflow, so both are reachable rather than hidden behind a role they do not have.
+  await expect(page.getByRole("link", { name: "Chat" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Dashboards" })).toBeVisible();
   // A developer, not an org_admin, still should not see admin-only items.
   await expect(page.getByRole("link", { name: "Users" })).toHaveCount(0);
 });
