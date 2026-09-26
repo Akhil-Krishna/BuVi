@@ -45,7 +45,10 @@ MESSAGES: Final[dict[FailureCode, str]] = {
     FailureCode.NOT_AUTHORIZED: "You are not allowed to run this analysis.",
     FailureCode.REQUEST_NOT_SUPPORTED: "This kind of request is not supported yet.",
     FailureCode.NO_DATA_SOURCE: "No active data source is available.",
-    FailureCode.DATA_SOURCE_SELECTION_REQUIRED: "Choose which data source to use.",
+    FailureCode.DATA_SOURCE_SELECTION_REQUIRED: (
+        "I could not tell which data source this is about. Name the data or table you mean, "
+        "or choose a data source."
+    ),
     FailureCode.DATA_SOURCE_NOT_ACTIVE: "The selected data source is not available.",
     FailureCode.NO_RELEVANT_DATA: "No data relevant to this request was found.",
     FailureCode.OUTPUT_INVALID: "The analysis could not be completed.",

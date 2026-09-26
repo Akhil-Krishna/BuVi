@@ -46,6 +46,11 @@ _service() {
 SERVICES="identity-service metadata-service query-gateway semantic-service visualization-service
 dashboard-service analytics-orchestrator worker-runtime mcp-gateway notification-service api-gateway"
 
+#: PIDs *listening* on a port. Plain `lsof -ti:PORT` also returns every process merely connected to
+#: it -- a browser tab on :3000, the worker's client socket on :8004 -- which made the start check
+#: mistake the worker for a squatter and made `--stop` capable of killing the user's browser.
+listeners() { lsof -nP -tiTCP:"$1" -sTCP:LISTEN 2>/dev/null || true; }
+
 bold() { printf '\033[1m%s\033[0m\n' "$1"; }
 ok()   { printf '  \033[32m✓\033[0m %s\n' "$1"; }
 warn() { printf '  \033[33m!\033[0m %s\n' "$1"; }
@@ -157,9 +162,9 @@ start_backend() {
     env_pairs="$(echo "$spec" | cut -s -d' ' -f3-)"
 
     if healthy "$port"; then ok "$name already running on :$port"; continue; fi
-    if lsof -ti:"$port" >/dev/null 2>&1; then
+    if [ -n "$(listeners "$port")" ]; then
       die "Port $port is taken by something that is not a healthy $name.
-Free it, then re-run:  lsof -ti:$port | xargs kill"
+Free it, then re-run:  lsof -nP -tiTCP:$port -sTCP:LISTEN | xargs kill"
     fi
 
     # shellcheck disable=SC2086 # env_pairs is intentionally word-split into KEY=value args
@@ -186,8 +191,8 @@ start_frontend() {
   if curl -sf http://localhost:3000/login >/dev/null 2>&1; then
     ok "already running on :3000"; return
   fi
-  if lsof -ti:3000 >/dev/null 2>&1; then
-    die "Port 3000 is taken but not serving BuVi. Free it:  lsof -ti:3000 | xargs kill"
+  if [ -n "$(listeners 3000)" ]; then
+    die "Port 3000 is taken but not serving BuVi. Free it:  lsof -nP -tiTCP:3000 -sTCP:LISTEN | xargs kill"
   fi
   if [ ! -d web/next-app/node_modules ]; then
     warn "installing npm dependencies (first run, takes a minute)"
@@ -260,11 +265,11 @@ do_stop() {
   fi
   # uvicorn/next spawn children that outlive the pid we recorded, so sweep the ports too.
   local leftovers
-  leftovers="$(lsof -ti:3000,8000,8001,8002,8003,8004,8005,8006,8007,8008,8009,8010 2>/dev/null || true)"
+  leftovers="$(for p in 3000 8000 8001 8002 8003 8004 8005 8006 8007 8008 8009 8010; do listeners "$p"; done | sort -u)"
   if [ -n "$leftovers" ]; then
     echo "$leftovers" | xargs kill 2>/dev/null || true
     sleep 1
-    leftovers="$(lsof -ti:3000,8000,8001,8002,8003,8004,8005,8006,8007,8008,8009,8010 2>/dev/null || true)"
+    leftovers="$(for p in 3000 8000 8001 8002 8003 8004 8005 8006 8007 8008 8009 8010; do listeners "$p"; done | sort -u)"
     [ -n "$leftovers" ] && echo "$leftovers" | xargs kill -9 2>/dev/null || true
     ok "freed application ports"
     stopped=$((stopped+1))

@@ -35,6 +35,7 @@ from analytics_orchestrator.application.services.ports import (
     ArtifactRejectedError,
     ArtifactStore,
     ChartValidator,
+    ContextSnapshot,
     DataSourceUnknownError,
     DelegatedIdentity,
     DelegatedUserDeniedError,
@@ -55,6 +56,8 @@ from analytics_orchestrator.application.services.ports import (
 )
 from analytics_orchestrator.domain.errors import NotFoundError, RunBusyError
 from analytics_orchestrator.domain.policies.context_policy import (
+    MAX_ROUTED_SOURCES,
+    choose_data_source,
     plan_problems,
     rank_tables,
     request_terms,
@@ -288,10 +291,11 @@ class RunExecutor:
                 raise RunFailedError(FailureCode.DATA_SOURCE_NOT_ACTIVE)
         elif not sources:
             raise RunFailedError(FailureCode.NO_DATA_SOURCE)
-        elif len(sources) > 1:
-            raise RunFailedError(FailureCode.DATA_SOURCE_SELECTION_REQUIRED)
-        else:
+        elif len(sources) == 1:
             state.data_source_id = str(sources[0].id)
+        # Several active sources and none named: left unset on purpose. Which one the question is
+        # about is decided in `_retrieve_schema`, after `_classify_intent`, so the model's own
+        # reading of the request (metrics, dimensions) informs the choice, not just the raw text.
 
     async def _classify_intent(self, state: AnalyticsRunState) -> None:
         request = await self._generate(
@@ -306,27 +310,75 @@ class RunExecutor:
         state.request = request
 
     async def _retrieve_schema(self, state: AnalyticsRunState) -> None:
+        tenant = uuid.UUID(state.tenant_id)
+        terms = request_terms(state.request, state.message)
+        if state.data_source_id is None:
+            snapshot = await self._route_data_source(state, tenant, terms)
+        else:
+            try:
+                snapshot = await self._metadata.context(tenant, uuid.UUID(state.data_source_id))
+            except DataSourceUnknownError:
+                raise RunFailedError(FailureCode.DATA_SOURCE_NOT_ACTIVE) from None
+            except DependencyUnavailableError:
+                raise RunFailedError(FailureCode.UPSTREAM_UNAVAILABLE) from None
+            if snapshot.status != "active":
+                raise RunFailedError(FailureCode.DATA_SOURCE_NOT_ACTIVE)
         assert state.data_source_id is not None
-        try:
-            snapshot = await self._metadata.context(
-                uuid.UUID(state.tenant_id), uuid.UUID(state.data_source_id)
-            )
-        except DataSourceUnknownError:
-            raise RunFailedError(FailureCode.DATA_SOURCE_NOT_ACTIVE) from None
-        except DependencyUnavailableError:
-            raise RunFailedError(FailureCode.UPSTREAM_UNAVAILABLE) from None
-        if snapshot.status != "active":
-            raise RunFailedError(FailureCode.DATA_SOURCE_NOT_ACTIVE)
-        tables = rank_tables(
-            snapshot.tables,
-            request_terms(state.request, state.message),
-            self._limits.context_max_tables,
-        )
+        tables = rank_tables(snapshot.tables, terms, self._limits.context_max_tables)
         if not tables:
             raise RunFailedError(FailureCode.NO_RELEVANT_DATA)
         state.schema_context = SchemaContext(
             data_source_id=state.data_source_id, tables=tables, engine=snapshot.engine
         )
+
+    async def _route_data_source(
+        self, state: AnalyticsRunState, tenant: uuid.UUID, terms: list[str]
+    ) -> ContextSnapshot:
+        """Pick which of the tenant's active data sources the question is about.
+
+        Authorization is unchanged, not widened: the candidates are exactly the sources an explicit
+        `data_source_id` would have been accepted for (`_load_context` checks against the same
+        `active_data_sources` list), and whatever is chosen still goes through the same schema
+        retrieval, query-gateway validation and `authorize_query` as a named source. Only *who
+        picks* changes.
+        """
+        try:
+            sources = await self._metadata.active_data_sources(tenant)
+        except DependencyUnavailableError:
+            raise RunFailedError(FailureCode.UPSTREAM_UNAVAILABLE) from None
+        if len(sources) > MAX_ROUTED_SOURCES:
+            # Each candidate is a metadata call; past this the user is better off naming one.
+            raise RunFailedError(FailureCode.DATA_SOURCE_SELECTION_REQUIRED)
+
+        async def fetch(source_id: uuid.UUID) -> ContextSnapshot | None:
+            try:
+                snapshot = await self._metadata.context(tenant, source_id)
+            except DataSourceUnknownError:
+                return None  # deactivated since the list was read: not a candidate, not an error
+            return snapshot if snapshot.status == "active" else None
+
+        try:
+            fetched = await asyncio.gather(*(fetch(source.id) for source in sources))
+        except DependencyUnavailableError:
+            raise RunFailedError(FailureCode.UPSTREAM_UNAVAILABLE) from None
+        candidates = {
+            str(source.id): snapshot
+            for source, snapshot in zip(sources, fetched, strict=True)
+            if snapshot is not None
+        }
+        if not candidates:
+            raise RunFailedError(FailureCode.NO_DATA_SOURCE)
+        choice = choose_data_source(
+            [(source_id, snapshot.tables) for source_id, snapshot in candidates.items()], terms
+        )
+        if choice.source_id is None:
+            raise RunFailedError(
+                FailureCode.NO_RELEVANT_DATA
+                if choice.reason == "no_match"
+                else FailureCode.DATA_SOURCE_SELECTION_REQUIRED
+            )
+        state.data_source_id = choice.source_id
+        return candidates[choice.source_id]
 
     async def _resolve_semantics(self, state: AnalyticsRunState) -> None:
         """Section 12: map business terms to *approved* definitions. No approved definition in

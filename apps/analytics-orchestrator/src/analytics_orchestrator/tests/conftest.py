@@ -142,6 +142,53 @@ class Caller:
         return {"Cookie": f"buvi_session={self.token}"}
 
 
+#: A logistics catalog with nothing in common with `CONTEXT_TABLES`. `total` is numeric and
+#: `shipped_on` is a date, which is what the scripted provider needs to plan a chart on it.
+LOGISTICS_TABLES = [
+    {
+        "id": "0b6b7a3e-6a0c-4c0e-9d51-6f0a8d1c3a01",
+        "schema_name": "logistics",
+        "table_name": "shipments",
+        "description": "One row per shipment",
+        "row_count_estimate": 900,
+        "columns": [
+            {
+                "id": "0b6b7a3e-6a0c-4c0e-9d51-6f0a8d1c3a02",
+                "column_name": "id",
+                "data_type": "integer",
+                "description": None,
+            },
+            {
+                "id": "0b6b7a3e-6a0c-4c0e-9d51-6f0a8d1c3a03",
+                "column_name": "warehouse_id",
+                "data_type": "integer",
+                "description": None,
+            },
+            {
+                "id": "0b6b7a3e-6a0c-4c0e-9d51-6f0a8d1c3a04",
+                "column_name": "shipped_on",
+                "data_type": "date",
+                "description": None,
+            },
+            {
+                "id": "0b6b7a3e-6a0c-4c0e-9d51-6f0a8d1c3a05",
+                "column_name": "total",
+                "data_type": "numeric(12,2)",
+                "description": None,
+            },
+        ],
+    },
+]
+
+_FROM_TABLE = re.compile(r"\b(?:FROM|JOIN)\s+([a-z_][a-z0-9_]*\.[a-z_][a-z0-9_]*)", re.IGNORECASE)
+
+
+def sql_tables(sql: str) -> list[str]:
+    """What query-gateway reports as `tables`: the relations the SQL actually reads. The fake used
+    to return a constant `sales.orders`, which is only right for a catalog that has one."""
+    return sorted({m.lower() for m in _FROM_TABLE.findall(sql)}) or ["sales.orders"]
+
+
 ORDERS_TABLE_ID = "0b6b7a3e-6a0c-4c0e-9d51-6f0a8d1c2a01"
 GROSS_AMOUNT_ID = "0b6b7a3e-6a0c-4c0e-9d51-6f0a8d1c2a07"
 STATUS_COLUMN_ID = "0b6b7a3e-6a0c-4c0e-9d51-6f0a8d1c2a05"
@@ -219,6 +266,9 @@ CONTEXT_TABLES = [
 class FakeServices:
     principals: dict[str, dict[str, Any]] = field(default_factory=dict)
     data_sources: dict[str, list[str]] = field(default_factory=dict)
+    #: Optional per-source catalog. A source with no entry serves `CONTEXT_TABLES`, so every source
+    #: in an existing test still has identical tables -- which is what makes two of them a tie.
+    source_tables: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
     inactive_users: set[str] = field(default_factory=set)
     validate_rejections: list[dict[str, Any]] = field(default_factory=list)
     query_calls: list[dict[str, Any]] = field(default_factory=list)
@@ -275,9 +325,13 @@ class FakeServices:
         )
         return metric_id
 
-    def add_data_source(self, tenant_id: uuid.UUID) -> uuid.UUID:
+    def add_data_source(
+        self, tenant_id: uuid.UUID, tables: list[dict[str, Any]] | None = None
+    ) -> uuid.UUID:
         source = uuid.uuid4()
         self.data_sources.setdefault(str(tenant_id), []).append(str(source))
+        if tables is not None:
+            self.source_tables[str(source)] = tables
         return source
 
     def handler(self, request: httpx.Request) -> httpx.Response:
@@ -358,7 +412,7 @@ class FakeServices:
                     "status": "active",
                     "allowed_schemas": ["sales"],
                     "last_sync_at": None,
-                    "tables": CONTEXT_TABLES,
+                    "tables": self.source_tables.get(source, CONTEXT_TABLES),
                 },
             )
         if path == "/internal/v1/semantic-context":
@@ -441,7 +495,7 @@ class FakeServices:
                         "query_id": str(uuid.uuid4()),
                         "valid": True,
                         "sql": body["sql"],
-                        "tables": ["sales.orders"],
+                        "tables": sql_tables(body["sql"]),
                         "normalized_sql_sha256": "0" * 64,
                     },
                 )
@@ -466,7 +520,7 @@ class FakeServices:
                     "truncated": False,
                     "bytes_returned": 120,
                     "duration_ms": 4,
-                    "tables": ["sales.orders"],
+                    "tables": sql_tables(body["sql"]),
                     "result_handle": "s3://query-results/tenants/t/queries/q.json",
                     "result_expires_at": (
                         dt.datetime.now(dt.UTC) + dt.timedelta(days=1)

@@ -240,6 +240,14 @@ requirements plus Sections 22.1/28/29. Current state:
 
 *Done and proven locally:*
 - **Platform session hardening / the A5 mitigation** — ADR 0021, `tests/system/test_platform_session_hardening.py`.
+- **Chat picks its own data source (ADR 0024)** — with several active sources and none named, a run no
+  longer fails with "Choose which data source to use": `retrieve_schema` scores each source by its best
+  table against the question (plus the model's own metrics/dimensions) and picks the leader only if it
+  clears a margin, else asks. Authorization is unchanged (same candidate list as an explicit id); an
+  explicit id is never overridden; another tenant's source is never a candidate. Measured on the real
+  catalogs: 4 of 6 answerable questions routed right, 0 wrong (asks rather than guesses). **Open:** a
+  `client` has no picker, so an ambiguous question is a dead end for them; a tenant default source, or a
+  model tie-break, would fix it and each needs a decision.
 
 *Built but not yet live-run:*
 - **`openai_compatible` model provider** — ADR 0022, 13 offline tests. Needs the live run against
