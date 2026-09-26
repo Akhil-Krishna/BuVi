@@ -234,9 +234,38 @@ real cause turned out to be this same accumulation -- worth recording as a remin
 convincing-looking caching mystery is still worth ruling out the mundane fixture-hygiene
 explanation on first. Fixed by giving the spec its own `resetShareLinks()`.
 
-Next up: Track C, Phase C1 (Production hardening). See Section 31 of the build spec for the full
-B1–B8 list, and this file's "Carried forward" list above for every item C1 requires before it can
-start.**
+**Phase C1 (Production hardening) is IN PROGRESS — it is a program, not a phase.** Read this before
+claiming any part of it. Section 38's DoD has 14 items; C1 owns items 12–14 plus three entry
+requirements plus Sections 22.1/28/29. Current state:
+
+*Done and proven locally:*
+- **Platform session hardening / the A5 mitigation** — ADR 0021, `tests/system/test_platform_session_hardening.py`.
+
+*Built but not yet live-run:*
+- **`openai_compatible` model provider** — ADR 0022, 13 offline tests. Needs the live run against
+  the real endpoint to close ADR 0006's risk.
+
+*Not started (each is real work, none is secretly done):*
+- Semantic-lookup caching (required for C1's DoD — see below).
+- Per-tenant MCP invocation concurrency + per-minute limits. mcp-gateway has **no Redis client yet**;
+  api-gateway's `infrastructure/cache/rate_limiter.py` Lua token bucket is the pattern to reuse, and
+  concurrency needs shared state, so an in-process semaphore would be wrong.
+- Certificate-verified data-source TLS (`verify-full`) + per-data-source CA bundle.
+- Section 29 data export/delete + the tenant-deletion cascade. **The endpoints do not exist at all**
+  — nothing matching export/delete is in `contracts/openapi/api-gateway.json` — and the cascade
+  touches every owning service.
+- Keycloak+Postgres synchronized restore drill (ADR 0019); doable locally with Docker volumes.
+- Webhook replay/retry queue; keyset pagination of `directory/users`.
+
+*Cannot be honestly signed off on this machine — `infra/terraform/`, `infra/kubernetes/` and
+`infra/docker/` are all still empty (`.gitkeep` only), and there is no cluster to target:*
+- Section 28 Terraform environments; Section 22.1 SLO dashboards/alerts.
+- Egress proxy + NetworkPolicy for mcp-gateway/notification-service.
+- Supply chain: pinned base-image digests, cosign-signed images, image scanning that blocks on
+  high/critical, short-lived OIDC federation for CI.
+- `docs/runbooks/security-review-<date>.md` — the Section 24 sign-off depends on the above, so writing
+  it now would be signing off controls that do not exist. The five deferrals in
+  `tests/system/section_24.py` stay deferred and the registry test keeps enforcing that.**
 
 **Frontend design reference (read before writing any Track B page):** Section 5.2 of the build
 spec names, screen by screen, which of the 15 Stitch screens (project `10440972999306255957`,
@@ -247,9 +276,6 @@ them; do not restyle a screen away from what Stitch shows, and do not invent sha
 rounded-pill badges, or emoji anywhere the Stitch set doesn't have them.
 
 **Carried forward (do not drop):**
-- **B8 note:** `/account`'s API key create flow (`ApiKeyPanel`, show-once secret display, inline
-  step-up via `MfaVerifyForm`) is the pattern to reuse for the webhook signing secret in B8 —
-  same shape, same "shown once, never again" rule (Section 6.8/9).
 - **Phase C1 candidate (ADR 0020):** SQL Lab's "Send to Chat/Chart" (B4) reseeds the chat composer
   and lets the full pipeline regenerate SQL from scratch, rather than skipping straight to
   execution with the already-validated query. A true skip-regeneration entry point needs a CrewAI
@@ -281,27 +307,39 @@ rounded-pill badges, or emoji anywhere the Stitch set doesn't have them.
   set to the deployed Next.js app's own `/callback` URL, and that same URL registered with the
   IdP — dev's defaults (`localhost:3000/callback`, already registered in
   `scripts/keycloak-bootstrap.sh`'s wildcard) do not carry over automatically.
-- **Track B note:** the Stitch "Usage & Quotas" screen shows invoice-reconciliation and a
-  spend-cap control that nothing in the backend implements (`POST /billing/subscription` is a
-  `501` stub — see the post-GA line below). Phase B7 renders only the parts backed by
-  `GET /billing/usage` / `GET /billing/quotas`; do not wire the rest to a live action (ADR 0017).
-- **Track B note (resolved):** `(developer)/data` shipped in B3 with its own dedicated coverage
-  (`e2e/data-sources.spec.ts`, a unique `e2e-source-*` connection per run). `chat-and-dashboards.
-  spec.ts` keeps using `scripts/provision_demo_data_source.py` for its own precondition rather than
-  switching to the UI -- a chat test driving B3's UI just to get a data source would blur which
-  feature actually broke on a failure, the opposite of what B1-B3's per-spec-resets-its-own-state
-  discipline is for.
-- **Before Phase C1 starts (required):** diagnose and fix the intermittent A5 crash-resume stall (1 failure in 15 runs;
-  ADR 0014 "Conclusion", ADR 0015). Needs both the root cause named from evidence (a recurrence logs the frames it was
-  awaiting; CI keeps the `backend-e2e-logs` artifact) **and** the production equivalents of the dev-only mitigations:
-  `idle_in_transaction_session_timeout` and `tcp_keepalives_*` on the platform database, and a `lock_timeout` on
-  platform sessions. The trigger (Docker Desktop's port forwarder) is dev-only; the class (a client that vanishes
-  without a FIN holds row locks until keepalive detection, 2h by default on Linux) is not.
+- **Standing UI rule (B7 shipped it this way):** the Stitch "Usage & Quotas" screen shows
+  invoice-reconciliation and a spend-cap control that nothing in the backend implements
+  (`POST /billing/subscription` is a `501` stub — see the post-GA line below). `(admin)/billing`
+  renders only the parts backed by `GET /billing/usage` / `GET /billing/quotas`; do not wire the
+  rest to a live action (ADR 0017).
+- **A5 crash-resume stall — mitigation DONE, attribution still open (ADR 0021).** The production
+  mitigations shipped: all eight services send `lock_timeout=15s`,
+  `idle_in_transaction_session_timeout=60s` and explicit `tcp_keepalives_*` as asyncpg startup
+  parameters (`PLATFORM_SESSION_SETTINGS` in each `infrastructure/db/session.py`), so the hardening
+  is true in every environment without waiting for Terraform. Proven by
+  `tests/system/test_platform_session_hardening.py`: the real engine applies all five, a blocked
+  waiter raises `LockNotAvailableError` fast, and a holder killed with `pg_terminate_backend`
+  frees its waiter. **What remains:** naming the root cause of the specific 1-in-15 incident from
+  evidence. It has not recurred, so there is no log naming the awaited frames or blocking PID —
+  confirm attribution on the next recurrence (CI keeps `backend-e2e-logs`). If it never recurs under
+  these settings, record that after a meaningful number of runs rather than assuming it now.
 - **Phase C1 hardening (required for C1's DoD):** semantic-lookup caching. Cache the approved-definition context and the metadata agent-context packet per tenant/data source with a TTL and invalidation on approve/deprecate/sync; correctness must not depend on the cache (spec Phase C1; ADR 0010).
 - **Post-GA backlog (not in Tracks A–C):** subscriptions/invoicing (`POST /billing/subscription`, b537537);
   `query.completed` with async query/export execution; storage-bytes metering (ADR 0014). Four-eyes semantic approval as a tenant policy (ADR 0013). Snowflake/BigQuery/Redshift connectors (need vendor sandboxes in CI; spec "Post-GA backlog"; ADR 0011). Also: ratio metrics, metric filters, and multi-table metrics over approved `join_rules`, with join-rule management. Any extension must keep the metric-vs-SQL check exact (parsed), never presence-based (spec "Post-GA backlog"; ADR 0010).
 - **Before Phase C1:** assign a phase to artifact refresh (re-executing expired results) and to artifact versioning (Section 16, which needs a lineage column); ADR 0007.
-- **Before Phase C1 starts (required):** test the `anthropic` model provider against the real API with a real key, and record the result in an ADR (spec Phase C1 entry requirement; ADR 0006).
+- **Live model coverage — provider BUILT, live run still outstanding (ADR 0022).** A third provider,
+  `openai_compatible`, speaks any OpenAI `/chat/completions` endpoint behind the same
+  `ModelProvider` protocol, so the Flow can meet a real model without an Anthropic key. Proven
+  offline by 13 `httpx.MockTransport` cases (fenced/chatty JSON, off-schema, truncation, refusal,
+  429/5xx, 400, malformed envelopes) — structured output is defended three ways: `response_format`,
+  the schema restated in the system prompt, and Pydantic validation as the real gate. Configure with
+  `llm_provider=openai_compatible`, `llm_base_url`, `llm_api_key`, `llm_response_format`; the local
+  dev endpoint is `http://192.168.10.251:3001/v1` with model `minimax-m2.5` (key supplied by env —
+  `.gitignore` already covers `.env*`; plaintext `http://` is refused for staging/prod).
+  **What remains:** (a) the actual live run — Phase A5's DoD message end to end, primary + fallback
+  model, a refusal, a `max_tokens` truncation, and `/billing/usage` matching real token counts, then
+  amend ADR 0022; (b) the Anthropic-specific path (`messages.parse`, its `stop_reason`/usage fields)
+  is still live-untested and matters the moment a deployment points at Anthropic (ADR 0006).
 - **Before Phase C1 starts (required):** certificate-verified data-source TLS (`verify-full`) for Postgres and MySQL. Add a per-data-source CA bundle, and prove hostname-mismatch and untrusted-CA refusal against TLS-enabled instances in CI (spec Phase C1 entry requirement; ADR 0011).
 - **Phase C1 (required):** mcp-gateway/notification-service egress through a dedicated egress proxy with a
   NetworkPolicy, and per-tenant MCP invocation concurrency/rate limits (spec Sections 15, 24; ADR 0012).
