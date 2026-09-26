@@ -67,6 +67,11 @@ ANALYTICS_LLM_MODEL=minimax-m2.5
 ANALYTICS_LLM_BASE_URL=http://192.168.10.251:3001/v1
 ANALYTICS_LLM_API_KEY=your-real-key-here
 ANALYTICS_LLM_RESPONSE_FORMAT=json_schema
+# A reasoning model spends tokens thinking before it answers; these leave it room:
+ANALYTICS_LLM_MAX_TOKENS_PER_CALL=8192
+ANALYTICS_STAGE_TIMEOUT_SECONDS=120
+# The default fallback model (claude-opus-4-8) does not exist on your server; use one that does.
+ANALYTICS_LLM_FALLBACK_MODEL=minimax-m2.5
 EOF
 
 ./scripts/run-local.sh --stop && ./scripts/run-local.sh   # env files are read once, at startup

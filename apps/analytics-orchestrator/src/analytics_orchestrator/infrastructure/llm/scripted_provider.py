@@ -40,6 +40,7 @@ Override = (
 _UNSAFE_TEXT = re.compile(r"[<>{}`\x00-\x1f]")
 #: Date bucketing in MySQL, which has no date_trunc (week/quarter fall back to month here).
 _MYSQL_BUCKETS = {"day": "%Y-%m-%d", "month": "%Y-%m-01", "year": "%Y-01-01"}
+_SMALL_TALK = re.compile(r"\b(hi|hello|hey|thanks|thank you|help|what can you do)\b")
 _QUARTERS = {"q1": (1, 3), "q2": (4, 6), "q3": (7, 9), "q4": (10, 12)}
 
 
@@ -122,6 +123,15 @@ class ScriptedProvider:
             word in lowered
             for word in ("revenue", "sales", "chart", "dashboard", "trend", "orders", "show")
         )
+        if not analytic and _SMALL_TALK.search(lowered):
+            return AnalyticsRequest(
+                intent="conversation",
+                title="Greeting",
+                reply=(
+                    "Hello! I can build charts and answer questions about your connected data. "
+                    "Try asking me to show monthly revenue as a chart."
+                ),
+            )
         title = _UNSAFE_TEXT.sub("", text).strip()[:120] or "Analysis"
         return AnalyticsRequest(
             intent="visualization" if analytic else "unsupported",

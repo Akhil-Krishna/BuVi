@@ -160,6 +160,9 @@ class AnalyticsRunState(BaseModel):
     chart_spec: ChartSpec | None = None
     #: The artifact stored in dashboard-service (Section 8.9); derived from the run id.
     artifact_id: str | None = None
+    #: Set by `classify_intent` when the model answered in conversation instead of starting an
+    #: analysis. From then on every step but the closing event is skipped (`RunExecutor.run_step`).
+    reply: str | None = None
 
     @classmethod
     def initial(

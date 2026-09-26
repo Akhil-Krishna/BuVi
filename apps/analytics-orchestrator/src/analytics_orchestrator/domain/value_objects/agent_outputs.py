@@ -9,7 +9,7 @@ from __future__ import annotations
 import datetime as dt
 from typing import Annotated, Final, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 _STRICT = ConfigDict(extra="forbid", frozen=True)
 _IDENT: Final = r"^[A-Za-z_][A-Za-z0-9_]{0,62}$"
@@ -35,12 +35,24 @@ class AnalyticsRequest(BaseModel):
     """classify_intent: free text -> a bounded request."""
 
     model_config = _STRICT
-    intent: Literal["visualization", "question", "unsupported"]
+    #: `conversation`: not a data question -- a greeting, thanks, "what can you do", or a request
+    #: the product cannot help with. The run ends successfully with `reply` and never touches a
+    #: data source. `unsupported` is what remains when even a reply cannot be written.
+    intent: Literal["visualization", "question", "conversation", "unsupported"]
     title: str = Field(min_length=1, max_length=120, pattern=_TEXT)
     metrics: list[str] = Field(default_factory=list, max_length=5)
     dimensions: list[str] = Field(default_factory=list, max_length=5)
     time_range: TimeRange = Field(default_factory=TimeRange)
     chart_preference: ChartPreference | None = None
+    #: Shown to the user verbatim as the run's closing message, so it is bounded and plain text
+    #: (`_TEXT` forbids markup and control characters; 300 is `AnalyticsRunEvent.message`'s limit).
+    reply: str | None = Field(default=None, max_length=300, pattern=_TEXT)
+
+    @model_validator(mode="after")
+    def _a_conversation_needs_its_reply(self) -> AnalyticsRequest:
+        if self.intent == "conversation" and not (self.reply and self.reply.strip()):
+            raise ValueError("a conversation intent must carry a reply")
+        return self
 
 
 class PlanMeasure(BaseModel):

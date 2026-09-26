@@ -24,7 +24,7 @@ import uuid
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Final, Protocol
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -142,6 +142,11 @@ class _AsyncLockContext(Protocol):
 AfterStep = Callable[[str, AnalyticsRunState], Awaitable[None]]
 
 
+#: The steps that still run once a conversational reply has been written: the two that precede the
+#: decision, the one that made it, and the one that closes the run.
+_ANSWERED_STEPS: Final = frozenset({"load_context", "classify_intent", "publish_events"})
+
+
 class RunExecutor:
     def __init__(
         self,
@@ -246,6 +251,10 @@ class RunExecutor:
         self._live[state.id] = state
         if step in state.completed_steps:
             return
+        if state.reply is not None and step not in _ANSWERED_STEPS:
+            # Answered in conversation: nothing to plan, query or chart. No events, not marked
+            # done -- only `publish_events` runs, to close the run with the reply.
+            return
         await self._ensure_not_cancelled(state)
         events = STEP_EVENTS[step]
         if events.stage and events.started:
@@ -289,13 +298,12 @@ class RunExecutor:
         if state.data_source_id is not None:
             if state.data_source_id not in active:
                 raise RunFailedError(FailureCode.DATA_SOURCE_NOT_ACTIVE)
-        elif not sources:
-            raise RunFailedError(FailureCode.NO_DATA_SOURCE)
         elif len(sources) == 1:
             state.data_source_id = str(sources[0].id)
-        # Several active sources and none named: left unset on purpose. Which one the question is
-        # about is decided in `_retrieve_schema`, after `_classify_intent`, so the model's own
-        # reading of the request (metrics, dimensions) informs the choice, not just the raw text.
+        # No source, or several and none named: left unset on purpose. `_retrieve_schema` decides,
+        # after `_classify_intent`. For several, so the model's own reading of the request informs
+        # the choice. For none, so "hi" on a tenant with no data yet still gets an answer -- the
+        # run only fails with NO_DATA_SOURCE once it turns out to be a data question.
 
     async def _classify_intent(self, state: AnalyticsRunState) -> None:
         request = await self._generate(
@@ -308,6 +316,8 @@ class RunExecutor:
         if request.intent == "unsupported":
             raise RunFailedError(FailureCode.REQUEST_NOT_SUPPORTED)
         state.request = request
+        if request.intent == "conversation":
+            state.reply = request.reply
 
     async def _retrieve_schema(self, state: AnalyticsRunState) -> None:
         tenant = uuid.UUID(state.tenant_id)
@@ -760,10 +770,24 @@ class RunExecutor:
                 run,
                 stage="run",
                 status="completed",
-                message=STEP_EVENTS["publish_events"].completed or "",
+                # A conversational run closes with the reply itself: it has no artifact, so the
+                # closing event is the only place the user's answer can travel.
+                message=state.reply or STEP_EVENTS["publish_events"].completed or "",
                 artifact_id=None,
             )
             state.emitted_events.append("run.completed")
+            if state.reply is not None and not await repository.has_assistant_message(
+                tenant, uuid.UUID(state.id)
+            ):
+                await repository.add_message(
+                    Message(
+                        tenant_id=tenant,
+                        conversation_id=uuid.UUID(state.conversation_id),
+                        role="assistant",
+                        content=state.reply,
+                        run_id=uuid.UUID(state.id),
+                    )
+                )
             await repository.finish_run(run, "completed", None, state.model_dump(mode="json"))
             await db.commit()
         await self._publish(state, event)

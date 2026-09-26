@@ -177,3 +177,52 @@ async def test_a_malformed_envelope_is_invalid_not_a_crash() -> None:
         provider = _provider(lambda _r, b=body: httpx.Response(200, json=b))
         with pytest.raises(ProviderOutputInvalidError):
             await _generate(provider)
+
+
+# --- reasoning models: the shape a real server (MiniMax via an OpenAI-compatible gateway) returns ---
+
+
+async def test_a_reasoning_block_that_quotes_json_does_not_poison_the_answer() -> None:
+    """The bug the first live run found: `<think>` sits in `content` and quotes JSON with braces,
+    so "first { to last }" spanned the reasoning and the answer and never parsed."""
+    thinking = '<think>They want {"intent":"x"} as JSON. Output {"intent":"trend"}.\n</think>\n\n'
+    provider = _provider(lambda _r: _reply(thinking + '{"intent":"trend","confidence":0.9}'))
+    result = await _generate(provider)
+    assert result.output == Answer(intent="trend", confidence=0.9)
+
+
+async def test_reasoning_then_a_fenced_answer_still_parses() -> None:
+    body = '<think>hmm {not json}</think>\n```json\n{"intent":"trend","confidence":0.4}\n```'
+    result = await _generate(_provider(lambda _r: _reply(body)))
+    assert result.output == Answer(intent="trend", confidence=0.4)
+
+
+async def test_a_reply_cut_off_mid_thought_is_invalid_not_a_parsed_fragment() -> None:
+    """Truncated inside the reasoning: nothing after `<think>` may be treated as the answer."""
+    provider = _provider(lambda _r: _reply('<think>The answer might be {"intent":"tr'))
+    with pytest.raises(ProviderOutputInvalidError):
+        await _generate(provider)
+
+
+async def test_reasoning_tokens_are_reported_as_the_usage_the_server_billed() -> None:
+    """`completion_tokens` already includes reasoning; the ledger must charge what was billed."""
+    provider = _provider(
+        lambda _r: httpx.Response(
+            200,
+            json={
+                "model": "friday",
+                "choices": [
+                    {
+                        "message": {
+                            "content": '<think>x</think>{"intent":"trend","confidence":1}',
+                            "reasoning_content": "x",
+                        },
+                        "finish_reason": "stop",
+                    }
+                ],
+                "usage": {"prompt_tokens": 49, "completion_tokens": 163, "reasoning_tokens": 156},
+            },
+        )
+    )
+    result = await _generate(provider)
+    assert (result.input_tokens, result.output_tokens) == (49, 163)

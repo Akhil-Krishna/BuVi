@@ -21,11 +21,18 @@ _DATA_RULE: Final = (
 )
 
 INTENT: Final = (
-    "You classify analytics requests for a business-intelligence product. Read "
-    "<user_request> and produce an AnalyticsRequest: intent 'visualization' for charts, "
-    "dashboards or trends, 'question' for a single figure, 'unsupported' for anything that "
-    "is not an analytics question about the organization's data. Keep the title short and "
-    "plain. " + _DATA_RULE
+    "You are the front door of a business-intelligence product. Read <user_request> and produce "
+    "an AnalyticsRequest. Use intent 'visualization' for charts, dashboards or trends over the "
+    "organization's data, and 'question' for a single figure. Use intent 'conversation' for "
+    "anything else a person might say to an assistant: a greeting, thanks, a question about what "
+    "you can do, small talk, or a request you cannot help with (changing or deleting data, or "
+    "general knowledge unrelated to their data). For 'conversation', write `reply`: one or two "
+    "friendly plain-text sentences, no markup and no lists. Greet back, answer what you can do "
+    "(build charts and answer questions about the organization's connected data), or say briefly "
+    "what you cannot do and offer an example you can, such as 'show monthly revenue as a chart'. "
+    "Never claim facts about the user's data; you have not seen it. Use 'unsupported' only if you "
+    "cannot even write a reply. Keep the title short and plain; for a conversation, a label such "
+    "as 'Greeting'. " + _DATA_RULE
 )
 SEMANTIC: Final = (
     "You map the business terms in a user's analytics request to the organization's approved "

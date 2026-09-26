@@ -249,9 +249,15 @@ requirements plus Sections 22.1/28/29. Current state:
   `client` has no picker, so an ambiguous question is a dead end for them; a tenant default source, or a
   model tie-break, would fix it and each needs a decision.
 
-*Built but not yet live-run:*
-- **`openai_compatible` model provider** — ADR 0022, 13 offline tests. Needs the live run against
-  the real endpoint to close ADR 0006's risk.
+*Live-run against a real model (partly):*
+- **`openai_compatible` model provider** — ADR 0022 built it; ADR 0025 records the first live run
+  against `minimax-m2.5` (alias `friday`), which **found a real bug**: the server returns reasoning
+  inside `content` as `<think>...</think>`, quoting JSON, so every stage failed to parse. Fixed and
+  covered. Exercised live: intent, plan, SQL, result analysis and chart stages with structured output,
+  end to end, 25-35s per chart. **Not yet exercised live:** a refusal, a `max_tokens` truncation, the
+  fallback model, and budget exhaustion; and the Anthropic-specific path (ADR 0006).
+- **Conversational replies (ADR 0025)** — a greeting, thanks, or "what can you do" ends the run
+  *completed* with the model's reply (one call, no data touched) instead of failing as unsupported.
 
 *Not started (each is real work, none is secretly done):*
 - Semantic-lookup caching (required for C1's DoD — see below).
@@ -335,19 +341,16 @@ rounded-pill badges, or emoji anywhere the Stitch set doesn't have them.
 - **Post-GA backlog (not in Tracks A–C):** subscriptions/invoicing (`POST /billing/subscription`, b537537);
   `query.completed` with async query/export execution; storage-bytes metering (ADR 0014). Four-eyes semantic approval as a tenant policy (ADR 0013). Snowflake/BigQuery/Redshift connectors (need vendor sandboxes in CI; spec "Post-GA backlog"; ADR 0011). Also: ratio metrics, metric filters, and multi-table metrics over approved `join_rules`, with join-rule management. Any extension must keep the metric-vs-SQL check exact (parsed), never presence-based (spec "Post-GA backlog"; ADR 0010).
 - **Before Phase C1:** assign a phase to artifact refresh (re-executing expired results) and to artifact versioning (Section 16, which needs a lineage column); ADR 0007.
-- **Live model coverage — provider BUILT, live run still outstanding (ADR 0022).** A third provider,
-  `openai_compatible`, speaks any OpenAI `/chat/completions` endpoint behind the same
-  `ModelProvider` protocol, so the Flow can meet a real model without an Anthropic key. Proven
-  offline by 13 `httpx.MockTransport` cases (fenced/chatty JSON, off-schema, truncation, refusal,
-  429/5xx, 400, malformed envelopes) — structured output is defended three ways: `response_format`,
-  the schema restated in the system prompt, and Pydantic validation as the real gate. Configure with
-  `llm_provider=openai_compatible`, `llm_base_url`, `llm_api_key`, `llm_response_format`; the local
-  dev endpoint is `http://192.168.10.251:3001/v1` with model `minimax-m2.5` (key supplied by env —
-  `.gitignore` already covers `.env*`; plaintext `http://` is refused for staging/prod).
-  **What remains:** (a) the actual live run — Phase A5's DoD message end to end, primary + fallback
-  model, a refusal, a `max_tokens` truncation, and `/billing/usage` matching real token counts, then
-  amend ADR 0022; (b) the Anthropic-specific path (`messages.parse`, its `stop_reason`/usage fields)
-  is still live-untested and matters the moment a deployment points at Anthropic (ADR 0006).
+- **Live model coverage — live run DONE for the OpenAI-compatible path, gaps named (ADR 0022, 0025).**
+  Configure by writing `apps/analytics-orchestrator/.env` (that exact path: the service reads
+  `env_prefix="ANALYTICS_"` and `env_file=".env"` relative to its own directory; a repo-root
+  `.env.local` is never read): `ANALYTICS_LLM_PROVIDER=openai_compatible`, `_LLM_MODEL`,
+  `_LLM_BASE_URL`, `_LLM_API_KEY`, and for a reasoning model `_LLM_MAX_TOKENS_PER_CALL=8192`,
+  `_STAGE_TIMEOUT_SECONDS=120`, and `_LLM_FALLBACK_MODEL` set to a model that exists on that server
+  (the default `claude-opus-4-8` does not). `.env*` is gitignored; plaintext `http://` is refused for
+  staging/prod. **Still open:** exercising a refusal, `max_tokens` truncation, the fallback model and
+  budget exhaustion live, and the Anthropic path (`messages.parse`), which matters the moment a
+  deployment points at Anthropic (ADR 0006).
 - **Before Phase C1 starts (required):** certificate-verified data-source TLS (`verify-full`) for Postgres and MySQL. Add a per-data-source CA bundle, and prove hostname-mismatch and untrusted-CA refusal against TLS-enabled instances in CI (spec Phase C1 entry requirement; ADR 0011).
 - **Phase C1 (required):** mcp-gateway/notification-service egress through a dedicated egress proxy with a
   NetworkPolicy, and per-tenant MCP invocation concurrency/rate limits (spec Sections 15, 24; ADR 0012).

@@ -127,3 +127,31 @@ def test_words_that_only_look_plural_are_left_alone() -> None:
     """`ss` endings (address, class) and short words are not stripped."""
     assert terms("address class") == ["address", "class"]
     assert "is" in terms("is") and "as" in terms("as")
+
+
+# --- the typed conversational reply (lives here with the other intent-shape tests) ---------------
+
+
+def test_a_conversation_must_carry_a_reply() -> None:
+    import pytest
+    from pydantic import ValidationError
+
+    from analytics_orchestrator.domain.value_objects.agent_outputs import AnalyticsRequest
+
+    with pytest.raises(ValidationError):
+        AnalyticsRequest(intent="conversation", title="Greeting")
+    with pytest.raises(ValidationError):
+        AnalyticsRequest(intent="conversation", title="Greeting", reply="   ")
+    ok = AnalyticsRequest(intent="conversation", title="Greeting", reply="Hi!")
+    assert ok.reply == "Hi!"
+
+
+def test_a_reply_is_bounded_plain_text_because_it_is_shown_verbatim() -> None:
+    import pytest
+    from pydantic import ValidationError
+
+    from analytics_orchestrator.domain.value_objects.agent_outputs import AnalyticsRequest
+
+    for bad in ("<script>alert(1)</script>", "a {template}", "`code`", "x" * 301, "two\nlines"):
+        with pytest.raises(ValidationError):
+            AnalyticsRequest(intent="conversation", title="Greeting", reply=bad)

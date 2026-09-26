@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from collections.abc import Mapping
 from typing import Any, Final
 
@@ -50,13 +51,29 @@ _TRUNCATION_REASONS: Final = frozenset({"length"})
 ResponseFormatMode = str
 
 
+#: Reasoning models (MiniMax, DeepSeek-R1, Qwen-QwQ, ...) put their chain of thought in `content`
+#: between these tags. It routinely *quotes* JSON, so leaving it in makes "first `{` to last `}`"
+#: span the reasoning and the answer together -- invalid JSON, on every stage. Found the first time
+#: this provider met a real model (ADR 0022 had only proven it against a mock).
+_THINK_BLOCK: Final = re.compile(r"<think>.*?</think>", re.DOTALL | re.IGNORECASE)
+_UNCLOSED_THINK: Final = re.compile(r"<think>.*\Z", re.DOTALL | re.IGNORECASE)
+
+
+def _strip_reasoning(content: str) -> str:
+    """Remove `<think>...</think>` blocks. An unterminated one -- a reply cut off by `max_tokens`
+    mid-thought -- is removed to the end, leaving nothing to parse, which then fails validation as
+    the truncation it is rather than parsing a fragment of the model's musings."""
+    return _UNCLOSED_THINK.sub("", _THINK_BLOCK.sub("", content))
+
+
 def _extract_json_object(content: str) -> str:
     """Pull the JSON object out of a reply that may be fenced or prefaced with prose.
 
-    Kept deliberately simple: strip a ```json fence if present, otherwise take the outermost
-    brace-balanced span. Anything else is left to fail Pydantic validation, which is the real gate.
+    Kept deliberately simple: drop any reasoning block, strip a ```json fence if present, otherwise
+    take the outermost brace-balanced span. Anything else is left to fail Pydantic validation,
+    which is the real gate.
     """
-    text = content.strip()
+    text = _strip_reasoning(content).strip()
     if text.startswith("```"):
         # ```json\n{...}\n``` -> {...}
         body = text.split("```", 2)
