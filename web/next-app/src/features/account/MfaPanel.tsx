@@ -11,6 +11,7 @@ import {
   type MfaFactor,
 } from "@/features/auth/mfa-actions";
 import { beginTotpEnrollment, type TotpEnrollment } from "./enroll-actions";
+import { formatDate } from "@/lib/format";
 
 /**
  * Enrollment and factor management (Section 6.6). Verification lives in
@@ -152,11 +153,7 @@ export function MfaPanel({ factors }: { factors: MfaFactor[] }) {
                   </td>
                   <td className="px-3 py-2 text-sm text-text-secondary">{factor.label ?? "—"}</td>
                   <td className="px-3 py-2 text-sm text-text-secondary">
-                    {factor.confirmed_at
-                      ? new Date(factor.confirmed_at).toLocaleDateString(undefined, {
-                          dateStyle: "medium",
-                        })
-                      : "Pending"}
+                    {factor.confirmed_at ? formatDate(factor.confirmed_at) : "Pending"}
                   </td>
                   <td className="px-3 py-2 text-right">
                     <button

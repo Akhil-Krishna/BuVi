@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { listAuditEvents } from "./actions";
 import type { AuditEvent } from "./types";
+import { formatDateTime } from "@/lib/format";
 
 /** Stitch "Audit Log" (Section 5.2). Read-only: there is no write endpoint --
  * the log is append-only, populated as a side effect of the audited actions. */
@@ -56,7 +57,7 @@ export function AuditPanel({ events }: { events: AuditEvent[] }) {
           {rows.map((event) => (
             <tr key={event.id} className="border-b border-border last:border-b-0">
               <td className="px-3 py-2 font-mono text-xs text-text-secondary">
-                {new Date(event.created_at).toLocaleString()}
+                {formatDateTime(event.created_at)}
               </td>
               <td className="px-3 py-2 text-text-primary">{event.event_type}</td>
               <td className="px-3 py-2 text-text-secondary">{event.actor_type}</td>

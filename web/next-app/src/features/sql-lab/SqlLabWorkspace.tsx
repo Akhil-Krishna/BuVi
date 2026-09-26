@@ -7,12 +7,9 @@ import type { DataSource, TableSummary } from "@/features/data-sources/types";
 import { executeSql, validateSql } from "./actions";
 import { SqlEditor } from "./SqlEditor";
 import type { SqlExecuteResult, SqlHistoryItem, SqlValidateResult } from "./types";
+import { formatCount, formatDateTime } from "@/lib/format";
 
 const ROW_LIMITS = [100, 1_000, 10_000, 25_000, 50_000];
-
-function formatWhen(value: string): string {
-  return new Date(value).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
-}
 
 /**
  * Stitch "SQL Lab" (Section 5.2): a data-source-scoped editor, a toolbar, and
@@ -197,7 +194,7 @@ export function SqlLabWorkspace({
               >
                 {ROW_LIMITS.map((limit) => (
                   <option key={limit} value={limit}>
-                    {limit.toLocaleString()}
+                    {formatCount(limit)}
                   </option>
                 ))}
               </select>
@@ -265,7 +262,7 @@ export function SqlLabWorkspace({
                 <>
                   <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                     <p className="text-xs text-text-secondary">
-                      {result.row_count.toLocaleString()} rows in {result.duration_ms}ms
+                      {formatCount(result.row_count)} rows in {result.duration_ms}ms
                       {result.truncated && ` -- truncated (${result.truncation_reason})`}
                     </p>
                     <button
@@ -338,7 +335,7 @@ export function SqlLabWorkspace({
                         <td className="px-3 py-2 text-text-secondary">{item.status}</td>
                         <td className="px-3 py-2 text-text-secondary">{item.row_count ?? "—"}</td>
                         <td className="px-3 py-2 text-text-secondary">
-                          {formatWhen(item.created_at)}
+                          {formatDateTime(item.created_at)}
                         </td>
                       </tr>
                     ))}

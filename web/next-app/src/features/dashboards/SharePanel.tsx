@@ -5,10 +5,7 @@ import { useRouter } from "next/navigation";
 import { MfaVerifyForm } from "@/features/auth/MfaVerifyForm";
 import { createShareLink, revokeShareLink } from "./actions";
 import type { ShareLink, ShareLinkCreated } from "./types";
-
-function formatWhen(value: string): string {
-  return new Date(value).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
-}
+import { formatDateTime } from "@/lib/format";
 
 /**
  * `dashboard:share` is a step-up operation (Section 7.3), the same pattern
@@ -122,7 +119,7 @@ export function SharePanel({
                   <td className="px-3 py-2 text-text-secondary">
                     {link.active ? "Active" : "Revoked"}
                   </td>
-                  <td className="px-3 py-2 text-text-secondary">{formatWhen(link.expires_at)}</td>
+                  <td className="px-3 py-2 text-text-secondary">{formatDateTime(link.expires_at)}</td>
                   <td className="px-3 py-2 text-right">
                     {link.active && (
                       <button

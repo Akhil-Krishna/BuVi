@@ -3,10 +3,7 @@
 import { useState, useTransition } from "react";
 import { grantSqlExecute, revokeSqlExecute } from "./actions";
 import type { SqlGrant, TenantUser } from "./types";
-
-function formatWhen(value: string): string {
-  return new Date(value).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
-}
+import { formatDateTime } from "@/lib/format";
 
 /** `org_admin`-only (Section 7.1): who else, beyond a blanket `sql:execute`
  * grant, may run SQL against this one connection. Server-enforced by role,
@@ -79,7 +76,7 @@ export function SqlGrantsPanel({
                     {usersById.get(grantRow.user_id)?.email ?? grantRow.user_id}
                   </td>
                   <td className="px-3 py-2 text-text-secondary">
-                    {formatWhen(grantRow.granted_at)}
+                    {formatDateTime(grantRow.granted_at)}
                   </td>
                   <td className="px-3 py-2 text-right">
                     <button

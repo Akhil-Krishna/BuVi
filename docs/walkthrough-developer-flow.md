@@ -85,10 +85,17 @@ step 3 and is shown above as read-only detail.
 | Password | `dev-reader-password` | |
 | SSL mode | `disable` | **defaults to `require` — you must change it** |
 
-Click **Save credentials** → the MFA prompt appears → enter your TOTP code → **Verify**.
+> ### ⚠ The two defaults that will fail
+> **Port starts at `5432`. You must change it to `5433`.** `5432` is the *platform's own*
+> Postgres, which has no `buvi_reader` role — so it answers with an auth failure and the UI says
+> **"The database rejected the credentials."** even though your password was perfectly correct.
+> That message is deliberately vague: Section 13.1 forbids connection diagnostics from echoing the
+> host, port or driver text, because those leak. So it cannot tell you "wrong port" — you have to
+> know to check.
+>
+> **SSL mode starts at `require`. Change it to `disable`.** This container serves no TLS.
 
-Both defaults will silently fail against this database if left alone: port 5432 is the *platform*
-Postgres, not the sample one, and `require` will fail on a container with no TLS configured.
+Click **Save credentials** → the MFA prompt appears → enter your TOTP code → **Verify**.
 
 `disable` is correct *here only* because this is a loopback container. `verify-full` is the
 production requirement and is still a Phase C1 entry item (ADR 0011) — it is not proven live yet.

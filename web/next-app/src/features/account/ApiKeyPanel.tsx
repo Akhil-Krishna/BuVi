@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { MfaVerifyForm } from "@/features/auth/MfaVerifyForm";
 import { createApiKey, revokeApiKey, type ApiKey, type ApiKeyCreated } from "./api-key-actions";
+import { formatDateTime } from "@/lib/format";
 
 /**
  * API keys (Section 6.8). No Stitch screen exists for this -- follows User
@@ -22,7 +23,7 @@ function refusalText(code: string): string {
 
 function formatWhen(value: string | null): string {
   if (!value) return "Never";
-  return new Date(value).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+  return formatDateTime(value);
 }
 
 export function ApiKeyPanel({

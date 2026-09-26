@@ -7,6 +7,7 @@ import { SecretForm } from "./SecretForm";
 import { SqlGrantsPanel } from "./SqlGrantsPanel";
 import { TableBrowser } from "./TableBrowser";
 import type { ConnectivityTestResult, DataSource, SqlGrant, SyncResult, TenantUser } from "./types";
+import { formatDateTime } from "@/lib/format";
 
 const STATUS_CLASS: Record<DataSource["status"], string> = {
   pending: "border-warning-border bg-warning-bg text-warning",
@@ -16,7 +17,7 @@ const STATUS_CLASS: Record<DataSource["status"], string> = {
 
 function formatWhen(value: string | null): string {
   if (!value) return "Never";
-  return new Date(value).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+  return formatDateTime(value);
 }
 
 export function DataSourceRow({

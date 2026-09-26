@@ -1,4 +1,5 @@
 import type { Quotas, Usage } from "./types";
+import { formatCount, formatTime } from "@/lib/format";
 
 /** Stitch "Usage & Quotas" (Section 5.2). The mock also shows invoice
  * reconciliation and a spend-cap control -- `POST /billing/subscription` is a
@@ -16,15 +17,15 @@ export function BillingPanel({ usage, quotas }: { usage: Usage; quotas: Quotas }
         <div className="border border-border bg-bg p-4">
           <p className="text-xs font-medium text-text-secondary">LLM tokens (today)</p>
           <p className="mt-1 text-2xl font-semibold text-text-primary">
-            {quotas.llm_tokens.used.toLocaleString()}
+            {formatCount(quotas.llm_tokens.used)}
             <span className="text-sm font-normal text-text-secondary">
               {" "}
-              / {quotas.llm_tokens.limit.toLocaleString()}
+              / {formatCount(quotas.llm_tokens.limit)}
             </span>
           </p>
           <p className="mt-1 text-xs text-text-secondary">
-            {quotas.llm_tokens.remaining.toLocaleString()} remaining, resets{" "}
-            {new Date(quotas.llm_tokens.resets_at).toLocaleTimeString()}
+            {formatCount(quotas.llm_tokens.remaining)} remaining, resets{" "}
+            {formatTime(quotas.llm_tokens.resets_at)}
           </p>
         </div>
         <div className="border border-border bg-bg p-4">
@@ -46,14 +47,14 @@ export function BillingPanel({ usage, quotas }: { usage: Usage; quotas: Quotas }
             {Object.entries(usage.llm_tokens.by_stage).map(([stage, tokens]) => (
               <tr key={stage} className="border-b border-border last:border-b-0">
                 <td className="py-1.5 text-text-primary">{stage}</td>
-                <td className="py-1.5 text-right text-text-secondary">{tokens.toLocaleString()}</td>
+                <td className="py-1.5 text-right text-text-secondary">{formatCount(tokens)}</td>
               </tr>
             ))}
           </tbody>
         </table>
         <p className="mt-2 text-xs text-text-secondary">
-          Input {usage.llm_tokens.input.toLocaleString()} · Output{" "}
-          {usage.llm_tokens.output.toLocaleString()} · Total {usage.llm_tokens.total.toLocaleString()}
+          Input {formatCount(usage.llm_tokens.input)} · Output{" "}
+          {formatCount(usage.llm_tokens.output)} · Total {formatCount(usage.llm_tokens.total)}
         </p>
       </div>
     </div>

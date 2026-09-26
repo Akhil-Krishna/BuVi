@@ -2,10 +2,7 @@ import Link from "next/link";
 import { NewDashboardForm } from "@/features/dashboards/NewDashboardForm";
 import { listDashboards } from "@/features/dashboards/actions";
 import { getSession } from "@/lib/auth/session";
-
-function formatWhen(value: string): string {
-  return new Date(value).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
-}
+import { formatDateTime } from "@/lib/format";
 
 /** Stitch "Dashboards" grid (Section 5.2). The mock shows certification
  * badges, dataset counts, and cache-freshness stats nothing in
@@ -71,7 +68,7 @@ export default async function DashboardsPage() {
                     {dashboard.is_owner ? "You" : "Shared with tenant"}
                   </td>
                   <td className="px-3 py-2 text-text-secondary">
-                    {formatWhen(dashboard.updated_at)}
+                    {formatDateTime(dashboard.updated_at)}
                   </td>
                 </tr>
               ))}

@@ -1,5 +1,6 @@
 import { getSnapshot } from "@/features/guest-share/actions";
 import { SnapshotGrid } from "@/features/guest-share/SnapshotGrid";
+import { formatDateTime } from "@/lib/format";
 
 /** Stitch "Executive Revenue & Margin Synthesis -- Shared Read-Only View"
  * (Section 5.2): zero app chrome, unauthenticated. No `(guest)/layout.tsx` is
@@ -28,7 +29,7 @@ export default async function GuestSharePage({
     <main className="mx-auto w-full max-w-5xl px-4 py-8">
       <h1 className="text-xl font-semibold text-text-primary">{snapshot.name}</h1>
       <p className="mt-1 text-sm text-text-secondary">
-        Shared, read-only view -- expires {new Date(snapshot.expires_at).toLocaleString()}
+        Shared, read-only view -- expires {formatDateTime(snapshot.expires_at)}
       </p>
       <SnapshotGrid tiles={snapshot.tiles} />
     </main>

@@ -3,20 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { revokeSession, type UserSession } from "./session-actions";
-
-/**
- * The caller's own sessions (Section 6.9), as a dense data table matching the
- * Stitch design system's table spec -- 32px rows, hairline dividers, zebra
- * striping, muted `label-header` column heads, no card shadow. There is no
- * Stitch screen for account settings, so this follows User Management's
- * row/detail pattern (Section 5.2's fallback rule).
- */
-function formatWhen(value: string): string {
-  return new Date(value).toLocaleString(undefined, {
-    dateStyle: "medium",
-    timeStyle: "short",
-  });
-}
+import { formatDateTime } from "@/lib/format";
 
 export function SessionList({ sessions }: { sessions: UserSession[] }) {
   const router = useRouter();
@@ -79,10 +66,10 @@ export function SessionList({ sessions }: { sessions: UserSession[] }) {
                   {session.ip_address ?? "—"}
                 </td>
                 <td className="px-3 py-2 text-sm text-text-secondary">
-                  {formatWhen(session.last_seen_at)}
+                  {formatDateTime(session.last_seen_at)}
                 </td>
                 <td className="px-3 py-2 text-sm text-text-secondary">
-                  {formatWhen(session.expires_at)}
+                  {formatDateTime(session.expires_at)}
                 </td>
                 <td className="px-3 py-2 text-right">
                   <button
