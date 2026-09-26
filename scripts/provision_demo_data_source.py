@@ -9,6 +9,7 @@ against a tenant that already has it connected: exits early rather than creating
 
 from __future__ import annotations
 
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -16,11 +17,13 @@ from pathlib import Path
 import pyotp
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from test_login import USERS, api, login  # noqa: E402
-from test_query_gateway import READER_PASSWORD  # noqa: E402
+from test_login import USERS, api, login
+from test_query_gateway import READER_PASSWORD
 
 NAME = "sample-sales-db"
 PG_CONTAINER = "buvi-dev-postgres-1"
+#: Resolved rather than relied on from PATH, like `tests/system/test_live_controls.py` does.
+DOCKER = shutil.which("docker") or "docker"
 
 
 def _clear_admin_mfa(email: str) -> None:
@@ -28,16 +31,34 @@ def _clear_admin_mfa(email: str) -> None:
     # demo-admin and leave a factor enrolled behind them -- this script must
     # not assume it is starting from a fresh one (`POST /auth/mfa/enroll`
     # refuses a second factor the same way).
-    sql = f"""
+    # The email travels as a psql variable rather than being interpolated into the SQL, the same
+    # way `scripts/seed-demo-tenant.sh` passes its ids.
+    sql = """
       DELETE FROM identity.mfa_credentials WHERE user_id IN (
-        SELECT id FROM identity.users WHERE email = '{email}'
+        SELECT id FROM identity.users WHERE email = :'email'
       );
-      UPDATE identity.users SET mfa_enabled = false WHERE email = '{email}';
+      UPDATE identity.users SET mfa_enabled = false WHERE email = :'email';
     """
-    subprocess.run(
-        ["docker", "exec", "-i", PG_CONTAINER, "psql", "-U", "postgres", "-d", "agentic_bi",
-         "-q", "-v", "ON_ERROR_STOP=1"],
-        input=sql, text=True, check=True,
+    subprocess.run(  # noqa: S603 - fixed argv, no shell, container name is a module constant
+        [
+            DOCKER,
+            "exec",
+            "-i",
+            PG_CONTAINER,
+            "psql",
+            "-U",
+            "postgres",
+            "-d",
+            "agentic_bi",
+            "-q",
+            "-v",
+            "ON_ERROR_STOP=1",
+            "-v",
+            f"email={email}",
+        ],
+        input=sql,
+        text=True,
+        check=True,
     )
 
 

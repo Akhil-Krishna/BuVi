@@ -9,16 +9,19 @@ against a tenant that already has it: exits early rather than creating a duplica
 
 from __future__ import annotations
 
+import shutil
 import subprocess
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from test_analytics_run import post_message, sse_events  # noqa: E402
-from test_login import USERS, api, login  # noqa: E402
+from test_analytics_run import post_message, sse_events
+from test_login import USERS, api, login
 
 NAME = "B8 Guest Share Demo"
 PG_CONTAINER = "buvi-dev-postgres-1"
+#: Resolved rather than relied on from PATH, like `tests/system/test_live_controls.py` does.
+DOCKER = shutil.which("docker") or "docker"
 
 
 def _clear_developer_mfa() -> None:
@@ -28,16 +31,32 @@ def _clear_developer_mfa() -> None:
       );
       UPDATE identity.users SET mfa_enabled = false WHERE email = 'developer@demo.example.com';
     """
-    subprocess.run(
-        ["docker", "exec", "-i", PG_CONTAINER, "psql", "-U", "postgres", "-d", "agentic_bi",
-         "-q", "-v", "ON_ERROR_STOP=1"],
-        input=sql, text=True, check=True,
+    subprocess.run(  # noqa: S603 - fixed argv, no shell, container name is a module constant
+        [
+            DOCKER,
+            "exec",
+            "-i",
+            PG_CONTAINER,
+            "psql",
+            "-U",
+            "postgres",
+            "-d",
+            "agentic_bi",
+            "-q",
+            "-v",
+            "ON_ERROR_STOP=1",
+        ],
+        input=sql,
+        text=True,
+        check=True,
     )
 
 
 def main() -> int:
-    subprocess.run([sys.executable, str(Path(__file__).with_name("provision_demo_data_source.py"))],
-                    check=True)
+    subprocess.run(  # noqa: S603 - this interpreter, running a script from this same directory
+        [sys.executable, str(Path(__file__).with_name("provision_demo_data_source.py"))],
+        check=True,
+    )
     _clear_developer_mfa()
     developer, _ = login(USERS["developer"][0])
 
@@ -50,11 +69,13 @@ def main() -> int:
             return 0
         dashboard_id = matching["id"]
     else:
-        dashboard_id = api("POST", "/api/v1/dashboards", developer, json={"name": NAME}).json()["id"]
+        dashboard_id = api("POST", "/api/v1/dashboards", developer, json={"name": NAME}).json()[
+            "id"
+        ]
 
-    conversation = api(
-        "POST", "/api/v1/conversations", developer, json={"title": NAME}
-    ).json()["id"]
+    conversation = api("POST", "/api/v1/conversations", developer, json={"title": NAME}).json()[
+        "id"
+    ]
     run_id = post_message(developer, conversation).json()["run_id"]
     events = list(sse_events(developer, run_id))
     artifact_id = next(
@@ -65,7 +86,9 @@ def main() -> int:
         return 1
 
     tile = api(
-        "POST", f"/api/v1/dashboards/{dashboard_id}/tiles", developer,
+        "POST",
+        f"/api/v1/dashboards/{dashboard_id}/tiles",
+        developer,
         json={"artifact_id": artifact_id},
     )
     if tile.status_code != 201:

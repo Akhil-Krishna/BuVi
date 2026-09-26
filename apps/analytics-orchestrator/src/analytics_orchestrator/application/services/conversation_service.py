@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 import uuid
 from dataclasses import dataclass
+from typing import Literal
 
 from sqlalchemy.exc import IntegrityError
 
@@ -177,7 +178,12 @@ class ConversationService:
             await self._repository.commit()
         return run
 
-    async def _end_without_execution(self, run: Run, status: str, code: FailureCode) -> None:
+    async def _end_without_execution(
+        self, run: Run, status: Literal["failed", "cancelled"], code: FailureCode
+    ) -> None:
+        """`status` is narrowed to what `AnalyticsRunEvent.status` accepts: a bare `str` here
+        silently widened the typed SSE contract Section 11 depends on (it reached `mypy --strict`
+        as an error once B2 added `cancelled` to that Literal)."""
         run = await self._repository.get_run(run.tenant_id, run.id, for_update=True) or run
         event = await self._repository.append_event(
             run, stage="run", status=status, message=MESSAGES[code], artifact_id=None
