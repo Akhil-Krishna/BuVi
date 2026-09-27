@@ -70,3 +70,13 @@ export type ArtifactDataResponse = {
   truncated: boolean;
   expires_at: string;
 };
+
+export type Conversation = { id: string; title: string | null; created_at: string };
+
+export type ChatMessage = {
+  id: string;
+  role: "user" | "assistant" | "system";
+  content: string;
+  run_id: string | null;
+  created_at: string;
+};

@@ -587,6 +587,22 @@
         "title": "ConversationCreateRequest",
         "type": "object"
       },
+      "ConversationListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ConversationResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "ConversationListResponse",
+        "type": "object"
+      },
       "ConversationResponse": {
         "properties": {
           "created_at": {
@@ -1426,6 +1442,70 @@
           "content"
         ],
         "title": "MessageCreateRequest",
+        "type": "object"
+      },
+      "MessageListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/MessageResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "MessageListResponse",
+        "type": "object"
+      },
+      "MessageResponse": {
+        "properties": {
+          "content": {
+            "title": "Content",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "role": {
+            "enum": [
+              "user",
+              "assistant",
+              "system"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "run_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Id"
+          }
+        },
+        "required": [
+          "id",
+          "role",
+          "content",
+          "run_id",
+          "created_at"
+        ],
+        "title": "MessageResponse",
         "type": "object"
       },
       "MetricCreateRequest": {
@@ -6438,6 +6518,80 @@
       }
     },
     "/api/v1/conversations": {
+      "get": {
+        "operationId": "get_conversations",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Rate limited"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Upstream unavailable"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Upstream timeout"
+          }
+        },
+        "summary": "The caller's own conversations",
+        "tags": [
+          "analytics-orchestrator"
+        ],
+        "x-auth": "session or API key, chat:use",
+        "x-backend": "analytics-orchestrator",
+        "x-beyond-section-9": "ADR 0002 item 8",
+        "x-rate-tier": "authenticated"
+      },
       "post": {
         "operationId": "post_conversations",
         "parameters": [
@@ -6545,6 +6699,89 @@
       }
     },
     "/api/v1/conversations/{id}/messages": {
+      "get": {
+        "operationId": "get_conversations_id_messages",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Rate limited"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Upstream unavailable"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Upstream timeout"
+          }
+        },
+        "summary": "A conversation's messages",
+        "tags": [
+          "analytics-orchestrator"
+        ],
+        "x-auth": "session or API key, chat:use",
+        "x-backend": "analytics-orchestrator",
+        "x-beyond-section-9": "ADR 0002 item 8",
+        "x-rate-tier": "authenticated"
+      },
       "post": {
         "operationId": "post_conversations_id_messages",
         "parameters": [

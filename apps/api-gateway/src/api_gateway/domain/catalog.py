@@ -211,6 +211,20 @@ CATALOG: Final[tuple[RouteSpec, ...]] = (
     # --- Chat (Sections 10, 11) -------------------------------------------------------
     _analytics("POST", "/conversations", "Create a conversation", permission="chat:use"),
     _analytics(
+        "GET",
+        "/conversations",
+        "The caller's own conversations",
+        permission="chat:use",
+        in_section_9=False,
+    ),
+    _analytics(
+        "GET",
+        "/conversations/{id}/messages",
+        "A conversation's messages",
+        permission="chat:use",
+        in_section_9=False,
+    ),
+    _analytics(
         "POST",
         "/conversations/{id}/messages",
         "Send a message; returns run_id",

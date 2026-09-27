@@ -27,6 +27,22 @@ class ConversationResponse(BaseModel):
     created_at: dt.datetime
 
 
+class ConversationListResponse(BaseModel):
+    items: list[ConversationResponse]
+
+
+class MessageResponse(BaseModel):
+    id: uuid.UUID
+    role: Literal["user", "assistant", "system"]
+    content: str
+    run_id: uuid.UUID | None
+    created_at: dt.datetime
+
+
+class MessageListResponse(BaseModel):
+    items: list[MessageResponse]
+
+
 class MessageCreateRequest(BaseModel):
     """Section 9.1."""
 

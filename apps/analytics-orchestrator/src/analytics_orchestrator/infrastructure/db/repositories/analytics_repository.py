@@ -54,6 +54,28 @@ class AnalyticsRepository:
         )
         return result.scalar_one_or_none()
 
+    async def list_conversations(
+        self, tenant_id: uuid.UUID, created_by: uuid.UUID, *, limit: int
+    ) -> list[Conversation]:
+        """A user's own conversations, newest first (Section 9's sidebar has no cross-user view)."""
+        result = await self._session.execute(
+            select(Conversation)
+            .where(Conversation.tenant_id == tenant_id, Conversation.created_by == created_by)
+            .order_by(Conversation.created_at.desc())
+            .limit(limit)
+        )
+        return list(result.scalars())
+
+    async def list_messages(
+        self, tenant_id: uuid.UUID, conversation_id: uuid.UUID
+    ) -> list[Message]:
+        result = await self._session.execute(
+            select(Message)
+            .where(Message.tenant_id == tenant_id, Message.conversation_id == conversation_id)
+            .order_by(Message.created_at)
+        )
+        return list(result.scalars())
+
     async def add_message(self, message: Message) -> Message:
         self._session.add(message)
         await self._session.flush()

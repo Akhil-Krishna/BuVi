@@ -1,7 +1,7 @@
 "use server";
 
 import { callGateway, GatewayError } from "@/lib/api/gateway";
-import type { ArtifactDataResponse, ArtifactResponse } from "./types";
+import type { ArtifactDataResponse, ArtifactResponse, ChatMessage, Conversation } from "./types";
 
 export type ActionOutcome<T = void> =
   | ({ ok: true } & (T extends void ? Record<never, never> : { data: T }))
@@ -19,13 +19,23 @@ function failure(error: unknown): {
   return { ok: false, code: "UNKNOWN", message: "Something went wrong. Try again.", details: {} };
 }
 
-/**
- * Section 32 Step A. A chat "conversation" is created lazily on the first
- * message of a browser session -- there is no `GET /conversations` to list
- * past ones (Section 9's chat surface is create-and-post only), so this app
- * does not pretend to have a conversation history sidebar the backend cannot
- * back; the caller holds `conversationId` in memory for the tab's lifetime.
- */
+/** The caller's own past conversations, newest first (chat sidebar). */
+export async function listConversations(): Promise<Conversation[]> {
+  const response = await callGateway<{ items: Conversation[] }>("/api/v1/conversations");
+  return response.items;
+}
+
+/** A past conversation's messages, in order -- clicking a sidebar item loads these. */
+export async function getConversationMessages(conversationId: string): Promise<ChatMessage[]> {
+  const response = await callGateway<{ items: ChatMessage[] }>(
+    `/api/v1/conversations/${conversationId}/messages`
+  );
+  return response.items;
+}
+
+/** Section 32 Step A. A chat "conversation" is created lazily on the first message of a new
+ * thread; picking a past one from the sidebar reuses its id instead (`sendChatMessage`'s first
+ * argument). */
 export async function sendChatMessage(
   conversationId: string | null,
   content: string,
@@ -34,7 +44,14 @@ export async function sendChatMessage(
   try {
     const conversation =
       conversationId ??
-      (await callGateway<{ id: string }>("/api/v1/conversations", { method: "POST", body: {} })).id;
+      (
+        await callGateway<{ id: string }>("/api/v1/conversations", {
+          method: "POST",
+          // Auto-titled from the opening message, the way Claude/ChatGPT title a new chat --
+          // otherwise every sidebar entry reads "Untitled".
+          body: { title: content.slice(0, 60) },
+        })
+      ).id;
     const accepted = await callGateway<{ run_id: string; conversation_id: string }>(
       `/api/v1/conversations/${conversation}/messages`,
       { method: "POST", body: { content, data_source_id: dataSourceId } }

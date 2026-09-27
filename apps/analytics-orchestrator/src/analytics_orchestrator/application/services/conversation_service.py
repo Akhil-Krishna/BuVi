@@ -60,6 +60,23 @@ class ConversationService:
         await self._repository.commit()
         return conversation
 
+    async def list_conversations(self, principal: Principal) -> list[Conversation]:
+        return await self._repository.list_conversations(
+            uuid.UUID(principal.tenant_id), uuid.UUID(principal.user_id), limit=100
+        )
+
+    async def list_messages(
+        self, principal: Principal, conversation_id: uuid.UUID
+    ) -> list[Message]:
+        """`OwnsConversation` (router) only checks the resource is this *tenant*'s; a chat history
+        is one person's, so a same-tenant user who is not its owner gets the same 404 a cross-tenant
+        id gets (Section 7.2's convention, applied one level down: never confirm existence)."""
+        tenant = uuid.UUID(principal.tenant_id)
+        conversation = await self._repository.get_conversation(tenant, conversation_id)
+        if conversation is None or conversation.created_by != uuid.UUID(principal.user_id):
+            raise NotFoundError()
+        return await self._repository.list_messages(tenant, conversation_id)
+
     async def _replay(
         self,
         principal: Principal,

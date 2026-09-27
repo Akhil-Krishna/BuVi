@@ -116,6 +116,22 @@
         "title": "ConversationCreateRequest",
         "type": "object"
       },
+      "ConversationListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ConversationResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "ConversationListResponse",
+        "type": "object"
+      },
       "ConversationResponse": {
         "properties": {
           "created_at": {
@@ -249,6 +265,70 @@
           "content"
         ],
         "title": "MessageCreateRequest",
+        "type": "object"
+      },
+      "MessageListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/MessageResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "MessageListResponse",
+        "type": "object"
+      },
+      "MessageResponse": {
+        "properties": {
+          "content": {
+            "title": "Content",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "role": {
+            "enum": [
+              "user",
+              "assistant",
+              "system"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "run_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Id"
+          }
+        },
+        "required": [
+          "id",
+          "role",
+          "content",
+          "run_id",
+          "created_at"
+        ],
+        "title": "MessageResponse",
         "type": "object"
       },
       "QuotasResponse": {
@@ -591,6 +671,26 @@
       }
     },
     "/api/v1/conversations": {
+      "get": {
+        "description": "The caller's own conversations, newest first (chat sidebar).",
+        "operationId": "list_conversations_api_v1_conversations_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Conversations",
+        "tags": [
+          "chat"
+        ]
+      },
       "post": {
         "operationId": "create_conversation_api_v1_conversations_post",
         "requestBody": {
@@ -632,6 +732,47 @@
       }
     },
     "/api/v1/conversations/{conversation_id}/messages": {
+      "get": {
+        "operationId": "list_messages_api_v1_conversations__conversation_id__messages_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Messages",
+        "tags": [
+          "chat"
+        ]
+      },
       "post": {
         "description": "Section 9.1: returns `{run_id}`; the run executes asynchronously (Section 18).",
         "operationId": "post_message_api_v1_conversations__conversation_id__messages_post",

@@ -10,8 +10,11 @@ from fastapi import APIRouter, Depends, Header, Request, Response, status
 
 from analytics_orchestrator.api.v1.schemas import (
     ConversationCreateRequest,
+    ConversationListResponse,
     ConversationResponse,
     MessageCreateRequest,
+    MessageListResponse,
+    MessageResponse,
     RunAcceptedResponse,
     RunStatusResponse,
 )
@@ -46,6 +49,38 @@ async def create_conversation(
     )
     return ConversationResponse(
         id=conversation.id, title=conversation.title, created_at=conversation.created_at
+    )
+
+
+@router.get("/conversations", response_model=ConversationListResponse)
+async def list_conversations(
+    request: Request, principal: ChatUse, repository: ScopedRepo
+) -> ConversationListResponse:
+    """The caller's own conversations, newest first (chat sidebar)."""
+    items = await build_conversation_service(request, repository).list_conversations(principal)
+    return ConversationListResponse(
+        items=[ConversationResponse(id=c.id, title=c.title, created_at=c.created_at) for c in items]
+    )
+
+
+@router.get("/conversations/{conversation_id}/messages", response_model=MessageListResponse)
+async def list_messages(
+    request: Request,
+    conversation_id: uuid.UUID,
+    principal: ChatUse,
+    _owns: OwnsConversation,
+    repository: ScopedRepo,
+) -> MessageListResponse:
+    items = await build_conversation_service(request, repository).list_messages(
+        principal, conversation_id
+    )
+    return MessageListResponse(
+        items=[
+            MessageResponse(
+                id=m.id, role=m.role, content=m.content, run_id=m.run_id, created_at=m.created_at
+            )
+            for m in items
+        ]
     )
 
 
